@@ -80,6 +80,52 @@ public sealed class DictionaryExtractorTests
     }
 
     [Fact]
+    public void Extract_FiltersDynamicCallFormNames_AndPreservesStaticJapaneseNamesAndArguments()
+    {
+        string root = CreateTempDirectory();
+        string game = Path.Combine(root, "Game");
+        string output = Path.Combine(root, "Output");
+        Write(game, "ERB/functionNames.erb", string.Join(Environment.NewLine,
+        [
+            "CALLFORM KOJO_{NO:TARGET}_{SELECTCOM}(ARG:0, \"花括号动态名称参数文本\")",
+            "CALLFORM %HOGES%(ARG:0, \"百分号动态名称参数文本\")",
+            "CALLFORM \\@NO == 1 ? 関数甲 : 関数乙\\@(ARG:0, \"条件表达式动态名称参数文本\")",
+            "CALLFORM KOJO_{NO:TARGET}_{SELECTCOM}",
+            "CALLFORM %HOGES%",
+            "CALLFORM \\@NO == 1 ? 関数甲 : 関数乙\\@",
+            "CALLFORM 日本語関数(ARG:0, \"静态日文函数参数文本\")",
+            "CALLFORM ASCII_FUNCTION(ARG:0, \"静态英文函数参数文本\")",
+            "TRYCALLFORM KOJO_{NO:TARGET}_{SELECTCOM}(ARG:0, \"TRYCALLFORM参数文本\")",
+            "CALL 日本語CALL(ARG:0, \"普通CALL参数文本\")"
+        ]));
+
+        new DictionaryExtractor().Extract(game, output);
+
+        JArray entries = JArray.Parse(File.ReadAllText(Path.Combine(output, "ERB", "functionNames.json")));
+        string[] originals = entries
+            .Select(entry => (string?)entry!["original"] ?? string.Empty)
+            .ToArray();
+
+        Assert.Contains("日本語関数", originals);
+        Assert.Contains("日本語CALL", originals);
+        Assert.DoesNotContain("ASCII_FUNCTION", originals);
+        Assert.DoesNotContain(originals, original =>
+            original.Contains("KOJO_", StringComparison.Ordinal) ||
+            original.Contains("HOGES", StringComparison.Ordinal) ||
+            original.Contains("関数甲", StringComparison.Ordinal) ||
+            original.Contains("関数乙", StringComparison.Ordinal) ||
+            original.Contains("SELECTCOM", StringComparison.Ordinal) ||
+            original.Contains("TARGET", StringComparison.Ordinal));
+
+        Assert.Contains(originals, original => original.Contains("花括号动态名称参数文本", StringComparison.Ordinal));
+        Assert.Contains(originals, original => original.Contains("百分号动态名称参数文本", StringComparison.Ordinal));
+        Assert.Contains(originals, original => original.Contains("条件表达式动态名称参数文本", StringComparison.Ordinal));
+        Assert.Contains(originals, original => original.Contains("TRYCALLFORM参数文本", StringComparison.Ordinal));
+        Assert.Contains(originals, original => original.Contains("静态日文函数参数文本", StringComparison.Ordinal));
+        Assert.Contains(originals, original => original.Contains("普通CALL参数文本", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void Extract_WithReferenceDirectory_PreservesLegacyReferenceFillBehavior()
     {
         string root = CreateTempDirectory();

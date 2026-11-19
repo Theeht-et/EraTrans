@@ -818,7 +818,7 @@ public sealed class ErbTranslationGroupingService
     }
 
     private static bool IsConditionOutput(string outputType) =>
-        outputType is "IF" or "ELSEIF" or "SELECTCASE" or "CASE" or "CASEELSE";
+        outputType is "IF" or "SIF" or "ELSEIF" or "SELECTCASE" or "CASE" or "CASEELSE";
 
     private static IReadOnlyList<(string Key, string Original)> ReadTextDictionaryEntries(string path)
     {

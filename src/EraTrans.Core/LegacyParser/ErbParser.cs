@@ -183,7 +183,10 @@ public class ERBParser
                     cmIndex = rightValue.IndexOf(",");
                     lfIndex = rightValue.IndexOf("(");
                 }
-                if (lfIndex > -1 && (cmIndex > lfIndex || (isFormattedFunctionCall && cmIndex == -1)))
+                bool dynamicFunctionName = lfIndex > -1 &&
+                    ContainsDynamicFormSyntax(rightValue.Substring(0, lfIndex));
+                if (lfIndex > -1 &&
+                    (cmIndex > lfIndex || ((isFormattedFunctionCall || dynamicFunctionName) && cmIndex == -1)))
                 {
                     string functionName = rightValue.Substring(0, lfIndex).Trim();
                     if (ShouldAddFunctionName(functionName))
@@ -292,7 +295,10 @@ public class ERBParser
                         cmIndex = rightValue.IndexOf(",");
                         lfIndex = rightValue.IndexOf("(");
                     }
-                    if (lfIndex > -1 && (cmIndex > lfIndex || (isFormattedFunctionCall && cmIndex == -1)))
+                    bool dynamicFunctionName = lfIndex > -1 &&
+                    ContainsDynamicFormSyntax(rightValue.Substring(0, lfIndex));
+                if (lfIndex > -1 &&
+                    (cmIndex > lfIndex || ((isFormattedFunctionCall || dynamicFunctionName) && cmIndex == -1)))
                     {
                         string functionName = rightValue.Substring(0, lfIndex).Trim();
                         if (ShouldAddFunctionName(functionName))

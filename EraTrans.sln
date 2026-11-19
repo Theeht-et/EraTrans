@@ -1,0 +1,30 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EraTrans.Core", "src\EraTrans.Core\EraTrans.Core.csproj", "{A5C76F1C-1946-49A8-9E9A-7D51B7B06A01}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EraTrans.App", "src\EraTrans.App\EraTrans.App.csproj", "{A5C76F1C-1946-49A8-9E9A-7D51B7B06A02}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EraTrans.Tests", "tests\EraTrans.Tests\EraTrans.Tests.csproj", "{A5C76F1C-1946-49A8-9E9A-7D51B7B06A03}"
+EndProject
+Global
+  GlobalSection(SolutionConfigurationPlatforms) = preSolution
+    Debug|Any CPU = Debug|Any CPU
+    Release|Any CPU = Release|Any CPU
+  EndGlobalSection
+  GlobalSection(ProjectConfigurationPlatforms) = postSolution
+    {A5C76F1C-1946-49A8-9E9A-7D51B7B06A01}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+    {A5C76F1C-1946-49A8-9E9A-7D51B7B06A01}.Debug|Any CPU.Build.0 = Debug|Any CPU
+    {A5C76F1C-1946-49A8-9E9A-7D51B7B06A01}.Release|Any CPU.ActiveCfg = Release|Any CPU
+    {A5C76F1C-1946-49A8-9E9A-7D51B7B06A01}.Release|Any CPU.Build.0 = Release|Any CPU
+    {A5C76F1C-1946-49A8-9E9A-7D51B7B06A02}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+    {A5C76F1C-1946-49A8-9E9A-7D51B7B06A02}.Debug|Any CPU.Build.0 = Debug|Any CPU
+    {A5C76F1C-1946-49A8-9E9A-7D51B7B06A02}.Release|Any CPU.ActiveCfg = Release|Any CPU
+    {A5C76F1C-1946-49A8-9E9A-7D51B7B06A02}.Release|Any CPU.Build.0 = Release|Any CPU
+    {A5C76F1C-1946-49A8-9E9A-7D51B7B06A03}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+    {A5C76F1C-1946-49A8-9E9A-7D51B7B06A03}.Debug|Any CPU.Build.0 = Debug|Any CPU
+    {A5C76F1C-1946-49A8-9E9A-7D51B7B06A03}.Release|Any CPU.ActiveCfg = Release|Any CPU
+    {A5C76F1C-1946-49A8-9E9A-7D51B7B06A03}.Release|Any CPU.Build.0 = Release|Any CPU
+  EndGlobalSection
+EndGlobal

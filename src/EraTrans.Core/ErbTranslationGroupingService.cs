@@ -390,8 +390,6 @@ public sealed class ErbTranslationGroupingService
         IReadOnlyDictionary<string, DictionaryEditorEntry> dictionaryEntries)
     {
         var contexts = new List<AiTranslationSemanticContextGroup>();
-        var targetKeys = targets.Select(entry => entry.Key).ToHashSet(StringComparer.Ordinal);
-
         contexts.Add(CreateContextGroup(
             targetGroup,
             "same-group",
@@ -597,7 +595,7 @@ public sealed class ErbTranslationGroupingService
         ErbTranslationSourceEntry first = entries[0];
         ErbTranslationSourceEntry last = entries[^1];
         if (markers.Any(marker =>
-                marker.Command is "INPUT" or "INPUTS" &&
+                (marker.Command is "INPUT" or "INPUTS") &&
                 string.Equals(marker.FunctionId, first.FunctionId, StringComparison.Ordinal) &&
                 string.Equals(marker.BranchPath, first.BranchPath, StringComparison.Ordinal) &&
                 marker.ParsedLine >= first.ParsedLine &&

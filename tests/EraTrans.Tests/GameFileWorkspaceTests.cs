@@ -3,7 +3,7 @@ using Xunit;
 
 namespace EraTrans.Tests;
 
-public sealed class GameFileWorkspaceTests
+public sealed class FullGameWorkspaceCopyTests
 {
     [Fact]
     public void CopyDirectoryForModification_CopiesAllFilesAndEmptyDirectories()

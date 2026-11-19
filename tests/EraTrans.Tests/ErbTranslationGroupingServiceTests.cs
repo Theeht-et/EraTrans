@@ -113,6 +113,52 @@ public sealed class ErbTranslationGroupingServiceTests
     }
 
     [Fact]
+    public void TryLoad_RejectsSidecarWithMissingRequiredSourceMetadata()
+    {
+        using var temporary = new TemporaryDirectory();
+        string output = temporary.Path;
+        string dictionaryDirectory = Path.Combine(output, "字典");
+        string dictionaryPath = Path.Combine(dictionaryDirectory, "ERB", "sample.json");
+        string candidatePath = Path.Combine(output, "candidate.json");
+        string gameDirectory = Path.Combine(output, "Game");
+        string sourcePath = WriteSource(gameDirectory, "ERB/sample.erb", "@SAMPLE\\nPRINTFORML 文本");
+
+        ErbTranslationSourceEntry[] sourceEntries =
+        [
+            Source("文本ERB\\sample00000", "文本", 0, 2, "SAMPLE", "", "", "", null)
+        ];
+        WriteDictionary(dictionaryPath, sourceEntries);
+        WriteDictionary(candidatePath, sourceEntries);
+
+        var service = new ErbTranslationGroupingService();
+        Assert.True(service.TryWriteOrUpdate(
+            dictionaryDirectory,
+            dictionaryPath,
+            candidatePath,
+            sourcePath,
+            ErbTranslationGroupingService.ComputeSourceFingerprint(sourcePath),
+            "ERB/sample.erb",
+            sourceEntries,
+            [],
+            out string sidecarPath,
+            out string? warning), warning);
+
+        JObject sidecar = JObject.Parse(File.ReadAllText(sidecarPath));
+        sidecar["sourceFile"] = null;
+        File.WriteAllText(sidecarPath, sidecar.ToString(Formatting.Indented));
+
+        DictionaryEditorDocument document = new DictionaryEditorService().Load(dictionaryPath);
+        Assert.False(service.TryLoad(
+            dictionaryDirectory,
+            dictionaryPath,
+            document.Entries.ToArray(),
+            gameDirectory,
+            out _,
+            out string? reason));
+        Assert.Contains("缺少必要", reason ?? string.Empty, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void TryLoad_RejectsChangedErbSourceOrSameNameErhCompanion()
     {
         using var temporary = new TemporaryDirectory();

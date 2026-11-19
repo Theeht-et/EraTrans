@@ -26,6 +26,10 @@ public static class GameFileWorkspace
         {
             throw new DirectoryNotFoundException($"Game directory does not exist: {gameRoot}");
         }
+        if ((File.GetAttributes(gameRoot) & FileAttributes.ReparsePoint) != 0)
+        {
+            throw new IOException($"原游戏目录本身是符号链接或其他 Reparse Point，不能安全地执行完整复制：{gameRoot}");
+        }
 
         EnsureDirectoriesAreDisjoint(
             gameRoot,

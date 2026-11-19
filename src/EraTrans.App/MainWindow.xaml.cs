@@ -148,7 +148,8 @@ public partial class MainWindow : Window
             var applier = new TranslationApplier();
             var options = new EraParserOptions
             {
-                FileEncoding = GetSelectedEncoding()
+                FileEncoding = GetSelectedEncoding(),
+                EnableVariableAutoCorrection = AutoVariableCorrectionCheckBox.IsChecked == true
             };
             var result = await Task.Run(() => applier.Apply(
                 gameDirectory,

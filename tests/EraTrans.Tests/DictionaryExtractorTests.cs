@@ -106,7 +106,8 @@ public sealed class DictionaryExtractorTests
             "CALL X_{index}(ARG:0, \"普通CALL动态函数参数文本\")",
             "CALL X_{index}(ARG:0)",
             "CALL X_{index}, GETNUM(ARG:0), \"普通CALL逗号参数文本\"",
-            "CALL X_{index}"
+            "CALL X_{index}",
+            "CALL ASCII_CALL(ARG:0, \"普通CALL英文函数参数文本\")"
         }));
 
         new DictionaryExtractor().Extract(game, output);
@@ -120,6 +121,7 @@ public sealed class DictionaryExtractorTests
         Assert.Contains("日本語CALL", originals);
         Assert.Contains("日本語単引数関数", originals);
         Assert.DoesNotContain("ASCII_FUNCTION", originals);
+        Assert.DoesNotContain("ASCII_CALL", originals);
         Assert.DoesNotContain(originals, original =>
             original.Contains("KOJO_", StringComparison.Ordinal) ||
             original.Contains("HOGES", StringComparison.Ordinal) ||
@@ -127,6 +129,7 @@ public sealed class DictionaryExtractorTests
             original.Contains("関数乙", StringComparison.Ordinal) ||
             original.Contains("SELECTCOM", StringComparison.Ordinal) ||
             original.Contains("TARGET", StringComparison.Ordinal) ||
+            original.Contains("index", StringComparison.Ordinal) ||
             original == "NO");
 
         Assert.Contains(originals, original => original.Contains("花括号动态名称参数文本", StringComparison.Ordinal));
@@ -137,6 +140,7 @@ public sealed class DictionaryExtractorTests
         Assert.Contains(originals, original => original.Contains("TRYCCALLFORM参数文本", StringComparison.Ordinal));
         Assert.Contains(originals, original => original.Contains("普通CALL动态函数参数文本", StringComparison.Ordinal));
         Assert.Contains(originals, original => original.Contains("普通CALL逗号参数文本", StringComparison.Ordinal));
+        Assert.Contains(originals, original => original.Contains("普通CALL英文函数参数文本", StringComparison.Ordinal));
         Assert.Contains(originals, original => original.Contains("静态日文函数参数文本", StringComparison.Ordinal));
         Assert.Contains(originals, original => original.Contains("普通CALL参数文本", StringComparison.Ordinal));
     }

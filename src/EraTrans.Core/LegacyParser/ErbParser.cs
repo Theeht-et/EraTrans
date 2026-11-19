@@ -171,12 +171,28 @@ public class ERBParser
                 string rightValue = lineString.Substring(spIndex).Trim();
 
                 // 如果逗号的下标小于第一个左括号，则说明是CALL Func, Pram形式，否则是CALL Func(Pram)形式
-                int cmIndex = rightValue.IndexOf(",");
-                int lfIndex = rightValue.IndexOf("(");
-                if (lfIndex > -1 && cmIndex > lfIndex)
+                bool isFormattedFunctionCall = IsFormattedFunctionCall(lineString);
+                int cmIndex;
+                int lfIndex;
+                if (isFormattedFunctionCall || ContainsDynamicSyntaxBeforeFirstCallSeparator(rightValue))
                 {
-                    string functionName = rightValue.Substring(0, lfIndex);
-                    varNameList.Add(functionName, contexts);
+                    (cmIndex, lfIndex) = FindFormattedCallSeparators(rightValue);
+                }
+                else
+                {
+                    cmIndex = rightValue.IndexOf(",");
+                    lfIndex = rightValue.IndexOf("(");
+                }
+                bool dynamicFunctionName = lfIndex > -1 &&
+                    ContainsDynamicFormSyntax(rightValue.Substring(0, lfIndex));
+                if (lfIndex > -1 &&
+                    (cmIndex > lfIndex || ((isFormattedFunctionCall || dynamicFunctionName) && cmIndex == -1)))
+                {
+                    string functionName = rightValue.Substring(0, lfIndex).Trim();
+                    if (ShouldAddFunctionName(functionName))
+                    {
+                        varNameList.Add(functionName, contexts);
+                    }
                     rightValue = rightValue.Substring(lfIndex).TrimEnd(')');
                     if (Configs.mergeString)
                     {
@@ -204,6 +220,16 @@ public class ERBParser
                 }
                 else
                 {
+                    rightValue = PrepareDynamicFunctionArguments(
+                        rightValue,
+                        cmIndex,
+                        lfIndex,
+                        out bool skipFormattedCall);
+                    if (skipFormattedCall)
+                    {
+                        continue;
+                    }
+
                     // 如果要合并参数中的联立字符串
                     if (Configs.mergeString)
                     {
@@ -257,12 +283,28 @@ public class ERBParser
                 {
                     // 通用处理：CALLFORM等CALLF系指令的参数也应提取文本
                     // 与CALL分支逻辑一致，支持CALLFORM Func(Pram)和CALLFORM Func, Pram两种形式
-                    int cmIndex = rightValue.IndexOf(",");
-                    int lfIndex = rightValue.IndexOf("(");
-                    if (lfIndex > -1 && cmIndex > lfIndex)
+                    bool isFormattedFunctionCall = IsFormattedFunctionCall(lineString);
+                    int cmIndex;
+                    int lfIndex;
+                    if (isFormattedFunctionCall || ContainsDynamicSyntaxBeforeFirstCallSeparator(rightValue))
                     {
-                        string functionName = rightValue.Substring(0, lfIndex);
-                        varNameList.Add(functionName, contexts);
+                        (cmIndex, lfIndex) = FindFormattedCallSeparators(rightValue);
+                    }
+                    else
+                    {
+                        cmIndex = rightValue.IndexOf(",");
+                        lfIndex = rightValue.IndexOf("(");
+                    }
+                    bool dynamicFunctionName = lfIndex > -1 &&
+                        ContainsDynamicFormSyntax(rightValue.Substring(0, lfIndex));
+                    if (lfIndex > -1 &&
+                        (cmIndex > lfIndex || ((isFormattedFunctionCall || dynamicFunctionName) && cmIndex == -1)))
+                    {
+                        string functionName = rightValue.Substring(0, lfIndex).Trim();
+                        if (ShouldAddFunctionName(functionName))
+                        {
+                            varNameList.Add(functionName, contexts);
+                        }
                         rightValue = rightValue.Substring(lfIndex).TrimEnd(')');
                         if (Configs.mergeString)
                         {
@@ -290,6 +332,16 @@ public class ERBParser
                     }
                     else
                     {
+                        rightValue = PrepareDynamicFunctionArguments(
+                            rightValue,
+                            cmIndex,
+                            lfIndex,
+                            out bool skipFormattedCall);
+                        if (skipFormattedCall)
+                        {
+                            continue;
+                        }
+
                         // 没有括号或逗号在括号前的形式，整体解析
                         if (Configs.mergeString)
                         {
@@ -1075,6 +1127,181 @@ public class ERBParser
         }
 
         return resultList;
+    }
+
+    private static bool IsFormattedFunctionCall(string lineString)
+    {
+        return lineString.StartsWith("CALLFORM", StringComparison.Ordinal) ||
+               lineString.StartsWith("TRYCALLFORM", StringComparison.Ordinal) ||
+               lineString.StartsWith("TRYCCALLFORM", StringComparison.Ordinal);
+    }
+
+    private static bool ContainsDynamicSyntaxBeforeFirstCallSeparator(string rightValue)
+    {
+        int commaIndex = rightValue.IndexOf(',');
+        int leftParenthesisIndex = rightValue.IndexOf('(');
+        int separatorIndex = commaIndex == -1
+            ? leftParenthesisIndex
+            : leftParenthesisIndex == -1
+                ? commaIndex
+                : Math.Min(commaIndex, leftParenthesisIndex);
+
+        string functionNameCandidate = separatorIndex == -1
+            ? rightValue
+            : rightValue[..separatorIndex];
+        return ContainsDynamicFormSyntax(functionNameCandidate);
+    }
+
+    private static (int commaIndex, int leftParenthesisIndex) FindFormattedCallSeparators(string expression)
+    {
+        int commaIndex = -1;
+        int leftParenthesisIndex = -1;
+        int braceDepth = 0;
+        bool insidePercentExpression = false;
+        bool insideConditionalExpression = false;
+        bool insideString = false;
+
+        for (int i = 0; i < expression.Length; i++)
+        {
+            char current = expression[i];
+
+            if (current == '"' && !IsEscapedFormMarker(expression, i))
+            {
+                insideString = !insideString;
+                continue;
+            }
+
+            if (insideString)
+            {
+                continue;
+            }
+
+            if (insidePercentExpression)
+            {
+                if (current == '%' && !IsEscapedFormMarker(expression, i))
+                {
+                    insidePercentExpression = false;
+                }
+                continue;
+            }
+
+            if (braceDepth > 0)
+            {
+                if (current == '{')
+                {
+                    braceDepth++;
+                }
+                else if (current == '}')
+                {
+                    braceDepth--;
+                }
+                continue;
+            }
+
+            if (insideConditionalExpression)
+            {
+                if (current == '\\' && i + 1 < expression.Length &&
+                    expression[i + 1] == '@' && !IsEscapedFormMarker(expression, i))
+                {
+                    insideConditionalExpression = false;
+                    i++;
+                }
+                continue;
+            }
+
+            if (current == '\\' && i + 1 < expression.Length &&
+                expression[i + 1] == '@' && !IsEscapedFormMarker(expression, i))
+            {
+                insideConditionalExpression = true;
+                i++;
+                continue;
+            }
+
+            if (current == '%' && !IsEscapedFormMarker(expression, i))
+            {
+                insidePercentExpression = true;
+                continue;
+            }
+
+            if (current == '{')
+            {
+                braceDepth = 1;
+                continue;
+            }
+
+            if (current == '(' && leftParenthesisIndex == -1)
+            {
+                leftParenthesisIndex = i;
+            }
+            else if (current == ',' && commaIndex == -1)
+            {
+                commaIndex = i;
+            }
+        }
+
+        return (commaIndex, leftParenthesisIndex);
+    }
+
+    private static bool IsEscapedFormMarker(string value, int index)
+    {
+        int backslashCount = 0;
+        for (int i = index - 1; i >= 0 && value[i] == '\\'; i--)
+        {
+            backslashCount++;
+        }
+
+        return backslashCount % 2 != 0;
+    }
+
+    private static string PrepareDynamicFunctionArguments(
+        string rightValue,
+        int commaIndex,
+        int leftParenthesisIndex,
+        out bool skipCall)
+    {
+        skipCall = false;
+        if (!ContainsDynamicFormSyntax(rightValue))
+        {
+            return rightValue;
+        }
+
+        if (leftParenthesisIndex == -1 && commaIndex == -1)
+        {
+            // There is no argument delimiter, so the entire token is a dynamic function name.
+            skipCall = true;
+            return rightValue;
+        }
+
+        bool hasCommaSeparatedArguments =
+            commaIndex > -1 && (leftParenthesisIndex == -1 || commaIndex < leftParenthesisIndex);
+        if (hasCommaSeparatedArguments)
+        {
+            string functionName = rightValue.Substring(0, commaIndex).Trim();
+            if (ContainsDynamicFormSyntax(functionName))
+            {
+                return rightValue.Substring(commaIndex + 1).Trim();
+            }
+        }
+
+        return rightValue;
+    }
+
+    private static bool ContainsDynamicFormSyntax(string functionName)
+    {
+        return functionName.IndexOfAny(['{', '}', '%']) >= 0 ||
+               functionName.Contains("\\@", StringComparison.Ordinal);
+    }
+
+    private static bool ShouldAddFunctionName(string functionName)
+    {
+        string normalizedName = functionName.Trim();
+        if (normalizedName.Length == 0 || ContainsDynamicFormSyntax(normalizedName))
+        {
+            return false;
+        }
+
+        // Match simpleFuncExpression: ASCII-like code symbols are not dictionary entries.
+        return !Tools.engArrayFilter.IsMatch(normalizedName);
     }
 
     /// <summary>

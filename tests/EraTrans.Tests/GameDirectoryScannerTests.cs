@@ -34,7 +34,7 @@ public sealed class GameDirectoryScannerTests
             }.OrderBy(path => path, StringComparer.OrdinalIgnoreCase),
             files.Select(file => file.RelativePath.Replace(Path.DirectorySeparatorChar, '/')).OrderBy(path => path, StringComparer.OrdinalIgnoreCase));
 
-        Assert.DoesNotContain(files, file => file.RelativePath.Equals("ERB/MAIN.ERH", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(files, file => file.RelativePath.Replace(Path.DirectorySeparatorChar, '/').Equals("ERB/MAIN.ERH", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(files, file => file.Kind == GameFileKind.ResourceCsv);
         Assert.Contains(files, file => file.Kind == GameFileKind.Erd);
     }

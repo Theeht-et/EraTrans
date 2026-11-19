@@ -109,6 +109,8 @@ public sealed class ErbTranslationGroupingService
         ArgumentException.ThrowIfNullOrWhiteSpace(dictionaryDirectory);
         ArgumentException.ThrowIfNullOrWhiteSpace(dictionaryFilePath);
         ArgumentException.ThrowIfNullOrWhiteSpace(candidateDictionaryPath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourceFilePath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(expectedSourceFingerprint);
         ArgumentNullException.ThrowIfNull(sourceEntries);
         ArgumentNullException.ThrowIfNull(controlMarkers);
 
@@ -135,8 +137,21 @@ public sealed class ErbTranslationGroupingService
             return false;
         }
 
-        var expectedFromParser = sourceEntries
+        ErbTranslationSourceEntry[] orderedSourceEntries = sourceEntries
             .OrderBy(entry => entry.Sequence)
+            .ToArray();
+        if (orderedSourceEntries.Select(entry => entry.Key).Distinct(StringComparer.Ordinal).Count() !=
+                orderedSourceEntries.Length ||
+            orderedSourceEntries.Where((entry, index) => entry.Sequence != index).Any() ||
+            orderedSourceEntries.Any(entry =>
+                string.IsNullOrWhiteSpace(entry.Key) ||
+                string.IsNullOrWhiteSpace(entry.Original)))
+        {
+            warning = $"未更新 ERB AI 分组文件，解析器返回了重复、不连续或无效的词条标识：{dictionaryFilePath}";
+            return false;
+        }
+
+        var expectedFromParser = orderedSourceEntries
             .Select(entry => (entry.Key, entry.Original))
             .ToArray();
 
@@ -152,9 +167,9 @@ public sealed class ErbTranslationGroupingService
             return false;
         }
 
-        var groupBuild = BuildGroups(sourceEntries, controlMarkers);
-        var entryRecords = new List<ErbTranslationGroupEntry>(sourceEntries.Count);
-        foreach (ErbTranslationSourceEntry entry in sourceEntries.OrderBy(item => item.Sequence))
+        var groupBuild = BuildGroups(orderedSourceEntries, controlMarkers);
+        var entryRecords = new List<ErbTranslationGroupEntry>(orderedSourceEntries.Length);
+        foreach (ErbTranslationSourceEntry entry in orderedSourceEntries)
         {
             ErbTranslationGroup group = groupBuild.GroupsByEntryKey[entry.Key];
             entryRecords.Add(new ErbTranslationGroupEntry(
@@ -371,13 +386,34 @@ public sealed class ErbTranslationGroupingService
                 return false;
             }
 
+            ErbTranslationGroupEntry[] orderedIndexedEntries = loaded.Entries
+                .OrderBy(entry => entry.Sequence)
+                .ToArray();
+            if (orderedIndexedEntries.Where((entry, sequence) => entry.Sequence != sequence).Any())
+            {
+                reason = "分组文件中的词条顺序不连续或存在重复序号。请重新提取字典。";
+                return false;
+            }
+
             foreach (ErbTranslationGroup group in loaded.Groups)
             {
-                if (group.EntryKeys.Count == 0 ||
-                    group.EntryKeys.Any(key => !indexedEntries.TryGetValue(key, out ErbTranslationGroupEntry? entry) ||
-                                               !string.Equals(entry.GroupId, group.Id, StringComparison.Ordinal)))
+                ErbTranslationGroupEntry[] members = group.EntryKeys
+                    .Select(key => indexedEntries.TryGetValue(key, out ErbTranslationGroupEntry? entry) ? entry : null)
+                    .Where(entry => entry is not null)
+                    .Cast<ErbTranslationGroupEntry>()
+                    .ToArray();
+                if (members.Length == 0 ||
+                    members.Where((entry, sequence) =>
+                        !string.Equals(entry.GroupId, group.Id, StringComparison.Ordinal) ||
+                        !string.Equals(entry.FunctionId, group.FunctionId, StringComparison.Ordinal) ||
+                        !string.Equals(entry.BranchPath, group.BranchPath, StringComparison.Ordinal) ||
+                        !string.Equals(entry.ControlScopeId, group.ControlScopeId, StringComparison.Ordinal) ||
+                        !string.Equals(entry.BranchLabel, group.BranchLabel, StringComparison.Ordinal) ||
+                        (sequence > 0 && members[sequence - 1].Sequence >= entry.Sequence)).Any() ||
+                    members[0].Sequence != group.FirstSequence ||
+                    members[^1].Sequence != group.LastSequence)
                 {
-                    reason = "分组文件包含空分组或不一致的分组成员映射。请重新提取字典。";
+                    reason = "分组文件中存在空分组、顺序错误或不一致的分组成员元数据。请重新提取字典。";
                     return false;
                 }
             }

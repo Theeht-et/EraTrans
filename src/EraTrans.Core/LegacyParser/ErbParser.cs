@@ -21,14 +21,29 @@ public class ERBParser
     StringList textList = new StringList();
 
     List<string> contexts = new List<string>();
+    private string _currentFunctionName = "(global)";
+    private readonly List<ErbControlFrame> _controlFrames = [];
+    private readonly List<ErbTranslationControlMarker> _controlMarkers = [];
+    private int _nextControlScopeId;
+
+    private sealed class ErbControlFrame(string id, string type, string branch)
+    {
+        public string Id { get; } = id;
+        public string Type { get; } = type;
+        public string Branch { get; set; } = branch;
+    }
 
     public class StringList
     {
         public List<(string key, string context)> lines = new List<(string, string)>();
+        public List<ErbTranslationSourceMetadata> sourceMetadata = new List<ErbTranslationSourceMetadata>();
+        public ErbTranslationSourceMetadata CurrentSourceMetadata { get; set; } =
+            ErbTranslationSourceMetadata.Empty;
 
         public void Add(string str, List<string> cxt)
         {
             lines.Add((str, string.Join("\n", cxt)));
+            sourceMetadata.Add(CurrentSourceMetadata);
         }
 
         public void AddRange(IEnumerable<string> strs, List<string> cxt)
@@ -36,6 +51,7 @@ public class ERBParser
             foreach (var str in strs)
             {
                 lines.Add((str, string.Join("\n", cxt)));
+                sourceMetadata.Add(CurrentSourceMetadata);
             }
         }
 
@@ -114,6 +130,19 @@ public class ERBParser
             {
                 contexts.Add(lineList[i + 1]);
             }
+
+            UpdateStructureBeforeLine(lineString);
+            textList.CurrentSourceMetadata = CreateSourceMetadata(i + 1, lineString);
+            string commandType = GetCommandType(lineString);
+            if (commandType is "INPUT" or "INPUTS")
+            {
+                _controlMarkers.Add(new ErbTranslationControlMarker(
+                    i + 1,
+                    _currentFunctionName,
+                    BuildBranchPath(),
+                    commandType));
+            }
+
             // TRYCALLLIST
             if (lineString.StartsWith("TRYCALLLIST") || lineString.StartsWith("ENDFUNC"))
             {
@@ -1067,6 +1096,211 @@ public class ERBParser
     public (StringList name, StringList text) GetListTuple()
     {
         return (name: varNameList, text: textList);
+    }
+
+    public IReadOnlyList<ErbTranslationSourceEntry> GetTranslationGroupingEntries(string relativePath)
+    {
+        var result = new List<ErbTranslationSourceEntry>();
+        var seen = Configs.mergeSameText
+            ? new HashSet<string>(StringComparer.Ordinal)
+            : null;
+
+        for (int sourceIndex = 0; sourceIndex < textList.lines.Count; sourceIndex++)
+        {
+            string original = Tools.TrimEndTabs(textList.lines[sourceIndex].key);
+            if (string.IsNullOrWhiteSpace(original.Trim()) || Tools.IsArray(original))
+            {
+                continue;
+            }
+
+            if (Configs.hideEngText && Tools.haventDoubleByte.IsMatch(original))
+            {
+                continue;
+            }
+
+            if (seen is not null && !seen.Add(original))
+            {
+                continue;
+            }
+
+            ErbTranslationSourceMetadata metadata =
+                sourceIndex < textList.sourceMetadata.Count
+                    ? textList.sourceMetadata[sourceIndex]
+                    : ErbTranslationSourceMetadata.Empty;
+
+            int sequence = result.Count;
+            string key = $"文本{Path.ChangeExtension(relativePath, "")}{sequence:D5}";
+            result.Add(new ErbTranslationSourceEntry(
+                key,
+                original,
+                sequence,
+                metadata.ParsedLine,
+                metadata.FunctionId,
+                metadata.OutputType,
+                metadata.BranchPath,
+                metadata.ControlScopeId,
+                metadata.BranchLabel,
+                metadata.CallTarget));
+        }
+
+        return result;
+    }
+
+    public IReadOnlyList<ErbTranslationControlMarker> GetTranslationControlMarkers() =>
+        _controlMarkers.ToArray();
+
+    private ErbTranslationSourceMetadata CreateSourceMetadata(int parsedLine, string lineString)
+    {
+        string commandType = GetCommandType(lineString);
+        return new ErbTranslationSourceMetadata(
+            parsedLine,
+            _currentFunctionName,
+            commandType,
+            BuildBranchPath(),
+            _controlFrames.Count == 0 ? "" : _controlFrames[^1].Id,
+            _controlFrames.Count == 0 ? "" : _controlFrames[^1].Branch,
+            GetCallTarget(lineString, commandType));
+    }
+
+    private void UpdateStructureBeforeLine(string lineString)
+    {
+        if (lineString.StartsWith("@", StringComparison.Ordinal))
+        {
+            string function = lineString[1..].Trim();
+            int separator = function.IndexOfAny(['(', ',']);
+            if (separator >= 0)
+            {
+                function = function[..separator].Trim();
+            }
+            _currentFunctionName = function.Length == 0 ? "(unnamed)" : function;
+            _controlFrames.Clear();
+            return;
+        }
+
+        string command = GetCommandType(lineString);
+        switch (command)
+        {
+            case "ENDFUNC":
+                _controlFrames.Clear();
+                return;
+            case "ENDIF":
+                PopNearestControl("IF");
+                return;
+            case "ENDSELECT":
+                PopNearestControl("SELECTCASE");
+                return;
+            case "NEXT":
+                PopNearestControl("FOR");
+                return;
+            case "WEND":
+                PopNearestControl("WHILE");
+                return;
+            case "REND":
+                PopNearestControl("REPEAT");
+                return;
+            case "ELSE":
+                SwitchNearestBranch("IF", "ELSE");
+                return;
+            case "ELSEIF":
+                SwitchNearestBranch("IF", "ELSEIF: " + TakeControlLabel(lineString, command));
+                return;
+            case "CASE":
+                SwitchNearestBranch("SELECTCASE", "CASE: " + TakeControlLabel(lineString, command));
+                return;
+            case "CASEELSE":
+                SwitchNearestBranch("SELECTCASE", "CASEELSE");
+                return;
+        }
+
+        if (command == "IF")
+        {
+            PushControl("IF", "IF");
+        }
+        else if (command == "SELECTCASE")
+        {
+            PushControl("SELECTCASE", "SELECTOR");
+        }
+        else if (command == "FOR")
+        {
+            PushControl("FOR", "BODY");
+        }
+        else if (command == "WHILE")
+        {
+            PushControl("WHILE", "BODY");
+        }
+        else if (command == "REPEAT")
+        {
+            PushControl("REPEAT", "BODY");
+        }
+    }
+
+    private void PushControl(string type, string branch)
+    {
+        string id = type.ToLowerInvariant() + "_" + (++_nextControlScopeId).ToString("D4");
+        _controlFrames.Add(new ErbControlFrame(id, type, branch));
+    }
+
+    private void PopNearestControl(string type)
+    {
+        for (int index = _controlFrames.Count - 1; index >= 0; index--)
+        {
+            if (string.Equals(_controlFrames[index].Type, type, StringComparison.Ordinal))
+            {
+                _controlFrames.RemoveAt(index);
+                return;
+            }
+        }
+    }
+
+    private void SwitchNearestBranch(string type, string branch)
+    {
+        for (int index = _controlFrames.Count - 1; index >= 0; index--)
+        {
+            if (string.Equals(_controlFrames[index].Type, type, StringComparison.Ordinal))
+            {
+                _controlFrames[index].Branch = branch;
+                return;
+            }
+        }
+    }
+
+    private string BuildBranchPath() =>
+        string.Join("/", _controlFrames.Select(frame =>
+            $"{frame.Id}:{frame.Type}:{frame.Branch}"));
+
+    private static string GetCommandType(string lineString)
+    {
+        string normalized = lineString.TrimStart();
+        int separator = normalized.IndexOfAny([' ', '<', '\\t']);
+        return separator < 0 ? normalized.ToUpperInvariant() : normalized[..separator].ToUpperInvariant();
+    }
+
+    private static string TakeControlLabel(string lineString, string command)
+    {
+        if (lineString.Length <= command.Length)
+        {
+            return "";
+        }
+
+        return lineString[command.Length..].Trim();
+    }
+
+    private static string? GetCallTarget(string lineString, string commandType)
+    {
+        if (!(commandType.StartsWith("CALL", StringComparison.Ordinal) ||
+              commandType.StartsWith("TRYCALL", StringComparison.Ordinal) ||
+              commandType.StartsWith("TRYCCALL", StringComparison.Ordinal)))
+        {
+            return null;
+        }
+
+        int commandEnd = commandType.Length;
+        string remainder = lineString.Length > commandEnd
+            ? lineString[commandEnd..].Trim()
+            : "";
+        int separator = remainder.IndexOfAny(['(', ',']);
+        string target = (separator < 0 ? remainder : remainder[..separator]).Trim();
+        return target.Length == 0 ? null : target;
     }
 
     public void DebugPrint()

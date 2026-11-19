@@ -212,24 +212,26 @@ public sealed class DictionaryExtractor
                                     {
                                         warnings.Add($"解析期间 ERB 源文件或其同名 ERH 文件发生变化，跳过 AI 分组文件：{file.RelativePath}");
                                     }
-                                    else if (sourceFingerprintAfterParse is not null &&
-                                             groupingService.TryWriteOrUpdate(
-                                                 outputRoot,
-                                                 dictionaryOutputPath,
-                                                 candidateDictionaryPath,
-                                                 file.FullPath,
-                                                 sourceFingerprintBeforeParse,
-                                                 file.RelativePath,
-                                                 parser.GetTranslationGroupingEntries(file.RelativePath),
-                                                 parser.GetTranslationControlMarkers(),
-                                                 out string sidecarPath,
-                                                 out string? groupingWarning))
+                                    else if (sourceFingerprintAfterParse is not null)
                                     {
-                                        updatedGroupingFiles.Add(sidecarPath);
-                                    }
-                                    else if (!string.IsNullOrWhiteSpace(groupingWarning))
-                                    {
-                                        warnings.Add(groupingWarning);
+                                        if (groupingService.TryWriteOrUpdate(
+                                                outputRoot,
+                                                dictionaryOutputPath,
+                                                candidateDictionaryPath,
+                                                file.FullPath,
+                                                sourceFingerprintBeforeParse,
+                                                file.RelativePath,
+                                                parser.GetTranslationGroupingEntries(file.RelativePath),
+                                                parser.GetTranslationControlMarkers(),
+                                                out string sidecarPath,
+                                                out string? groupingWarning))
+                                        {
+                                            updatedGroupingFiles.Add(sidecarPath);
+                                        }
+                                        else if (!string.IsNullOrWhiteSpace(groupingWarning))
+                                        {
+                                            warnings.Add(groupingWarning);
+                                        }
                                     }
                                 }
                                 break;

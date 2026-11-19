@@ -155,7 +155,7 @@ public sealed class DictionaryEditorEntry : INotifyPropertyChanged
     public string SemanticGroupLabel => _semanticGroupLabel;
     public string SemanticGroupEntriesPreview => _semanticGroupEntriesPreview;
 
-    internal void SetSemanticGroupInfo(string label, string entriesPreview)
+    public void SetSemanticGroupInfo(string label, string entriesPreview)
     {
         _semanticGroupLabel = label ?? string.Empty;
         _semanticGroupEntriesPreview = entriesPreview ?? string.Empty;

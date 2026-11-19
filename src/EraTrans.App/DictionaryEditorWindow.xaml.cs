@@ -176,7 +176,7 @@ public partial class DictionaryEditorWindow : Window
                         out string? reason))
                 {
                     _activeGroupingIndex = groupingIndex;
-                    ApplySemanticGroupDisplay(document.Entries, groupingIndex);
+                    ApplySemanticGroupDisplay(document.Entries, groupingIndex!);
                 }
                 else
                 {

@@ -29,3 +29,34 @@ jobs:
 
       - name: Test
         run: dotnet test EraTrans.sln --configuration Release --no-build --verbosity normal
+
+      - name: Publish Windows x64 application
+        run: dotnet publish src/EraTrans.App/EraTrans.App.csproj --configuration Release --runtime win-x64 --self-contained true --output publish/win-x64
+
+      - name: Add run instructions
+        shell: pwsh
+        run: |
+          @'
+          EraTrans - Windows x64
+
+          1. Extract the entire ZIP archive to a folder.
+          2. Run EraTrans.App.exe.
+          3. Configure an OpenAI-compatible AI provider in the dictionary editor before using AI translation.
+
+          This is a self-contained Windows x64 build. A separately installed .NET runtime is not required.
+          Keep all files in the extracted folder together. Do not run the EXE from inside the ZIP preview.
+          '@ | Set-Content -Path "publish/win-x64/运行说明.txt" -Encoding utf8
+
+      - name: Package Windows x64 application
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          Compress-Archive -Path "publish/win-x64/*" -DestinationPath "artifacts/EraTrans-win-x64.zip" -CompressionLevel Optimal
+
+      - name: Upload Windows x64 download
+        uses: actions/upload-artifact@v4
+        with:
+          name: EraTrans-win-x64
+          path: artifacts/EraTrans-win-x64.zip
+          if-no-files-found: error
+          retention-days: 30

@@ -180,7 +180,7 @@ public sealed class DictionaryExtractor
             warnings.OrderBy(warning => warning, StringComparer.Ordinal).ToArray());
     }
 
-    private static void AddIfCreated(string path, ICollection<string> generatedFiles)
+    private static void AddIfCreated(string path, ConcurrentBag<string> generatedFiles)
     {
         if (File.Exists(path))
         {

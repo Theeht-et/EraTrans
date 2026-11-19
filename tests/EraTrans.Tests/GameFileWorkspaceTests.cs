@@ -13,7 +13,10 @@ public sealed class FullGameWorkspaceCopyTests
 
         string textFile = game.CreateFile("ERB/main.erb", "original script");
         string binaryFile = game.CreateFile("Graphics/title.bin", "binary resource");
-        game.CreateFile(".hidden-config", "hidden");
+        string hiddenFile = game.CreateFile(".hidden-config", "hidden");
+        File.SetAttributes(
+            hiddenFile,
+            File.GetAttributes(hiddenFile) | FileAttributes.Hidden | FileAttributes.System);
         Directory.CreateDirectory(Path.Combine(game.Path, "EmptyFolder"));
 
         File.SetAttributes(
@@ -27,7 +30,11 @@ public sealed class FullGameWorkspaceCopyTests
         Assert.Equal(3, copiedFiles.Count);
         Assert.Equal("original script", File.ReadAllText(Path.Combine(output, "ERB", "main.erb")));
         Assert.Equal("binary resource", File.ReadAllText(Path.Combine(output, "Graphics", "title.bin")));
-        Assert.Equal("hidden", File.ReadAllText(Path.Combine(output, ".hidden-config")));
+        string copiedHiddenFile = Path.Combine(output, ".hidden-config");
+        Assert.Equal("hidden", File.ReadAllText(copiedHiddenFile));
+        FileAttributes copiedHiddenAttributes = File.GetAttributes(copiedHiddenFile);
+        Assert.True((copiedHiddenAttributes & FileAttributes.Hidden) != 0);
+        Assert.True((copiedHiddenAttributes & FileAttributes.System) != 0);
         Assert.True(Directory.Exists(Path.Combine(output, "EmptyFolder")));
         Assert.False(
             (File.GetAttributes(Path.Combine(output, "ERB", "main.erb")) & FileAttributes.ReadOnly) != 0);
@@ -93,9 +100,15 @@ public sealed class FullGameWorkspaceCopyTests
         {
             if (Directory.Exists(Path))
             {
-                foreach (string file in Directory.EnumerateFiles(Path, "*", SearchOption.AllDirectories))
+                var options = new EnumerationOptions
                 {
-                    File.SetAttributes(file, FileAttributes.Normal);
+                    AttributesToSkip = 0,
+                    RecurseSubdirectories = true
+                };
+                foreach (string entry in Directory.EnumerateFileSystemEntries(Path, "*", options)
+                             .OrderByDescending(entry => entry.Length))
+                {
+                    File.SetAttributes(entry, FileAttributes.Normal);
                 }
                 Directory.Delete(Path, recursive: true);
             }

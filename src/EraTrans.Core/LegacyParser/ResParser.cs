@@ -14,13 +14,18 @@ namespace EraTrans.Core;
 public class RESParser
 {
     List<string> valueList = new List<string>();
+    private readonly Dictionary<string, string> contextByValue = new(StringComparer.Ordinal);
     public void ParseFile(string filePath)
     {
         var lines = File.ReadAllLines(filePath, Configs.fileEncoding);
         foreach (var line in lines)
         {
-            string value = Tools.GetResValue(line);
-            if (!string.IsNullOrEmpty(value)) valueList.Add(value);
+            string? value = Tools.GetResValue(line);
+            if (!string.IsNullOrEmpty(value))
+            {
+                valueList.Add(value);
+                contextByValue.TryAdd(value, line);
+            }
         }
     }
 
@@ -33,13 +38,15 @@ public class RESParser
     {
         var PTJsonObjList = valueList.Distinct().Select((item, index) =>
         {
-            return new JObject
+            var entry = new JObject
             {
                 // 键值是相对路径(去除后缀)+ 5位数字ID
                 ["key"] = Path.ChangeExtension(relativePath, "") + index.ToString().PadLeft(5, '0'),
                 ["original"] = item,
                 ["translation"] = ""
             };
+            AddContext(entry, item);
+            return entry;
         });
 
         if (PTJsonObjList.Count() > 0)
@@ -65,7 +72,7 @@ public class RESParser
                     // 如果对比发现，参考和原版不一致，那么把参考的值填进translation
                     if (originObjs[index] != referenceObjs[index])
                     {
-                        PTJsonObjList.Add(new JObject
+                        var entry = new JObject
                         {
                             // 键值是相对路径(去除后缀)+ 5位数字ID
                             ["key"] = new StringBuilder("图像")
@@ -74,11 +81,13 @@ public class RESParser
                             .ToString(),
                             ["original"] = originObjs[index],
                             ["translation"] = referenceObjs[index]
-                        });
+                        };
+                        AddContext(entry, originObjs[index]);
+                        PTJsonObjList.Add(entry);
                     }
                     else
                     {
-                        PTJsonObjList.Add(new JObject
+                        var entry = new JObject
                         {
                             ["key"] = new StringBuilder("图像")
                             .Append(Path.ChangeExtension(relativePath, ""))
@@ -86,7 +95,9 @@ public class RESParser
                             .ToString(),
                             ["original"] = originObjs[index],
                             ["translation"] = ""
-                        });
+                        };
+                        AddContext(entry, originObjs[index]);
+                        PTJsonObjList.Add(entry);
                     }
                 }
                 if (PTJsonObjList.Count > 0)
@@ -101,6 +112,14 @@ public class RESParser
         // 改用常规模式
         WriteJson(targetFile, relativePath);
     }
+    private void AddContext(JObject entry, string original)
+    {
+        if (Configs.writeContext && contextByValue.TryGetValue(original, out string? context))
+        {
+            entry["context"] = context;
+        }
+    }
+
     /// <summary>
     /// 返回valueList
     /// </summary>

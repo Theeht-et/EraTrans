@@ -17,14 +17,8 @@ public partial class MainWindow : Window
     private void BrowseGameDirectory_Click(object sender, RoutedEventArgs e) =>
         BrowseFolder(GameDirectoryTextBox, "选择原 ERA 游戏目录");
 
-    private void BrowseReferenceDirectory_Click(object sender, RoutedEventArgs e) =>
-        BrowseFolder(ReferenceDirectoryTextBox, "选择参考汉化目录");
-
     private void BrowseOutputDirectory_Click(object sender, RoutedEventArgs e) =>
-        BrowseFolder(OutputDirectoryTextBox, "选择 JSON 字典目录");
-
-    private void BrowseWorkingCopyDirectory_Click(object sender, RoutedEventArgs e) =>
-        BrowseFolder(WorkingCopyDirectoryTextBox, "选择游戏副本输出目录");
+        BrowseFolder(OutputDirectoryTextBox, "选择统一输出目录");
 
     private void BrowseFolder(System.Windows.Controls.TextBox target, string title)
     {
@@ -62,18 +56,18 @@ public partial class MainWindow : Window
     private async void Extract_Click(object sender, RoutedEventArgs e)
     {
         string gameDirectory = GameDirectoryTextBox.Text.Trim();
-        string outputDirectory = OutputDirectoryTextBox.Text.Trim();
-        string referenceDirectory = ReferenceDirectoryTextBox.Text.Trim();
+        string outputRoot = OutputDirectoryTextBox.Text.Trim();
+        if (string.IsNullOrWhiteSpace(outputRoot))
+        {
+            MessageBox.Show(this, "请选择统一输出目录。", "目录无效", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        string dictionaryDirectory = Path.Combine(outputRoot, "字典");
 
         if (!Directory.Exists(gameDirectory))
         {
             MessageBox.Show(this, "请选择有效的原游戏目录。", "目录无效", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
-
-        if (string.IsNullOrWhiteSpace(outputDirectory))
-        {
-            MessageBox.Show(this, "请选择 JSON 字典输出目录。", "目录无效", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
@@ -90,12 +84,12 @@ public partial class MainWindow : Window
             };
             var result = await Task.Run(() => extractor.Extract(
                 gameDirectory,
-                outputDirectory,
-                string.IsNullOrWhiteSpace(referenceDirectory) ? null : referenceDirectory,
-                options));
+                dictionaryDirectory,
+                options: options));
 
-            StatusText.Text = $"字典提取完成：生成 {result.GeneratedFiles.Count} 个 JSON 文件，{result.Warnings.Count} 条警告。";
-            string message = $"生成 JSON 文件：{result.GeneratedFiles.Count}\n警告：{result.Warnings.Count}";
+            int updatedContextCount = result.UpdatedContextFiles?.Count ?? 0;
+            StatusText.Text = $"字典提取完成：新建 {result.GeneratedFiles.Count} 个 JSON 文件，补充上下文 {updatedContextCount} 个文件，{result.Warnings.Count} 条警告。字典位置：{dictionaryDirectory}";
+            string message = $"新建 JSON 文件：{result.GeneratedFiles.Count}\n补充上下文文件：{updatedContextCount}\n警告：{result.Warnings.Count}";
             if (result.Warnings.Count > 0)
             {
                 message += "\n\n" + string.Join("\n", result.Warnings.Take(8));
@@ -117,12 +111,19 @@ public partial class MainWindow : Window
 
     private void EditDictionary_Click(object sender, RoutedEventArgs e)
     {
-        string dictionaryDirectory = OutputDirectoryTextBox.Text.Trim();
+        string outputRoot = OutputDirectoryTextBox.Text.Trim();
+        if (string.IsNullOrWhiteSpace(outputRoot))
+        {
+            MessageBox.Show(this, "请选择统一输出目录。", "目录无效", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        string dictionaryDirectory = Path.Combine(outputRoot, "字典");
         if (!Directory.Exists(dictionaryDirectory))
         {
             MessageBox.Show(
                 this,
-                "请先选择包含 JSON 字典的目录，并确认目录存在。",
+                "输出目录中尚无字典。请先提取字典。",
                 "字典目录无效",
                 MessageBoxButton.OK,
                 MessageBoxImage.Warning);
@@ -139,8 +140,15 @@ public partial class MainWindow : Window
     private async void ApplyTranslations_Click(object sender, RoutedEventArgs e)
     {
         string gameDirectory = GameDirectoryTextBox.Text.Trim();
-        string dictionaryDirectory = OutputDirectoryTextBox.Text.Trim();
-        string workingCopyDirectory = WorkingCopyDirectoryTextBox.Text.Trim();
+        string outputRoot = OutputDirectoryTextBox.Text.Trim();
+        if (string.IsNullOrWhiteSpace(outputRoot))
+        {
+            MessageBox.Show(this, "请选择统一输出目录。", "目录无效", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        string dictionaryDirectory = Path.Combine(outputRoot, "字典");
+        string workingCopyDirectory = Path.Combine(outputRoot, "游戏副本");
 
         if (!Directory.Exists(gameDirectory))
         {
@@ -150,19 +158,13 @@ public partial class MainWindow : Window
 
         if (!Directory.Exists(dictionaryDirectory))
         {
-            MessageBox.Show(this, "请选择包含 JSON 字典的目录。", "目录无效", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
-
-        if (string.IsNullOrWhiteSpace(workingCopyDirectory))
-        {
-            MessageBox.Show(this, "请选择独立的游戏副本输出目录。", "目录无效", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(this, "输出目录中没有可用字典。请先提取字典。", "字典目录无效", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
         ExtractButton.IsEnabled = false;
         ApplyTranslationsButton.IsEnabled = false;
-        StatusText.Text = "正在复制游戏文件并应用译文，原游戏目录不会被修改……";
+        StatusText.Text = "正在向输出目录的“游戏副本”中复制并应用译文，原游戏目录不会被修改……";
 
         try
         {
@@ -179,13 +181,13 @@ public partial class MainWindow : Window
                 options));
 
             StatusText.Text =
-                $"副本处理完成：复制 {result.CopiedFiles.Count} 个文件，应用译文 {result.ModifiedFiles.Count} 个，重命名 ERD {result.RenamedFiles.Count} 个，{result.Warnings.Count} 条警告。";
+                $"副本处理完成：复制 {result.CopiedFiles.Count} 个文件，应用译文 {result.ModifiedFiles.Count} 个，重命名 ERD {result.RenamedFiles.Count} 个，{result.Warnings.Count} 条警告。输出位置：{workingCopyDirectory}";
 
             string message =
                 $"复制文件：{result.CopiedFiles.Count}\n" +
                 $"应用译文：{result.ModifiedFiles.Count}\n" +
                 $"重命名 ERD：{result.RenamedFiles.Count}\n" +
-                $"警告：{result.Warnings.Count}";
+                $"警告：{result.Warnings.Count}\n输出位置：{workingCopyDirectory}";
 
             if (result.Warnings.Count > 0)
             {

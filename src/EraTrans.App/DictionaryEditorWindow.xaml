@@ -53,20 +53,11 @@
                                    Foreground="#87909B"
                                    TextWrapping="Wrap" />
                     </StackPanel>
-                    <ListBox x:Name="DictionaryFilesListBox"
-                             BorderThickness="0"
-                             Background="Transparent"
-                             SelectionChanged="DictionaryFilesListBox_SelectionChanged"
-                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <TextBlock Text="{Binding RelativePath}"
-                                           Padding="7,8"
-                                           TextWrapping="Wrap"
-                                           Foreground="#39414A" />
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
+                    <TreeView x:Name="DictionaryFilesTreeView"
+                              BorderThickness="0"
+                              Background="Transparent"
+                              SelectedItemChanged="DictionaryFilesTreeView_SelectedItemChanged"
+                              ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
                 </DockPanel>
             </Border>
 
@@ -81,6 +72,7 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
+                        <RowDefinition Height="120" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
@@ -165,7 +157,9 @@
                               EnableRowVirtualization="True"
                               EnableColumnVirtualization="True"
                               ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                              ScrollViewer.VerticalScrollBarVisibility="Auto">
+                              ScrollViewer.VerticalScrollBarVisibility="Auto"
+                              SelectionChanged="EntriesDataGrid_SelectionChanged"
+                              CurrentCellChanged="EntriesDataGrid_CurrentCellChanged">
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="Key"
                                                 Binding="{Binding Key}"
@@ -216,14 +210,20 @@
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellEditingTemplate>
                             </DataGridTemplateColumn>
-                            <DataGridTextColumn Header="上下文"
-                                                Binding="{Binding Context}"
-                                                IsReadOnly="True"
-                                                Width="2*" />
+
                         </DataGrid.Columns>
                     </DataGrid>
 
-                    <Grid Grid.Row="3" Margin="0,12,0,0">
+                    <Border Grid.Row="3" Margin="0,10,0,0" Padding="10" Background="#FAFBFC" BorderBrush="#E3E6EA" BorderThickness="1" CornerRadius="6">
+                        <Grid>
+                            <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                            <TextBlock Text="当前词条上下文" FontSize="12" FontWeight="SemiBold" Foreground="#39414A" Margin="0,0,0,6" />
+                            <TextBox x:Name="EntryContextTextBox" Grid.Row="1" IsReadOnly="True" BorderThickness="0" Background="Transparent"
+                                     TextWrapping="Wrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto"
+                                     HorizontalScrollBarVisibility="Auto" Text="选择一个词条查看上下文。" />
+                        </Grid>
+                    </Border>
+                    <Grid Grid.Row="4" Margin="0,12,0,0">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />

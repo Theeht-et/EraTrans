@@ -4,7 +4,10 @@ A lightweight Windows desktop tool for translating ERA games.
 
 ## Features
 
-- Extract and edit JSON dictionaries while preserving legacy ERA keys and unknown fields.
+- Extract and edit JSON dictionaries in a folder tree while preserving legacy ERA keys and unknown fields.
+- Store all generated files under one selected output directory: dictionaries in `字典/` and modified game-file copies in `游戏副本/`.
+- Keep the original game directory read-only; only copied files in the output directory are modified.
+- Show source context for the selected dictionary entry. Re-extraction can backfill missing context fields without changing existing translations or custom dictionary fields.
 - Translate selected or pending dictionary entries through OpenAI-compatible Chat Completions APIs.
 - Configure multiple providers with a custom Base URL, model name, and API key.
 - Encrypt saved API keys with Windows DPAPI for the current Windows user.
@@ -31,6 +34,15 @@ Every successful GitHub Actions CI run publishes a self-contained Windows x64 ZI
 4. Extract the ZIP archive and run EraTrans.App.exe.
 
 The package includes the .NET runtime, so a separate .NET installation is not required. Keep the extracted files together. CI artifacts are retained for 30 days.
+
+## Output directory layout
+
+Choose one original game directory and one output directory in the app. EraTrans creates and uses the following folders inside the output directory:
+
+- `字典/` — extracted JSON dictionaries and user-edited translations.
+- `游戏副本/` — copies of game files that need translation or other modifications. Existing files are not silently overwritten.
+
+To rebuild a clean translated copy after changing translations, preserve any files you want to keep and remove or move the existing `游戏副本/` folder before applying translations again. The original game directory remains untouched.
 
 ## Technology
 

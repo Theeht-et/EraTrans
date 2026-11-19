@@ -1,161 +1,40 @@
-<Window x:Class="EraTrans.App.MainWindow"
-        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="EraTrans"
-        Width="1000"
-        Height="800"
-        MinWidth="760"
-        MinHeight="660"
-        WindowStartupLocation="CenterScreen"
-        Background="#F5F6F8">
+<Window x:Class="EraTrans.App.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="EraTrans" Width="1000" Height="760" MinWidth="760" MinHeight="620"
+        WindowStartupLocation="CenterScreen" Background="#F5F6F8">
     <Grid Margin="24">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-            <RowDefinition Height="Auto" />
-        </Grid.RowDefinitions>
-
+        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
         <StackPanel>
-            <TextBlock Text="EraTrans"
-                       FontSize="28"
-                       FontWeight="SemiBold"
-                       Foreground="#20242A" />
-            <TextBlock Margin="0,6,0,0"
-                       Text="ERA 游戏字典提取、编辑与安全应用"
-                       FontSize="14"
-                       Foreground="#68717D" />
+            <TextBlock Text="EraTrans" FontSize="28" FontWeight="SemiBold" Foreground="#20242A" />
+            <TextBlock Margin="0,6,0,0" Text="ERA 游戏字典提取、编辑与安全应用" FontSize="14" Foreground="#68717D" />
         </StackPanel>
-
-        <Border Grid.Row="1"
-                Margin="0,24,0,24"
-                Padding="32"
-                Background="White"
-                BorderBrush="#E3E6EA"
-                BorderThickness="1"
-                CornerRadius="8">
+        <Border Grid.Row="1" Margin="0,24,0,24" Padding="32" Background="White" BorderBrush="#E3E6EA" BorderThickness="1" CornerRadius="8">
             <Grid VerticalAlignment="Center">
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
-
                 <StackPanel Margin="0,0,0,20">
-                    <TextBlock Text="字典提取与安全应用"
-                               FontSize="22"
-                               FontWeight="SemiBold"
-                               Foreground="#20242A" />
+                    <TextBlock Text="游戏目录与统一输出目录" FontSize="22" FontWeight="SemiBold" Foreground="#20242A" />
                     <TextBlock Margin="0,6,0,0"
-                               Text="先提取 JSON 字典，再将译文应用到独立游戏副本。原游戏目录和字典目录不会被修改。"
-                               TextWrapping="Wrap"
-                               FontSize="13"
-                               Foreground="#68717D" />
+                               Text="只需选择原游戏目录和输出目录。字典保存在输出目录的“字典”子目录；需要修改的游戏文件复制到“游戏副本”子目录后再处理，原游戏目录始终只读。"
+                               TextWrapping="Wrap" FontSize="13" Foreground="#68717D" />
                 </StackPanel>
-
                 <Grid Grid.Row="1" Margin="0,0,0,14">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="130" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="100" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="原游戏目录"
-                               VerticalAlignment="Center"
-                               Foreground="#39414A" />
-                    <TextBox x:Name="GameDirectoryTextBox"
-                             Grid.Column="1"
-                             Height="34"
-                             IsReadOnly="True"
-                             VerticalContentAlignment="Center"
-                             Margin="0,0,10,0" />
-                    <Button Grid.Column="2"
-                            Content="选择目录"
-                            Height="34"
-                            Click="BrowseGameDirectory_Click" />
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="130" /><ColumnDefinition Width="*" /><ColumnDefinition Width="100" /></Grid.ColumnDefinitions>
+                    <TextBlock Text="原游戏目录" VerticalAlignment="Center" Foreground="#39414A" />
+                    <TextBox x:Name="GameDirectoryTextBox" Grid.Column="1" Height="34" IsReadOnly="True" VerticalContentAlignment="Center" Margin="0,0,10,0" />
+                    <Button Grid.Column="2" Content="选择目录" Height="34" Click="BrowseGameDirectory_Click" />
                 </Grid>
-
-                <Grid Grid.Row="2" Margin="0,0,0,14">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="130" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="100" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="参考汉化目录"
-                               VerticalAlignment="Center"
-                               Foreground="#39414A" />
-                    <TextBox x:Name="ReferenceDirectoryTextBox"
-                             Grid.Column="1"
-                             Height="34"
-                             IsReadOnly="True"
-                             VerticalContentAlignment="Center"
-                             Margin="0,0,10,0" />
-                    <Button Grid.Column="2"
-                            Content="选择目录"
-                            Height="34"
-                            Click="BrowseReferenceDirectory_Click" />
+                <Grid Grid.Row="2" Margin="0,0,0,18">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="130" /><ColumnDefinition Width="*" /><ColumnDefinition Width="100" /></Grid.ColumnDefinitions>
+                    <TextBlock Text="输出目录" VerticalAlignment="Center" Foreground="#39414A" />
+                    <TextBox x:Name="OutputDirectoryTextBox" Grid.Column="1" Height="34" IsReadOnly="True" VerticalContentAlignment="Center" Margin="0,0,10,0" />
+                    <Button Grid.Column="2" Content="选择目录" Height="34" Click="BrowseOutputDirectory_Click" />
                 </Grid>
-
-                <Grid Grid.Row="3" Margin="0,0,0,14">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="130" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="100" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="字典目录"
-                               VerticalAlignment="Center"
-                               Foreground="#39414A" />
-                    <TextBox x:Name="OutputDirectoryTextBox"
-                             Grid.Column="1"
-                             Height="34"
-                             IsReadOnly="True"
-                             VerticalContentAlignment="Center"
-                             Margin="0,0,10,0" />
-                    <Button Grid.Column="2"
-                            Content="选择目录"
-                            Height="34"
-                            Click="BrowseOutputDirectory_Click" />
-                </Grid>
-
-                <Grid Grid.Row="4" Margin="0,0,0,18">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="130" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="100" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="游戏副本输出"
-                               VerticalAlignment="Center"
-                               Foreground="#39414A" />
-                    <TextBox x:Name="WorkingCopyDirectoryTextBox"
-                             Grid.Column="1"
-                             Height="34"
-                             IsReadOnly="True"
-                             VerticalContentAlignment="Center"
-                             Margin="0,0,10,0" />
-                    <Button Grid.Column="2"
-                            Content="选择目录"
-                            Height="34"
-                            Click="BrowseWorkingCopyDirectory_Click" />
-                </Grid>
-
-                <Grid Grid.Row="5" Margin="0,0,0,18">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="130" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="100" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="文件编码"
-                               VerticalAlignment="Center"
-                               Foreground="#39414A" />
-                    <ComboBox x:Name="EncodingComboBox"
-                              Grid.Column="1"
-                              Height="34"
-                              VerticalContentAlignment="Center"
-                              SelectedIndex="0">
+                <Grid Grid.Row="3" Margin="0,0,0,18">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="130" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                    <TextBlock Text="文件编码" VerticalAlignment="Center" Foreground="#39414A" />
+                    <ComboBox x:Name="EncodingComboBox" Grid.Column="1" Height="34" VerticalContentAlignment="Center" SelectedIndex="0">
                         <ComboBoxItem Content="UTF-8（含 BOM）" Tag="utf8-bom" />
                         <ComboBoxItem Content="UTF-8" Tag="utf8" />
                         <ComboBoxItem Content="Shift-JIS（日文）" Tag="932" />
@@ -163,57 +42,19 @@
                         <ComboBoxItem Content="Big5（繁体中文）" Tag="950" />
                     </ComboBox>
                 </Grid>
-
-                <CheckBox x:Name="AutoVariableCorrectionCheckBox"
-                          Grid.Row="6"
-                          IsChecked="True"
-                          Margin="0,0,0,16"
-                          VerticalAlignment="Center"
-                          Content="启用旧版自动变量修正（会复制并修正所有 ERB / ERH / ERD 文件）"
-                          ToolTip="使用 CSV 目录下 Abl、Base、CFlag 等旧版参考字典；仅修改游戏副本。" />
-
-                <StackPanel Grid.Row="7"
-                            Orientation="Horizontal"
-                            Margin="0,0,0,4">
-                    <Button x:Name="ExtractButton"
-                            Content="开始提取字典"
-                            Width="160"
-                            Height="40"
-                            Margin="0,0,12,0"
-                            FontSize="14"
-                            FontWeight="SemiBold"
-                            Click="Extract_Click" />
-                    <Button x:Name="ApplyTranslationsButton"
-                            Content="生成副本并应用译文"
-                            Width="210"
-                            Height="40"
-                            Margin="0,0,12,0"
-                            FontSize="14"
-                            FontWeight="SemiBold"
-                            Click="ApplyTranslations_Click" />
-                    <Button x:Name="EditDictionaryButton"
-                            Content="编辑字典"
-                            Width="130"
-                            Height="40"
-                            FontSize="14"
-                            FontWeight="SemiBold"
-                            Click="EditDictionary_Click" />
+                <CheckBox x:Name="AutoVariableCorrectionCheckBox" Grid.Row="4" IsChecked="True" Margin="0,0,0,18" VerticalAlignment="Center"
+                          Content="启用旧版自动变量修正（只处理输出目录中的游戏副本）"
+                          ToolTip="使用输出目录“字典/CSV”中的 Abl、Base、CFlag 等参考字典；仅修改游戏副本。" />
+                <StackPanel Grid.Row="5" Orientation="Horizontal" Margin="0,0,0,4">
+                    <Button x:Name="ExtractButton" Content="开始提取字典" Width="160" Height="40" Margin="0,0,12,0" FontSize="14" FontWeight="SemiBold" Click="Extract_Click" />
+                    <Button x:Name="ApplyTranslationsButton" Content="生成副本并应用译文" Width="210" Height="40" Margin="0,0,12,0" FontSize="14" FontWeight="SemiBold" Click="ApplyTranslations_Click" />
+                    <Button x:Name="EditDictionaryButton" Content="编辑字典" Width="130" Height="40" FontSize="14" FontWeight="SemiBold" Click="EditDictionary_Click" />
                 </StackPanel>
-
-                <TextBlock x:Name="StatusText"
-                           Grid.Row="8"
-                           Margin="0,16,0,0"
-                           Text="提取只写入字典目录；应用译文只会修改游戏副本，不会覆盖已有副本文件。"
-                           TextWrapping="Wrap"
-                           Foreground="#68717D"
-                           FontSize="13" />
+                <TextBlock x:Name="StatusText" Grid.Row="6" Margin="0,16,0,0"
+                           Text="输出目录自动管理字典和游戏副本；原游戏目录不会被修改。"
+                           TextWrapping="Wrap" Foreground="#68717D" FontSize="13" />
             </Grid>
         </Border>
-
-        <TextBlock Grid.Row="2"
-                   Text="开发版本 · 字典提取与副本译文应用"
-                   FontSize="12"
-                   Foreground="#87909B"
-                   HorizontalAlignment="Right" />
+        <TextBlock Grid.Row="2" Text="开发版本 · 原游戏只读，所有生成文件统一输出" FontSize="12" Foreground="#87909B" HorizontalAlignment="Right" />
     </Grid>
 </Window>

@@ -48,10 +48,23 @@ public sealed class DictionaryExtractorTests
 
         var csv = JArray.Parse(File.ReadAllText(Path.Combine(output, "CSV", "items.json")));
         Assert.Equal(new[] { "物品甲", "物品乙" }, csv.Select(item => (string)item!["original"]!).ToArray());
+        Assert.All(csv, entry => Assert.Contains(
+            "ID,物品甲,123,物品乙",
+            (string?)entry!["context"] ?? string.Empty));
 
-        var xml = ReadOriginals(Path.Combine(output, "XML", "skills.xml.json"));
-        Assert.Contains("火系", xml);
-        Assert.Contains("火球术", xml);
+        var xmlEntries = JArray.Parse(File.ReadAllText(Path.Combine(output, "XML", "skills.xml.json")));
+        Assert.Contains(xmlEntries, entry => (string?)entry!["original"] == "火系" &&
+            ((string?)entry["context"])?.Contains("<defname", StringComparison.Ordinal) == true);
+        Assert.Contains(xmlEntries, entry => (string?)entry!["original"] == "火球术" &&
+            ((string?)entry["context"])?.Contains("<defname", StringComparison.Ordinal) == true);
+
+        var resourceEntries = JArray.Parse(File.ReadAllText(Path.Combine(output, "resources", "sprites.json")));
+        Assert.Contains(resourceEntries, entry =>
+            ((string?)entry!["context"])?.Contains("素材名称,其他信息", StringComparison.Ordinal) == true);
+
+        var erbEntries = JArray.Parse(File.ReadAllText(Path.Combine(output, "ERB", "combined.json")));
+        Assert.Contains(erbEntries, entry => (string?)entry!["original"] == "ERB主文本" &&
+            ((string?)entry["context"])?.Contains("PRINTFORM ERB主文本", StringComparison.Ordinal) == true);
 
         var erdNames = JArray.Parse(File.ReadAllText(Path.Combine(output, "CSV", "ERD字典.json")));
         Assert.Equal("文件名000", (string?)erdNames[0]?["key"]);
@@ -83,6 +96,36 @@ public sealed class DictionaryExtractorTests
         Assert.Equal("原文项目", (string?)entries[0]?["original"]);
         Assert.Equal("参考译文", (string?)entries[0]?["translation"]);
         Assert.Equal(1, (int?)entries[0]?["stage"]);
+    }
+
+    [Fact]
+    public void Extract_BackfillsContextForLegacyReferenceKeysWithoutChangingReferenceTranslation()
+    {
+        string root = CreateTempDirectory();
+        string game = Path.Combine(root, "Game");
+        string reference = Path.Combine(root, "Reference");
+        string output = Path.Combine(root, "Output");
+        Write(game, "CSV/items.csv", "ID,原文项目\n");
+        Write(reference, "CSV/items.csv", "ID,参考译文\n");
+
+        var extractor = new DictionaryExtractor();
+        extractor.Extract(game, output, reference);
+
+        string dictionaryPath = Path.Combine(output, "CSV", "items.json");
+        JArray entries = JArray.Parse(File.ReadAllText(dictionaryPath));
+        JObject entry = Assert.IsType<JObject>(Assert.Single(entries));
+        Assert.StartsWith("变量", (string?)entry["key"]);
+        entry.Remove("context");
+        File.WriteAllText(dictionaryPath, entries.ToString(Newtonsoft.Json.Formatting.Indented));
+
+        DictionaryExtractionResult result = extractor.Extract(game, output);
+
+        JObject updated = Assert.IsType<JObject>(Assert.Single(JArray.Parse(File.ReadAllText(dictionaryPath))));
+        Assert.Equal("原文项目", (string?)updated["original"]);
+        Assert.Equal("参考译文", (string?)updated["translation"]);
+        Assert.Equal(1, (int?)updated["stage"]);
+        Assert.Contains("ID,原文项目", (string?)updated["context"] ?? string.Empty);
+        Assert.Contains(dictionaryPath, result.UpdatedContextFiles ?? Array.Empty<string>());
     }
 
     [Fact]
@@ -137,6 +180,43 @@ public sealed class DictionaryExtractorTests
         Assert.Contains(result.Warnings, warning => warning.Contains("CSV" + Path.DirectorySeparatorChar + "items.json", StringComparison.Ordinal));
         Assert.Contains(result.Warnings, warning => warning.Contains("CSV" + Path.DirectorySeparatorChar + "ERD字典.json", StringComparison.Ordinal));
         Assert.Contains(result.Warnings, warning => warning.Contains("ERB" + Path.DirectorySeparatorChar + "creature.json", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Extract_BackfillsOnlyMissingContext_AndPreservesExistingTranslationsAndFields()
+    {
+        string root = CreateTempDirectory();
+        string game = Path.Combine(root, "Game");
+        string output = Path.Combine(root, "Output");
+        Write(game, "CSV/items.csv", "ID,物品甲,物品乙\n");
+
+        var extractor = new DictionaryExtractor();
+        extractor.Extract(game, output);
+
+        string dictionaryPath = Path.Combine(output, "CSV", "items.json");
+        JArray entries = JArray.Parse(File.ReadAllText(dictionaryPath));
+        Assert.Equal(2, entries.Count);
+        JObject item = Assert.IsType<JObject>(entries[0]);
+        JObject itemWithExistingContext = Assert.IsType<JObject>(entries[1]);
+        item.Remove("context");
+        item["translation"] = "人工译文";
+        item["stage"] = 1;
+        item["customField"] = "must remain";
+        itemWithExistingContext["context"] = "用户已有的上下文";
+        File.WriteAllText(dictionaryPath, entries.ToString(Newtonsoft.Json.Formatting.Indented));
+
+        DictionaryExtractionResult result = extractor.Extract(game, output);
+
+        JArray updatedEntries = JArray.Parse(File.ReadAllText(dictionaryPath));
+        JObject updated = Assert.IsType<JObject>(updatedEntries[0]);
+        JObject unchangedContext = Assert.IsType<JObject>(updatedEntries[1]);
+        Assert.Equal("人工译文", (string?)updated["translation"]);
+        Assert.Equal(1, (int?)updated["stage"]);
+        Assert.Equal("must remain", (string?)updated["customField"]);
+        Assert.Contains("ID,物品甲,物品乙", (string?)updated["context"] ?? string.Empty);
+        Assert.Equal("用户已有的上下文", (string?)unchangedContext["context"]);
+        Assert.Contains(dictionaryPath, result.UpdatedContextFiles ?? Array.Empty<string>());
+        Assert.Empty(result.GeneratedFiles);
     }
 
     [Fact]

@@ -14,13 +14,23 @@ namespace EraTrans.Core;
 public class CSVParser
 {
     List<string> valueList = new List<string>();
+    private readonly Dictionary<string, string> contextByValue = new(StringComparer.Ordinal);
     public void ParseFile(string filePath)
     {
         var lines = File.ReadAllLines(filePath, Configs.fileEncoding);
         foreach (var line in lines)
         {
             IEnumerable<string> values = Tools.GetCSVValue(line);
-            if (values != null && values.Any()) valueList.AddRange(values);
+            if (values is null)
+            {
+                continue;
+            }
+
+            foreach (string value in values)
+            {
+                valueList.Add(value);
+                contextByValue.TryAdd(value, line);
+            }
         }
     }
 
@@ -33,7 +43,7 @@ public class CSVParser
     {
         var PTJsonObjList = valueList.Distinct().Select((item, index) =>
         {
-            return new JObject
+            var entry = new JObject
             {
                 // 键值是相对路径(去除后缀)+ 5位数字ID
                 ["key"] = Path.ChangeExtension(relativePath, "") + index.ToString().PadLeft(5, '0'),
@@ -41,6 +51,8 @@ public class CSVParser
                 ["translation"] = "",
                 ["stage"] = 0
             };
+            AddContext(entry, item);
+            return entry;
         });
 
         if (PTJsonObjList.Count() > 0)
@@ -66,7 +78,7 @@ public class CSVParser
                     // 如果对比发现，参考和原版不一致，那么把参考的值填进translation
                     if (originObjs[index] != referenceObjs[index])
                     {
-                        PTJsonObjList.Add(new JObject
+                        var entry = new JObject
                         {
                             // 键值是相对路径(去除后缀)+ 5位数字ID
                             ["key"] = new StringBuilder("变量")
@@ -76,11 +88,13 @@ public class CSVParser
                             ["original"] = originObjs[index],
                             ["translation"] = referenceObjs[index],
                             ["stage"] = 1
-                        });
+                        };
+                        AddContext(entry, originObjs[index]);
+                        PTJsonObjList.Add(entry);
                     }
                     else
                     {
-                        PTJsonObjList.Add(new JObject
+                        var entry = new JObject
                         {
                             ["key"] = new StringBuilder("变量")
                             .Append(Path.ChangeExtension(relativePath, ""))
@@ -89,7 +103,9 @@ public class CSVParser
                             ["original"] = originObjs[index],
                             ["translation"] = "",
                             ["stage"] = 0
-                        });
+                        };
+                        AddContext(entry, originObjs[index]);
+                        PTJsonObjList.Add(entry);
                     }
                 }
                 if (PTJsonObjList.Count > 0)
@@ -104,6 +120,14 @@ public class CSVParser
         // 改用常规模式
         WriteJson(targetFile, relativePath);
     }
+    private void AddContext(JObject entry, string original)
+    {
+        if (Configs.writeContext && contextByValue.TryGetValue(original, out string? context))
+        {
+            entry["context"] = context;
+        }
+    }
+
     /// <summary>
     /// 返回valueList
     /// </summary>

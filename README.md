@@ -15,17 +15,22 @@ A lightweight Windows desktop tool for translating ERA games.
 - Apply translations to a complete game working copy, including resources and files that do not need translation. The original game directory is not modified.
 - Configure the legacy parser options in the settings window, including encoding, variable filtering, duplicate merging, context output, auto-correction, extension matching, variable-name characters, and expression operators.
 
-## Parser settings
+## Portable configuration
 
-The parser settings window migrates the configurable options from the original ErbParserForTranslate `config.json`: file encoding, strong variable-name filtering, auto-open output folder, automatic variable correction, hiding English entries, merging duplicate entries, hiding variable entries, merging concatenated strings, writing context, target file extensions, variable-correction reference dictionaries, variable-name characters, and expression operators.
+All settings are stored beside `EraTrans.App.exe`, in the `配置/` folder:
 
-Settings are stored in `%AppData%/EraTrans/settings.json` for the current Windows user. The defaults match the original tool's first-run configuration. Advanced lists accept one item per line.
+- `配置/settings.json` — parser, extraction, and output settings.
+- `配置/ai-providers.json` — AI provider profiles. API keys remain encrypted with Windows DPAPI (CurrentUser), not stored as plaintext.
+
+On first launch after upgrading from an earlier version, existing files in `%AppData%/EraTrans/` are copied into the software folder. The original AppData files are retained as backups; subsequent changes are written only to the portable `配置/` folder.
+
+The software folder must be writable by the current Windows user. For a portable setup, extract the ZIP into a normal user-writable folder rather than `Program Files`.
+
+The parser settings window migrates the configurable options from the original ErbParserForTranslate `config.json`: file encoding, strong variable-name filtering, auto-open output folder, automatic variable correction, hiding English entries, merging duplicate entries, hiding variable entries, merging concatenated strings, writing context, target file extensions, variable-correction reference dictionaries, variable-name characters, and expression operators. Defaults match the original tool's first-run configuration. Advanced lists accept one item per line.
 
 ## AI provider configuration
 
 Configure a provider in the dictionary editor. The Base URL should point to the API's OpenAI-compatible base endpoint, usually ending in /v1, rather than a full /chat/completions path. The client uses the official OpenAI .NET SDK, which supports custom endpoints.
-
-Provider configuration is stored under the current user's AppData directory. API keys are protected with Windows DPAPI (CurrentUser); the key is not written to the settings file as plaintext. DPAPI-protected keys are tied to the Windows user account that saved them.
 
 The initial integration supports the OpenAI-compatible Chat Completions protocol. It does not yet implement separate native Claude, Gemini, or Responses API protocols.
 
@@ -38,9 +43,9 @@ Every successful GitHub Actions CI run publishes a self-contained Windows x64 ZI
 1. Open the repository's Actions tab.
 2. Open the successful CI run for the commit or pull request you want.
 3. Download EraTrans-win-x64 from the Artifacts section.
-4. Extract the ZIP archive and run EraTrans.App.exe.
+4. Extract the ZIP archive into a writable folder and run EraTrans.App.exe.
 
-The package includes the .NET runtime, so a separate .NET installation is not required. Keep the extracted files together. CI artifacts are retained for 30 days.
+The package uses .NET single-file publishing and includes the .NET runtime, so a separate .NET installation is not required. The EXE is the only file in the package root. Configuration is grouped under `配置/`, and user documentation is under `说明/`. Keep those folders beside the EXE. CI artifacts are retained for 30 days.
 
 ## Output directory layout
 

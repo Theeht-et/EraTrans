@@ -82,8 +82,9 @@ public static class AiProviderProfileValidator
 }
 
 /// <summary>
-/// Stores provider settings in the current user's AppData folder. API keys are
-/// encrypted with Windows DPAPI (CurrentUser) before they are written to disk.
+/// Stores provider settings in the executable's 配置 folder. API keys remain
+/// encrypted with Windows DPAPI (CurrentUser). Existing AppData settings are
+/// migrated by decrypting and re-encrypting them for the same Windows user.
 /// </summary>
 [SupportedOSPlatform("windows")]
 public sealed class AiProviderSettingsStore
@@ -95,25 +96,44 @@ public sealed class AiProviderSettingsStore
     };
 
     private readonly string _filePath;
+    private readonly string? _legacyFilePath;
 
-    public AiProviderSettingsStore(string? filePath = null)
+    public AiProviderSettingsStore(string? filePath = null, string? legacyFilePath = null)
     {
-        _filePath = filePath ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "EraTrans",
-            "ai-providers.json");
+        bool useDefaultPaths = filePath is null;
+        _filePath = filePath ?? EraTransPaths.AiProviderSettingsFilePath;
+        _legacyFilePath = legacyFilePath ??
+            (useDefaultPaths ? EraTransPaths.LegacyAiProviderSettingsFilePath : null);
     }
 
     public AiProviderSettings Load()
     {
-        if (!File.Exists(_filePath))
+        if (File.Exists(_filePath))
         {
-            return new AiProviderSettings();
+            return LoadFrom(_filePath);
         }
 
+        if (_legacyFilePath is not null &&
+            !Path.GetFullPath(_legacyFilePath).Equals(
+                Path.GetFullPath(_filePath),
+                StringComparison.OrdinalIgnoreCase) &&
+            File.Exists(_legacyFilePath))
+        {
+            // Re-save the successfully decrypted profile into the portable directory.
+            // The original DPAPI-protected AppData file is retained as a backup.
+            AiProviderSettings legacySettings = LoadFrom(_legacyFilePath);
+            Save(legacySettings);
+            return legacySettings;
+        }
+
+        return new AiProviderSettings();
+    }
+
+    private static AiProviderSettings LoadFrom(string path)
+    {
         try
         {
-            string json = File.ReadAllText(_filePath, Encoding.UTF8);
+            string json = File.ReadAllText(path, Encoding.UTF8);
             StoredSettings stored = JsonSerializer.Deserialize<StoredSettings>(json, JsonOptions)
                 ?? throw new InvalidDataException("AI 服务商配置文件为空或格式无效。");
 
@@ -129,15 +149,21 @@ public sealed class AiProviderSettingsStore
                     protectedKey,
                     optionalEntropy: null,
                     DataProtectionScope.CurrentUser);
-                settings.Providers.Add(new AiProviderProfile
+                try
                 {
-                    Id = item.Id,
-                    Name = item.Name,
-                    BaseUrl = item.BaseUrl,
-                    Model = item.Model,
-                    ApiKey = Encoding.UTF8.GetString(keyBytes)
-                });
-                CryptographicOperations.ZeroMemory(keyBytes);
+                    settings.Providers.Add(new AiProviderProfile
+                    {
+                        Id = item.Id,
+                        Name = item.Name,
+                        BaseUrl = item.BaseUrl,
+                        Model = item.Model,
+                        ApiKey = Encoding.UTF8.GetString(keyBytes)
+                    });
+                }
+                finally
+                {
+                    CryptographicOperations.ZeroMemory(keyBytes);
+                }
             }
 
             return settings;
@@ -145,7 +171,7 @@ public sealed class AiProviderSettingsStore
         catch (Exception ex) when (ex is JsonException or FormatException or CryptographicException)
         {
             throw new InvalidDataException(
-                "无法读取 AI 服务商配置。配置可能已损坏，或当前 Windows 用户与保存配置的用户不同。",
+                $"无法读取 AI 服务商配置：{path}。配置可能已损坏，或当前 Windows 用户与保存配置的用户不同。",
                 ex);
         }
     }
@@ -153,7 +179,10 @@ public sealed class AiProviderSettingsStore
     public void Save(AiProviderSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
-        Directory.CreateDirectory(Path.GetDirectoryName(_filePath)!);
+
+        string directory = Path.GetDirectoryName(_filePath)
+            ?? throw new InvalidOperationException("AI 配置文件路径无效。");
+        Directory.CreateDirectory(directory);
 
         var stored = new StoredSettings
         {
@@ -162,11 +191,18 @@ public sealed class AiProviderSettingsStore
             {
                 AiProviderProfileValidator.Validate(profile);
                 byte[] keyBytes = Encoding.UTF8.GetBytes(profile.ApiKey);
-                byte[] protectedKey = ProtectedData.Protect(
-                    keyBytes,
-                    optionalEntropy: null,
-                    DataProtectionScope.CurrentUser);
-                CryptographicOperations.ZeroMemory(keyBytes);
+                byte[] protectedKey;
+                try
+                {
+                    protectedKey = ProtectedData.Protect(
+                        keyBytes,
+                        optionalEntropy: null,
+                        DataProtectionScope.CurrentUser);
+                }
+                finally
+                {
+                    CryptographicOperations.ZeroMemory(keyBytes);
+                }
 
                 return new StoredProvider
                 {
@@ -180,7 +216,9 @@ public sealed class AiProviderSettingsStore
         };
 
         string json = JsonSerializer.Serialize(stored, JsonOptions);
-        string temporaryPath = _filePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        string temporaryPath = Path.Combine(
+            directory,
+            $"{Path.GetFileName(_filePath)}.{Guid.NewGuid():N}.tmp");
         try
         {
             using (var stream = new FileStream(

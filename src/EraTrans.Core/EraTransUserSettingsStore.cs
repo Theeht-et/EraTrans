@@ -4,7 +4,8 @@ using System.Text.Json;
 namespace EraTrans.Core;
 
 /// <summary>
-/// Persists EraTrans application settings in the current user's AppData directory.
+/// Persists EraTrans application settings beside the executable, in the 配置 folder.
+/// Existing AppData settings are copied into the portable location on first launch.
 /// </summary>
 public sealed class EraTransUserSettingsStore
 {
@@ -15,25 +16,44 @@ public sealed class EraTransUserSettingsStore
     };
 
     private readonly string _filePath;
+    private readonly string? _legacyFilePath;
 
-    public EraTransUserSettingsStore(string? filePath = null)
+    public EraTransUserSettingsStore(string? filePath = null, string? legacyFilePath = null)
     {
-        _filePath = filePath ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "EraTrans",
-            "settings.json");
+        bool useDefaultPaths = filePath is null;
+        _filePath = filePath ?? EraTransPaths.UserSettingsFilePath;
+        _legacyFilePath = legacyFilePath ??
+            (useDefaultPaths ? EraTransPaths.LegacyUserSettingsFilePath : null);
     }
 
     public EraTransUserSettings Load()
     {
-        if (!File.Exists(_filePath))
+        if (File.Exists(_filePath))
         {
-            return EraTransUserSettings.CreateDefault();
+            return LoadFrom(_filePath);
         }
 
+        if (_legacyFilePath is not null &&
+            !Path.GetFullPath(_legacyFilePath).Equals(
+                Path.GetFullPath(_filePath),
+                StringComparison.OrdinalIgnoreCase) &&
+            File.Exists(_legacyFilePath))
+        {
+            // Save a new copy next to the executable. Keep the AppData source untouched
+            // as a recoverable backup in case the user needs to roll back.
+            EraTransUserSettings legacySettings = LoadFrom(_legacyFilePath);
+            Save(legacySettings);
+            return legacySettings;
+        }
+
+        return EraTransUserSettings.CreateDefault();
+    }
+
+    private static EraTransUserSettings LoadFrom(string path)
+    {
         try
         {
-            string json = File.ReadAllText(_filePath, Encoding.UTF8);
+            string json = File.ReadAllText(path, Encoding.UTF8);
             EraTransUserSettings settings = JsonSerializer.Deserialize<EraTransUserSettings>(
                 json,
                 JsonOptions) ?? throw new InvalidDataException("设置文件为空或格式无效。");
@@ -43,7 +63,7 @@ public sealed class EraTransUserSettingsStore
         catch (Exception ex) when (ex is JsonException or NotSupportedException)
         {
             throw new InvalidDataException(
-                $"无法读取 EraTrans 设置文件：{_filePath}",
+                $"无法读取 EraTrans 设置文件：{path}",
                 ex);
         }
     }

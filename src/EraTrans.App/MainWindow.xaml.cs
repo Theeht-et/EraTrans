@@ -1,6 +1,7 @@
 using EraTrans.Core;
 using Microsoft.Win32;
 using System.IO;
+using System.Text;
 using System.Windows;
 
 namespace EraTrans.App;
@@ -9,6 +10,7 @@ public partial class MainWindow : Window
 {
     public MainWindow()
     {
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
         InitializeComponent();
     }
 
@@ -35,6 +37,25 @@ public partial class MainWindow : Window
         }
     }
 
+    private Encoding GetSelectedEncoding()
+    {
+        if (EncodingComboBox.SelectedItem is not System.Windows.Controls.ComboBoxItem item ||
+            item.Tag is not string selectedEncoding)
+        {
+            throw new InvalidOperationException("请选择有效的文件编码。");
+        }
+
+        return selectedEncoding switch
+        {
+            "utf8-bom" => new UTF8Encoding(encoderShouldEmitUTF8Identifier: true),
+            "utf8" => new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
+            "932" => Encoding.GetEncoding(932),
+            "936" => Encoding.GetEncoding(936),
+            "950" => Encoding.GetEncoding(950),
+            _ => throw new InvalidOperationException("不支持所选文件编码。")
+        };
+    }
+
     private async void Extract_Click(object sender, RoutedEventArgs e)
     {
         string gameDirectory = GameDirectoryTextBox.Text.Trim();
@@ -59,10 +80,15 @@ public partial class MainWindow : Window
         try
         {
             var extractor = new DictionaryExtractor();
+            var options = new EraParserOptions
+            {
+                FileEncoding = GetSelectedEncoding()
+            };
             var result = await Task.Run(() => extractor.Extract(
                 gameDirectory,
                 outputDirectory,
-                string.IsNullOrWhiteSpace(referenceDirectory) ? null : referenceDirectory));
+                string.IsNullOrWhiteSpace(referenceDirectory) ? null : referenceDirectory,
+                options));
 
             StatusText.Text = $"提取完成：生成 {result.GeneratedFiles.Count} 个 JSON 文件，{result.Warnings.Count} 条警告。";
             string message = $"生成 JSON 文件：{result.GeneratedFiles.Count}\n警告：{result.Warnings.Count}";

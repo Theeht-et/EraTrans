@@ -118,8 +118,30 @@
                             Click="BrowseOutputDirectory_Click" />
                 </Grid>
 
+
+                <Grid Grid.Row="4" Margin="0,0,0,18">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="130" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="100" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="文件编码"
+                               VerticalAlignment="Center"
+                               Foreground="#39414A" />
+                    <ComboBox x:Name="EncodingComboBox"
+                              Grid.Column="1"
+                              Height="34"
+                              VerticalContentAlignment="Center"
+                              SelectedIndex="0">
+                        <ComboBoxItem Content="UTF-8（含 BOM）" Tag="utf8-bom" />
+                        <ComboBoxItem Content="UTF-8" Tag="utf8" />
+                        <ComboBoxItem Content="Shift-JIS（日文）" Tag="932" />
+                        <ComboBoxItem Content="GBK（简体中文）" Tag="936" />
+                        <ComboBoxItem Content="Big5（繁体中文）" Tag="950" />
+                    </ComboBox>
+                </Grid>
                 <Button x:Name="ExtractButton"
-                        Grid.Row="4"
+                        Grid.Row="5"
                         Content="开始提取"
                         Width="160"
                         Height="40"
@@ -129,9 +151,9 @@
                         Click="Extract_Click" />
 
                 <TextBlock x:Name="StatusText"
-                           Grid.Row="5"
+                           Grid.Row="6"
                            Margin="0,16,0,0"
-                           Text="原游戏目录只读；输出目录中的同名 JSON 会被覆盖，不会清理其他文件。"
+                           Text="游戏目录和参考目录只读；输出目录中的同名 JSON 会被覆盖，不会清理其他文件。"
                            TextWrapping="Wrap"
                            Foreground="#68717D"
                            FontSize="13" />

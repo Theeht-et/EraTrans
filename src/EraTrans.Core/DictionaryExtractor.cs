@@ -26,7 +26,7 @@ public sealed class DictionaryExtractor
             throw new DirectoryNotFoundException($"Game directory does not exist: {gameRoot}");
         }
 
-        EnsureOutputIsOutsideGameDirectory(gameRoot, outputRoot);
+        EnsureOutputIsOutsideDirectory(gameRoot, outputRoot);
 
         string? referenceRoot = null;
         if (!string.IsNullOrWhiteSpace(referenceGameDirectory))
@@ -36,6 +36,7 @@ public sealed class DictionaryExtractor
             {
                 throw new DirectoryNotFoundException($"Reference game directory does not exist: {referenceRoot}");
             }
+            EnsureOutputIsOutsideDirectory(referenceRoot, outputRoot);
         }
 
         Directory.CreateDirectory(outputRoot);
@@ -194,7 +195,7 @@ public sealed class DictionaryExtractor
         return fullPath;
     }
 
-    private static void EnsureOutputIsOutsideGameDirectory(string gameRoot, string outputRoot)
+    private static void EnsureOutputIsOutsideDirectory(string gameRoot, string outputRoot)
     {
         string relative = Path.GetRelativePath(gameRoot, outputRoot);
         if (relative == "." ||
@@ -202,7 +203,7 @@ public sealed class DictionaryExtractor
              relative != ".." &&
              !relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal)))
         {
-            throw new InvalidOperationException("Output directory must be outside the game directory.");
+            throw new InvalidOperationException("Output directory must be outside every source directory.");
         }
     }
 }

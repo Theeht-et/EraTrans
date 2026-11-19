@@ -1,5 +1,6 @@
 using EraTrans.Core;
 using Newtonsoft.Json.Linq;
+using System.Text;
 using Xunit;
 
 namespace EraTrans.Tests;
@@ -93,6 +94,41 @@ public sealed class DictionaryExtractorTests
 
         Assert.Throws<InvalidOperationException>(() =>
             new DictionaryExtractor().Extract(game, Path.Combine(game, "EraTransOutput")));
+    }
+
+    [Fact]
+    public void Extract_RejectsOutputInsideReferenceDirectory()
+    {
+        string root = CreateTempDirectory();
+        string game = Path.Combine(root, "Game");
+        string reference = Path.Combine(root, "Reference");
+        Directory.CreateDirectory(game);
+        Directory.CreateDirectory(reference);
+
+        Assert.Throws<InvalidOperationException>(() =>
+            new DictionaryExtractor().Extract(game, reference, reference));
+    }
+
+    [Fact]
+    public void Extract_UsesConfiguredShiftJisEncoding()
+    {
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        Encoding shiftJis = Encoding.GetEncoding(932);
+
+        string root = CreateTempDirectory();
+        string game = Path.Combine(root, "Game");
+        string output = Path.Combine(root, "Output");
+        string csvPath = Path.Combine(game, "CSV", "items.csv");
+        Directory.CreateDirectory(Path.GetDirectoryName(csvPath)!);
+        File.WriteAllText(csvPath, "ID,商品名\n", shiftJis);
+
+        new DictionaryExtractor().Extract(
+            game,
+            output,
+            options: new EraParserOptions { FileEncoding = shiftJis });
+
+        var entries = JArray.Parse(File.ReadAllText(Path.Combine(output, "CSV", "items.json")));
+        Assert.Equal("商品名", (string?)entries[0]?["original"]);
     }
 
     private static List<string> ReadOriginals(string path)

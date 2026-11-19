@@ -397,9 +397,31 @@ public sealed class ErbTranslationGroupingService
 
         if (targetGroup.ControlScopeId.Length > 0)
         {
+            IEnumerable<ErbTranslationGroup> menuPrompts = index.Groups
+                .Where(group =>
+                    group.Id != targetGroup.Id &&
+                    string.Equals(group.FunctionId, targetGroup.FunctionId, StringComparison.Ordinal) &&
+                    string.Equals(group.ControlScopeId, targetGroup.ControlScopeId, StringComparison.Ordinal) &&
+                    string.Equals(group.BranchLabel, "MENU_PROMPT", StringComparison.Ordinal));
+
+            foreach (ErbTranslationGroup prompt in menuPrompts)
+            {
+                var promptEntries = prompt.EntryKeys
+                    .Select(key => dictionaryEntries.TryGetValue(key, out DictionaryEditorEntry? entry) ? entry : null)
+                    .Where(entry => entry is not null)
+                    .Cast<DictionaryEditorEntry>()
+                    .Select(entry => new AiTranslationContextEntry(entry.Key, entry.Original))
+                    .ToArray();
+                if (promptEntries.Length > 0)
+                {
+                    contexts.Add(CreateContextGroup(prompt, "menu-prompt", promptEntries));
+                }
+            }
+
             IEnumerable<ErbTranslationGroup> alternatives = index.Groups
                 .Where(group =>
                     group.Id != targetGroup.Id &&
+                    !string.Equals(group.BranchLabel, "MENU_PROMPT", StringComparison.Ordinal) &&
                     string.Equals(group.FunctionId, targetGroup.FunctionId, StringComparison.Ordinal) &&
                     string.Equals(group.ControlScopeId, targetGroup.ControlScopeId, StringComparison.Ordinal) &&
                     !string.Equals(group.BranchLabel, targetGroup.BranchLabel, StringComparison.Ordinal))

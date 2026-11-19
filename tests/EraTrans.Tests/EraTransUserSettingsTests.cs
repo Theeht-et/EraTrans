@@ -7,13 +7,13 @@ namespace EraTrans.Tests;
 public sealed class EraTransUserSettingsTests
 {
     [Fact]
-    public void DefaultConfigurationPaths_AreBesideApplicationInConfigurationFolder()
+    public void DefaultConfigurationPaths_AreBesideApplicationInEnglishConfigFolder()
     {
         Assert.Equal(
-            Path.Combine(AppContext.BaseDirectory, "配置", "settings.json"),
+            Path.Combine(AppContext.BaseDirectory, "Config", "settings.json"),
             EraTransPaths.UserSettingsFilePath);
         Assert.Equal(
-            Path.Combine(AppContext.BaseDirectory, "配置", "ai-providers.json"),
+            Path.Combine(AppContext.BaseDirectory, "Config", "ai-providers.json"),
             EraTransPaths.AiProviderSettingsFilePath);
     }
 
@@ -88,7 +88,7 @@ public sealed class EraTransUserSettingsTests
     {
         using var temporary = new TemporaryDirectory();
         string legacyPath = Path.Combine(temporary.Path, "AppData", "EraTrans", "settings.json");
-        string portablePath = Path.Combine(temporary.Path, "Software", "配置", "settings.json");
+        string portablePath = Path.Combine(temporary.Path, "Software", "Config", "settings.json");
         var legacyStore = new EraTransUserSettingsStore(legacyPath);
         var settings = EraTransUserSettings.CreateDefault();
         settings.FileEncodingId = "936";

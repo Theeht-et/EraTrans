@@ -91,12 +91,18 @@ public sealed class TranslationApplier
             copiedBySource,
             warnings);
 
+        var renamedPathMap = renamedFiles.ToDictionary(
+            item => item.PreviousPath,
+            item => item.NewPath,
+            StringComparer.OrdinalIgnoreCase);
+
         return new TranslationApplyResult(
             copiedBySource.Values
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
                 .ToArray(),
             modifiedFiles
+                .Select(path => renamedPathMap.TryGetValue(path, out string? renamedPath) ? renamedPath : path)
                 .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
                 .ToArray(),
             renamedFiles

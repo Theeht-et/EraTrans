@@ -103,6 +103,8 @@ public sealed class TranslationApplierTests
         Assert.True(File.Exists(Path.Combine(game, "ERB", "other.erd")));
         Assert.Single(result.RenamedFiles);
         Assert.Contains(result.RenamedFiles[0].NewPath, result.CopiedFiles);
+        Assert.Contains(Path.Combine(output, "ERB", "creature_cn.erd"), result.ModifiedFiles);
+        Assert.DoesNotContain(Path.Combine(output, "ERB", "creature.erd"), result.ModifiedFiles);
         Assert.Empty(result.Warnings);
     }
 

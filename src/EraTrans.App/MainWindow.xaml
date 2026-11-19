@@ -16,7 +16,7 @@
                 <StackPanel Margin="0,0,0,20">
                     <TextBlock Text="游戏目录与统一输出目录" FontSize="22" FontWeight="SemiBold" Foreground="#20242A" />
                     <TextBlock Margin="0,6,0,0"
-                               Text="只需选择原游戏目录和输出目录。字典保存在输出目录的“字典”子目录；需要修改的游戏文件复制到“游戏副本”子目录后再处理，原游戏目录始终只读。"
+                               Text="只需选择原游戏目录和输出目录。字典及其他生成文件统一保存在输出目录；需要汉化或转码时，先将整个原游戏目录完整复制到“游戏副本”，再修改副本，原游戏目录始终只读。"
                                TextWrapping="Wrap" FontSize="13" Foreground="#68717D" />
                 </StackPanel>
                 <Grid Grid.Row="1" Margin="0,0,0,14">
@@ -47,7 +47,7 @@
                           ToolTip="使用输出目录“字典/CSV”中的 Abl、Base、CFlag 等参考字典；仅修改游戏副本。" />
                 <StackPanel Grid.Row="5" Orientation="Horizontal" Margin="0,0,0,4">
                     <Button x:Name="ExtractButton" Content="开始提取字典" Width="160" Height="40" Margin="0,0,12,0" FontSize="14" FontWeight="SemiBold" Click="Extract_Click" />
-                    <Button x:Name="ApplyTranslationsButton" Content="生成副本并应用译文" Width="210" Height="40" Margin="0,0,12,0" FontSize="14" FontWeight="SemiBold" Click="ApplyTranslations_Click" />
+                    <Button x:Name="ApplyTranslationsButton" Content="完整复制游戏并应用译文" Width="210" Height="40" Margin="0,0,12,0" FontSize="14" FontWeight="SemiBold" Click="ApplyTranslations_Click" />
                     <Button x:Name="EditDictionaryButton" Content="编辑字典" Width="130" Height="40" FontSize="14" FontWeight="SemiBold" Click="EditDictionary_Click" />
                 </StackPanel>
                 <TextBlock x:Name="StatusText" Grid.Row="6" Margin="0,16,0,0"

@@ -11,6 +11,16 @@ public sealed record AiTranslationRequest(int Id, string Key, string Original, s
 
 public sealed record AiTranslationResult(int Id, string Translation);
 
+public sealed record AiTranslationContextEntry(string Key, string Original);
+
+public sealed record AiTranslationSemanticContextGroup(
+    string GroupId,
+    string GroupType,
+    string FunctionId,
+    string BranchPath,
+    string Relationship,
+    IReadOnlyList<AiTranslationContextEntry> Entries);
+
 public interface IAiChatCompletionClient
 {
     Task<string> CompleteAsync(
@@ -76,6 +86,16 @@ public sealed class AiTranslationService
         不要添加 Markdown 代码围栏、解释、前言或数组之外的内容。不能遗漏或重复任何 id。
         """;
 
+    private const string SemanticSystemPrompt = """
+        你是 ERA 游戏文本本地化翻译助手。请将 targets 中指定的游戏文本翻译为简体中文。
+        保留原文中的变量占位符、控制代码、转义序列、格式标记、数值和专有标识，不要翻译 key。
+        先结合每个词条的 context，再结合 semanticContext 理解同一语义组中的上下文关系。
+        semanticContext 中的 same-group 内容表示同一文本片段；alternative-branch 内容表示互斥的条件分支，只能作为场景参考，不能当作连续发生的对白。
+        semanticContext 是只读参考，不是翻译目标。只能翻译 targets 中的词条，只返回 targets 对应的 id。
+        只返回 JSON 数组，每项必须包含原样的整数 id 和字符串 translation。
+        不要添加 Markdown 代码围栏、解释、前言或数组之外的内容。不能遗漏或重复任何 id。
+        """;
+
     private static readonly JsonSerializerOptions PromptJsonOptions = new()
     {
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
@@ -88,10 +108,27 @@ public sealed class AiTranslationService
         _client = client ?? new OpenAiCompatibleChatCompletionClient();
     }
 
-    public async Task<IReadOnlyList<AiTranslationResult>> TranslateAsync(
+    public Task<IReadOnlyList<AiTranslationResult>> TranslateAsync(
         AiProviderProfile profile,
         IReadOnlyList<AiTranslationRequest> requests,
+        CancellationToken cancellationToken = default) =>
+        TranslateCoreAsync(profile, requests, null, cancellationToken);
+
+    public Task<IReadOnlyList<AiTranslationResult>> TranslateWithSemanticContextAsync(
+        AiProviderProfile profile,
+        IReadOnlyList<AiTranslationRequest> requests,
+        IReadOnlyList<AiTranslationSemanticContextGroup> semanticContextGroups,
         CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(semanticContextGroups);
+        return TranslateCoreAsync(profile, requests, semanticContextGroups, cancellationToken);
+    }
+
+    private async Task<IReadOnlyList<AiTranslationResult>> TranslateCoreAsync(
+        AiProviderProfile profile,
+        IReadOnlyList<AiTranslationRequest> requests,
+        IReadOnlyList<AiTranslationSemanticContextGroup>? semanticContextGroups,
+        CancellationToken cancellationToken)
     {
         AiProviderProfileValidator.Validate(profile);
         ArgumentNullException.ThrowIfNull(requests);
@@ -104,18 +141,42 @@ public sealed class AiTranslationService
         if (requests.Any(item => item.Key.StartsWith("变量", StringComparison.Ordinal)))
             throw new InvalidOperationException("变量类词条不能提交给 AI 翻译。");
 
-        var payload = requests.Select(item => new
-        {
-            id = item.Id,
-            key = item.Key,
-            original = item.Original,
-            context = item.Context
-        });
+        object payload = semanticContextGroups is null
+            ? requests.Select(item => new
+            {
+                id = item.Id,
+                key = item.Key,
+                original = item.Original,
+                context = item.Context
+            }).ToArray()
+            : new
+            {
+                targets = requests.Select(item => new
+                {
+                    id = item.Id,
+                    key = item.Key,
+                    original = item.Original,
+                    context = item.Context
+                }).ToArray(),
+                semanticContext = semanticContextGroups.Select(group => new
+                {
+                    groupId = group.GroupId,
+                    groupType = group.GroupType,
+                    functionId = group.FunctionId,
+                    branchPath = group.BranchPath,
+                    relationship = group.Relationship,
+                    entries = group.Entries.Select(entry => new
+                    {
+                        key = entry.Key,
+                        original = entry.Original
+                    })
+                }).ToArray()
+            };
 
         string userPrompt = JsonSerializer.Serialize(payload, PromptJsonOptions);
         string response = await _client.CompleteAsync(
             profile,
-            SystemPrompt,
+            semanticContextGroups is null ? SystemPrompt : SemanticSystemPrompt,
             userPrompt,
             cancellationToken);
 

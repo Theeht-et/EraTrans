@@ -86,6 +86,60 @@ public sealed class DictionaryExtractorTests
     }
 
     [Fact]
+    public void Extract_DoesNotOverwriteExistingTranslatedDictionaries_AndStillCreatesNewOnes()
+    {
+        string root = CreateTempDirectory();
+        string game = Path.Combine(root, "Game");
+        string output = Path.Combine(root, "Output");
+
+        Write(game, "CSV/items.csv", "ID,物品甲\n");
+        Write(game, "ERB/creature.erd", "ID,魔物名称\n");
+
+        var extractor = new DictionaryExtractor();
+        extractor.Extract(game, output);
+
+        string itemDictionaryPath = Path.Combine(output, "CSV", "items.json");
+        string erdNameDictionaryPath = Path.Combine(output, "CSV", "ERD字典.json");
+        string erdContentDictionaryPath = Path.Combine(output, "ERB", "creature.json");
+
+        var itemEntries = JArray.Parse(File.ReadAllText(itemDictionaryPath));
+        itemEntries[0]!["translation"] = "已翻译物品";
+        itemEntries[0]!["stage"] = 1;
+        string translatedItems = itemEntries.ToString(Newtonsoft.Json.Formatting.Indented);
+        File.WriteAllText(itemDictionaryPath, translatedItems);
+
+        var erdEntries = JArray.Parse(File.ReadAllText(erdNameDictionaryPath));
+        erdEntries[0]!["translation"] = "魔物数据";
+        erdEntries[0]!["stage"] = 1;
+        string translatedErdNames = erdEntries.ToString(Newtonsoft.Json.Formatting.Indented);
+        File.WriteAllText(erdNameDictionaryPath, translatedErdNames);
+
+        var erdContentEntries = JArray.Parse(File.ReadAllText(erdContentDictionaryPath));
+        erdContentEntries[0]!["translation"] = "魔物名称译文";
+        erdContentEntries[0]!["stage"] = 1;
+        string translatedErdContent = erdContentEntries.ToString(Newtonsoft.Json.Formatting.Indented);
+        File.WriteAllText(erdContentDictionaryPath, translatedErdContent);
+
+        // Simulate a game update that introduces a new file.
+        Write(game, "CSV/new.csv", "ID,新增条目\n");
+
+        var result = extractor.Extract(game, output);
+
+        Assert.Equal(translatedItems, File.ReadAllText(itemDictionaryPath));
+        Assert.Equal(translatedErdNames, File.ReadAllText(erdNameDictionaryPath));
+        Assert.Equal(translatedErdContent, File.ReadAllText(erdContentDictionaryPath));
+
+        string newDictionaryPath = Path.Combine(output, "CSV", "new.json");
+        Assert.True(File.Exists(newDictionaryPath));
+        Assert.Contains(newDictionaryPath, result.GeneratedFiles);
+        Assert.Single(result.GeneratedFiles);
+
+        Assert.Contains(result.Warnings, warning => warning.Contains("CSV" + Path.DirectorySeparatorChar + "items.json", StringComparison.Ordinal));
+        Assert.Contains(result.Warnings, warning => warning.Contains("CSV" + Path.DirectorySeparatorChar + "ERD字典.json", StringComparison.Ordinal));
+        Assert.Contains(result.Warnings, warning => warning.Contains("ERB" + Path.DirectorySeparatorChar + "creature.json", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void Extract_RejectsOutputInsideGameDirectory()
     {
         string root = CreateTempDirectory();

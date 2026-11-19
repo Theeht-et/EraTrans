@@ -64,8 +64,15 @@ public sealed class DictionaryExtractor
             if (erdFiles.Length > 0)
             {
                 string erdDictionaryPath = Path.Combine(outputRoot, "CSV", "ERD字典.json");
-                PZJson.WriteErdFileNameDictionary(erdDictionaryPath, erdFiles);
-                generatedFiles.Add(erdDictionaryPath);
+                if (File.Exists(erdDictionaryPath))
+                {
+                    warnings.Add($"字典文件已存在，跳过以保护已有译文：{Path.GetRelativePath(outputRoot, erdDictionaryPath)}");
+                }
+                else
+                {
+                    PZJson.WriteErdFileNameDictionary(erdDictionaryPath, erdFiles);
+                    generatedFiles.Add(erdDictionaryPath);
+                }
             }
 
             GameFileKind[] legacyProcessingOrder =
@@ -86,6 +93,19 @@ public sealed class DictionaryExtractor
                     file =>
                     {
                     string targetFile = ResolveOutputPath(outputRoot, file.RelativePath);
+                    string dictionaryOutputPath = kind == GameFileKind.Xml
+                        ? targetFile + ".json"
+                        : Path.ChangeExtension(targetFile, ".json");
+
+                    // Never replace an existing dictionary: it may already contain user
+                    // translations. Re-extraction creates only dictionaries that do not exist.
+                    if (File.Exists(dictionaryOutputPath))
+                    {
+                        warnings.Add(
+                            $"字典文件已存在，跳过以保护已有译文：{Path.GetRelativePath(outputRoot, dictionaryOutputPath)}");
+                        return;
+                    }
+
                     Directory.CreateDirectory(Path.GetDirectoryName(targetFile)!);
                     string? referenceFile = referenceRoot is null
                         ? null

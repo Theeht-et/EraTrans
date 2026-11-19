@@ -266,7 +266,11 @@ public sealed class ErbTranslationGroupingService
                 return false;
             }
 
-            if (loaded.Groups is null ||
+            if (string.IsNullOrWhiteSpace(loaded.SourceFile) ||
+                string.IsNullOrWhiteSpace(loaded.SourceFingerprint) ||
+                string.IsNullOrWhiteSpace(loaded.DictionaryFile) ||
+                string.IsNullOrWhiteSpace(loaded.DictionaryFingerprint) ||
+                loaded.Groups is null ||
                 loaded.Entries is null ||
                 loaded.Groups.Any(group =>
                     group is null ||
@@ -275,6 +279,7 @@ public sealed class ErbTranslationGroupingService
                 loaded.Entries.Any(entry =>
                     entry is null ||
                     string.IsNullOrWhiteSpace(entry.Key) ||
+                    string.IsNullOrWhiteSpace(entry.Original) ||
                     string.IsNullOrWhiteSpace(entry.GroupId)))
             {
                 reason = "分组文件缺少必要的分组或词条映射数据。请重新提取字典。";
@@ -418,14 +423,16 @@ public sealed class ErbTranslationGroupingService
                 }
             }
 
-            foreach ((string key, string original) in currentEntries)
+            for (int sequence = 0; sequence < currentEntries.Length; sequence++)
             {
-                if (!indexedEntries.TryGetValue(key, out ErbTranslationGroupEntry? entry) ||
+                (string key, string original) = currentEntries[sequence];
+                ErbTranslationGroupEntry entry = orderedIndexedEntries[sequence];
+                if (!string.Equals(entry.Key, key, StringComparison.Ordinal) ||
                     !string.Equals(entry.Original, original, StringComparison.Ordinal) ||
                     !indexedGroups.TryGetValue(entry.GroupId, out ErbTranslationGroup? group) ||
                     !group.EntryKeys.Contains(key, StringComparer.Ordinal))
                 {
-                    reason = "分组文件与当前字典的词条关联不一致。请重新提取字典。";
+                    reason = "分组文件与当前字典的词条关联或顺序不一致。请重新提取字典。";
                     return false;
                 }
             }

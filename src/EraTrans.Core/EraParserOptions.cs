@@ -16,24 +16,6 @@ public sealed class EraParserOptions
     public bool WriteContext { get; init; } = true;
 
     /// <summary>
-    /// Matches the first-run default in the legacy parser's generated config.json.
-    /// </summary>
-    public bool EnableVariableAutoCorrection { get; init; } = true;
-
-    /// <summary>
-    /// Top-level CSV dictionary names used by the legacy autoReplace step,
-    /// without the .json extension.
-    /// </summary>
-    public IReadOnlyList<string> AutoReplaceReferenceFiles { get; init; } =
-    [
-        "Abl", "Base", "CFlag", "CSTR", "Equip", "Ex",
-        "Exp", "Flag", "Global", "Item", "Juel",
-        "Mark", "Nowex", "Palam", "Source", "Stain",
-        "Talent", "TCVAR", "TEquip", "Tflag", "Train",
-        "TSTR", "修正字典"
-    ];
-
-    /// <summary>
     /// File extensions the legacy translator checks for a dictionary with the same relative path.
     /// </summary>
     public IReadOnlyList<string> TargetFileExtensions { get; init; } =

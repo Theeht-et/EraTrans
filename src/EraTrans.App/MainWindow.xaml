@@ -3,9 +3,9 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="EraTrans"
         Width="1000"
-        Height="800"
+        Height="760"
         MinWidth="760"
-        MinHeight="660"
+        MinHeight="620"
         WindowStartupLocation="CenterScreen"
         Background="#F5F6F8">
     <Grid Margin="24">
@@ -35,7 +35,6 @@
                 CornerRadius="8">
             <Grid VerticalAlignment="Center">
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
@@ -164,15 +163,7 @@
                     </ComboBox>
                 </Grid>
 
-                <CheckBox x:Name="AutoVariableCorrectionCheckBox"
-                          Grid.Row="6"
-                          IsChecked="True"
-                          Margin="0,0,0,16"
-                          VerticalAlignment="Center"
-                          Content="启用旧版自动变量修正（会复制并修正所有 ERB / ERH / ERD 文件）"
-                          ToolTip="使用 CSV 目录下 Abl、Base、CFlag 等旧版参考字典；仅修改游戏副本。" />
-
-                <StackPanel Grid.Row="7"
+                <StackPanel Grid.Row="6"
                             Orientation="Horizontal"
                             Margin="0,0,0,4">
                     <Button x:Name="ExtractButton"
@@ -193,7 +184,7 @@
                 </StackPanel>
 
                 <TextBlock x:Name="StatusText"
-                           Grid.Row="8"
+                           Grid.Row="7"
                            Margin="0,16,0,0"
                            Text="提取只写入字典目录；应用译文只会修改游戏副本，不会覆盖已有副本文件。"
                            TextWrapping="Wrap"

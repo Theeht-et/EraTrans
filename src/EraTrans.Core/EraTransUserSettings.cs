@@ -17,6 +17,7 @@ public sealed class EraTransUserSettings
     public bool HideVariableEntries { get; set; } = false;
     public bool MergeConcatenatedStrings { get; set; } = true;
     public bool WriteContext { get; set; } = true;
+    public bool EnableErbSemanticGroupingTranslation { get; set; } = false;
 
     public List<string> TargetFileExtensions { get; set; } =
     [

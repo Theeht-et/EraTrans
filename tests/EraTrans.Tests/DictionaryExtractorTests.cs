@@ -99,6 +99,36 @@ public sealed class DictionaryExtractorTests
     }
 
     [Fact]
+    public void Extract_BackfillsContextForLegacyReferenceKeysWithoutChangingReferenceTranslation()
+    {
+        string root = CreateTempDirectory();
+        string game = Path.Combine(root, "Game");
+        string reference = Path.Combine(root, "Reference");
+        string output = Path.Combine(root, "Output");
+        Write(game, "CSV/items.csv", "ID,原文项目\\n");
+        Write(reference, "CSV/items.csv", "ID,参考译文\\n");
+
+        var extractor = new DictionaryExtractor();
+        extractor.Extract(game, output, reference);
+
+        string dictionaryPath = Path.Combine(output, "CSV", "items.json");
+        JArray entries = JArray.Parse(File.ReadAllText(dictionaryPath));
+        JObject entry = Assert.IsType<JObject>(Assert.Single(entries));
+        Assert.StartsWith("变量", (string?)entry["key"]);
+        entry.Remove("context");
+        File.WriteAllText(dictionaryPath, entries.ToString(Newtonsoft.Json.Formatting.Indented));
+
+        DictionaryExtractionResult result = extractor.Extract(game, output);
+
+        JObject updated = Assert.IsType<JObject>(Assert.Single(JArray.Parse(File.ReadAllText(dictionaryPath))));
+        Assert.Equal("原文项目", (string?)updated["original"]);
+        Assert.Equal("参考译文", (string?)updated["translation"]);
+        Assert.Equal(1, (int?)updated["stage"]);
+        Assert.Contains("ID,原文项目", (string?)updated["context"] ?? string.Empty);
+        Assert.Contains(dictionaryPath, result.UpdatedContextFiles ?? Array.Empty<string>());
+    }
+
+    [Fact]
     public void Extract_DoesNotOverwriteExistingTranslatedDictionaries_AndStillCreatesNewOnes()
     {
         string root = CreateTempDirectory();

@@ -313,9 +313,10 @@ public sealed class DictionaryExtractor
             }
 
             string key = existingEntry["key"]?.ToString() ?? string.Empty;
+            string matchKey = NormalizeContextMatchKey(key);
             string original = existingEntry["original"]?.ToString() ?? string.Empty;
             if (key.Length == 0 ||
-                !extractedByKey.TryGetValue(key, out JObject? extractedEntry) ||
+                !extractedByKey.TryGetValue(matchKey, out JObject? extractedEntry) ||
                 !string.Equals(extractedEntry["original"]?.ToString(), original, StringComparison.Ordinal))
             {
                 continue;
@@ -386,6 +387,17 @@ public sealed class DictionaryExtractor
                 File.Delete(temporaryPath);
             }
         }
+    }
+
+    private static string NormalizeContextMatchKey(string key)
+    {
+        if (key.StartsWith("变量", StringComparison.Ordinal) ||
+            key.StartsWith("图像", StringComparison.Ordinal))
+        {
+            return key[2..];
+        }
+
+        return key;
     }
 
     private static void AddIfCreated(string path, ConcurrentBag<string> generatedFiles)

@@ -32,6 +32,7 @@ public sealed class ErbTranslationGroupingServiceTests
             dictionaryPath,
             candidatePath,
             sourcePath,
+            ErbTranslationGroupingService.ComputeSourceFingerprint(sourcePath),
             "ERB/sample.erb",
             sourceEntries,
             [],
@@ -84,7 +85,8 @@ public sealed class ErbTranslationGroupingServiceTests
 
         var service = new ErbTranslationGroupingService();
         Assert.True(service.TryWriteOrUpdate(
-            dictionaryDirectory, dictionaryPath, candidatePath, sourcePath, "ERB/menu.erb",
+            dictionaryDirectory, dictionaryPath, candidatePath, sourcePath,
+            ErbTranslationGroupingService.ComputeSourceFingerprint(sourcePath), "ERB/menu.erb",
             sourceEntries, [], out _, out string? warning), warning);
 
         JArray translated = JArray.Parse(File.ReadAllText(dictionaryPath));
@@ -134,6 +136,7 @@ public sealed class ErbTranslationGroupingServiceTests
             dictionaryPath,
             candidatePath,
             sourcePath,
+            ErbTranslationGroupingService.ComputeSourceFingerprint(sourcePath),
             "ERB/menu.erb",
             sourceEntries,
             [],

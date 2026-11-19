@@ -1,0 +1,62 @@
+<Window x:Class="EraTrans.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="EraTrans"
+        Width="1000"
+        Height="680"
+        MinWidth="760"
+        MinHeight="520"
+        WindowStartupLocation="CenterScreen"
+        Background="#F5F6F8">
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel>
+            <TextBlock Text="EraTrans"
+                       FontSize="28"
+                       FontWeight="SemiBold"
+                       Foreground="#20242A" />
+            <TextBlock Margin="0,6,0,0"
+                       Text="ERA 游戏翻译工具"
+                       FontSize="14"
+                       Foreground="#68717D" />
+        </StackPanel>
+
+        <Border Grid.Row="1"
+                Margin="0,24,0,24"
+                Padding="32"
+                Background="White"
+                BorderBrush="#E3E6EA"
+                BorderThickness="1"
+                CornerRadius="8">
+            <StackPanel VerticalAlignment="Center"
+                        HorizontalAlignment="Center">
+                <TextBlock Text="准备开始"
+                           FontSize="22"
+                           FontWeight="SemiBold"
+                           HorizontalAlignment="Center"
+                           Foreground="#20242A" />
+                <TextBlock Margin="0,12,0,0"
+                           Text="第一步将接入现有字典提取功能。"
+                           FontSize="14"
+                           Foreground="#68717D"
+                           HorizontalAlignment="Center" />
+                <TextBlock Margin="0,8,0,0"
+                           Text="变量类词条不会进入翻译流程。"
+                           FontSize="13"
+                           Foreground="#68717D"
+                           HorizontalAlignment="Center" />
+            </StackPanel>
+        </Border>
+
+        <TextBlock Grid.Row="2"
+                   Text="开发版本 · 功能正在逐步接入"
+                   FontSize="12"
+                   Foreground="#87909B"
+                   HorizontalAlignment="Right" />
+    </Grid>
+</Window>

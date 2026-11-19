@@ -1315,7 +1315,7 @@ public class ERBParser
     private static string GetCommandType(string lineString)
     {
         string normalized = lineString.TrimStart();
-        int separator = normalized.IndexOfAny([' ', '<', '\\t']);
+        int separator = normalized.IndexOfAny([' ', '<', '\t']);
         return separator < 0 ? normalized.ToUpperInvariant() : normalized[..separator].ToUpperInvariant();
     }
 

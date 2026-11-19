@@ -139,7 +139,17 @@ public static class GameFileWorkspace
         string workspaceRoot,
         List<string> copiedFiles)
     {
-        foreach (string sourcePath in Directory.EnumerateFileSystemEntries(sourceDirectory)
+        var enumerationOptions = new EnumerationOptions
+        {
+            AttributesToSkip = 0,
+            IgnoreInaccessible = false,
+            RecurseSubdirectories = false
+        };
+
+        foreach (string sourcePath in Directory.EnumerateFileSystemEntries(
+                     sourceDirectory,
+                     "*",
+                     enumerationOptions)
                      .OrderBy(path => Path.GetFileName(path), StringComparer.OrdinalIgnoreCase)
                      .ThenBy(path => Path.GetFileName(path), StringComparer.Ordinal))
         {

@@ -173,10 +173,14 @@ public class ERBParser
                 // 如果逗号的下标小于第一个左括号，则说明是CALL Func, Pram形式，否则是CALL Func(Pram)形式
                 int cmIndex = rightValue.IndexOf(",");
                 int lfIndex = rightValue.IndexOf("(");
+                bool isFormattedFunctionCall = IsFormattedFunctionCall(lineString);
                 if (lfIndex > -1 && cmIndex > lfIndex)
                 {
-                    string functionName = rightValue.Substring(0, lfIndex);
-                    varNameList.Add(functionName, contexts);
+                    string functionName = rightValue.Substring(0, lfIndex).Trim();
+                    if (ShouldAddFunctionName(functionName, isFormattedFunctionCall))
+                    {
+                        varNameList.Add(functionName, contexts);
+                    }
                     rightValue = rightValue.Substring(lfIndex).TrimEnd(')');
                     if (Configs.mergeString)
                     {
@@ -204,6 +208,16 @@ public class ERBParser
                 }
                 else
                 {
+                    // CALLFORM also accepts a formatted function name without arguments.
+                    // Do not feed FORM placeholders into the expression parser as variable names.
+                    if (isFormattedFunctionCall &&
+                        lfIndex == -1 &&
+                        cmIndex == -1 &&
+                        ContainsDynamicFormSyntax(rightValue))
+                    {
+                        continue;
+                    }
+
                     // 如果要合并参数中的联立字符串
                     if (Configs.mergeString)
                     {
@@ -259,10 +273,14 @@ public class ERBParser
                     // 与CALL分支逻辑一致，支持CALLFORM Func(Pram)和CALLFORM Func, Pram两种形式
                     int cmIndex = rightValue.IndexOf(",");
                     int lfIndex = rightValue.IndexOf("(");
+                    bool isFormattedFunctionCall = IsFormattedFunctionCall(lineString);
                     if (lfIndex > -1 && cmIndex > lfIndex)
                     {
-                        string functionName = rightValue.Substring(0, lfIndex);
-                        varNameList.Add(functionName, contexts);
+                        string functionName = rightValue.Substring(0, lfIndex).Trim();
+                        if (ShouldAddFunctionName(functionName, isFormattedFunctionCall))
+                        {
+                            varNameList.Add(functionName, contexts);
+                        }
                         rightValue = rightValue.Substring(lfIndex).TrimEnd(')');
                         if (Configs.mergeString)
                         {
@@ -290,6 +308,16 @@ public class ERBParser
                     }
                     else
                     {
+                        // CALLFORM also accepts a formatted function name without arguments.
+                        // Do not feed FORM placeholders into the expression parser as variable names.
+                        if (isFormattedFunctionCall &&
+                            lfIndex == -1 &&
+                            cmIndex == -1 &&
+                            ContainsDynamicFormSyntax(rightValue))
+                        {
+                            continue;
+                        }
+
                         // 没有括号或逗号在括号前的形式，整体解析
                         if (Configs.mergeString)
                         {
@@ -1075,6 +1103,36 @@ public class ERBParser
         }
 
         return resultList;
+    }
+
+    private static bool IsFormattedFunctionCall(string lineString)
+    {
+        return lineString.StartsWith("CALLFORM", StringComparison.Ordinal) ||
+               lineString.StartsWith("TRYCALLFORM", StringComparison.Ordinal) ||
+               lineString.StartsWith("TRYCCALLFORM", StringComparison.Ordinal);
+    }
+
+    private static bool ContainsDynamicFormSyntax(string functionName)
+    {
+        return functionName.IndexOfAny(['{', '}', '%']) >= 0 ||
+               functionName.Contains("\\@", StringComparison.Ordinal);
+    }
+
+    private static bool ShouldAddFunctionName(string functionName, bool isFormattedFunctionCall)
+    {
+        string normalizedName = functionName.Trim();
+        if (normalizedName.Length == 0)
+        {
+            return false;
+        }
+
+        if (isFormattedFunctionCall && ContainsDynamicFormSyntax(normalizedName))
+        {
+            return false;
+        }
+
+        // Match simpleFuncExpression: ASCII-like code symbols are not dictionary entries.
+        return !Tools.engArrayFilter.IsMatch(normalizedName);
     }
 
     /// <summary>

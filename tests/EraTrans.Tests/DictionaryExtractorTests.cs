@@ -105,8 +105,8 @@ public sealed class DictionaryExtractorTests
         string game = Path.Combine(root, "Game");
         string reference = Path.Combine(root, "Reference");
         string output = Path.Combine(root, "Output");
-        Write(game, "CSV/items.csv", "ID,原文项目\\n");
-        Write(reference, "CSV/items.csv", "ID,参考译文\\n");
+        Write(game, "CSV/items.csv", "ID,原文项目\n");
+        Write(reference, "CSV/items.csv", "ID,参考译文\n");
 
         var extractor = new DictionaryExtractor();
         extractor.Extract(game, output, reference);

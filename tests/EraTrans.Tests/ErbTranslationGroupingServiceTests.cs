@@ -111,6 +111,49 @@ public sealed class ErbTranslationGroupingServiceTests
     }
 
     [Fact]
+    public void TryLoad_RejectsChangedErbSourceOrSameNameErhCompanion()
+    {
+        using var temporary = new TemporaryDirectory();
+        string dictionaryDirectory = Path.Combine(temporary.Path, "字典");
+        string dictionaryPath = Path.Combine(dictionaryDirectory, "ERB", "menu.json");
+        string candidatePath = Path.Combine(temporary.Path, "candidate.json");
+        string gameDirectory = Path.Combine(temporary.Path, "Game");
+        string sourcePath = WriteSource(gameDirectory, "ERB/menu.erb", "@MENU\\nPRINTFORML 菜单提示");
+        string companionPath = WriteSource(gameDirectory, "ERB/menu.erh", "#DIM 菜单变量");
+
+        var sourceEntries = new[]
+        {
+            Source("文本ERB\\menu00000", "菜单提示", 0, 1, "MENU", "", "", "", null)
+        };
+        WriteDictionary(dictionaryPath, sourceEntries);
+        WriteDictionary(candidatePath, sourceEntries);
+
+        var service = new ErbTranslationGroupingService();
+        Assert.True(service.TryWriteOrUpdate(
+            dictionaryDirectory,
+            dictionaryPath,
+            candidatePath,
+            sourcePath,
+            "ERB/menu.erb",
+            sourceEntries,
+            [],
+            out _,
+            out string? warning), warning);
+
+        File.WriteAllText(companionPath, "#DIM 菜单变量\\n#DIM 新增变量");
+        DictionaryEditorDocument document = new DictionaryEditorService().Load(dictionaryPath);
+
+        Assert.False(service.TryLoad(
+            dictionaryDirectory,
+            dictionaryPath,
+            document.Entries.ToArray(),
+            gameDirectory,
+            out _,
+            out string? reason));
+        Assert.Contains("ERB 源文件或其同名 ERH 文件已发生变化", reason ?? string.Empty, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void BuildTranslationBatches_ProvidesMenuPromptAndMutuallyExclusiveBranchesAsReadOnlyContext()
     {
         using var temporary = new TemporaryDirectory();

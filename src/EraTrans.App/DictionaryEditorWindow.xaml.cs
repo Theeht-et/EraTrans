@@ -31,14 +31,15 @@ public partial class DictionaryEditorWindow : Window
 
     public DictionaryEditorWindow(
         string dictionaryDirectory,
-        string gameDirectory,
+        string? gameDirectory,
         EraTransUserSettings settings)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(dictionaryDirectory);
-        ArgumentException.ThrowIfNullOrWhiteSpace(gameDirectory);
         ArgumentNullException.ThrowIfNull(settings);
         _dictionaryDirectory = Path.GetFullPath(dictionaryDirectory);
-        _gameDirectory = Path.GetFullPath(gameDirectory);
+        _gameDirectory = string.IsNullOrWhiteSpace(gameDirectory)
+            ? string.Empty
+            : Path.GetFullPath(gameDirectory);
         _settings = settings;
 
         InitializeComponent();

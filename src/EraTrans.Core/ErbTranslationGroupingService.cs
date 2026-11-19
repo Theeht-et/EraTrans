@@ -81,9 +81,10 @@ public sealed class ErbTranslationGroupingService
 {
     private const int SchemaVersion = 1;
     private const int MaxBatchCharacters = 12_000;
-    private const int MaxGroupTargetCharacters = 8_000;
-    private const int MaxSameGroupContextCharacters = 10_000;
-    private const int MaxAlternativeContextCharacters = 2_500;
+    private const int MaxGroupTargetCharacters = 6_000;
+    private const int MaxSameGroupContextCharacters = 3_500;
+    private const int MaxAlternativeContextCharacters = 1_500;
+    private const int MaxMenuPromptContextCharacters = 1_000;
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -417,17 +418,35 @@ public sealed class ErbTranslationGroupingService
                     string.Equals(group.ControlScopeId, targetGroup.ControlScopeId, StringComparison.Ordinal) &&
                     string.Equals(group.BranchLabel, "MENU_PROMPT", StringComparison.Ordinal));
 
+            int remainingPromptCharacters = MaxMenuPromptContextCharacters;
             foreach (ErbTranslationGroup prompt in menuPrompts)
             {
-                var promptEntries = prompt.EntryKeys
-                    .Select(key => dictionaryEntries.TryGetValue(key, out DictionaryEditorEntry? entry) ? entry : null)
-                    .Where(entry => entry is not null)
-                    .Cast<DictionaryEditorEntry>()
-                    .Select(entry => new AiTranslationContextEntry(entry.Key, entry.Original))
-                    .ToArray();
-                if (promptEntries.Length > 0)
+                var promptEntries = new List<AiTranslationContextEntry>();
+                foreach (string key in prompt.EntryKeys)
+                {
+                    if (!dictionaryEntries.TryGetValue(key, out DictionaryEditorEntry? entry))
+                    {
+                        continue;
+                    }
+
+                    int length = entry.Key.Length + entry.Original.Length + 24;
+                    if (length > remainingPromptCharacters)
+                    {
+                        break;
+                    }
+
+                    promptEntries.Add(new AiTranslationContextEntry(entry.Key, entry.Original));
+                    remainingPromptCharacters -= length;
+                }
+
+                if (promptEntries.Count > 0)
                 {
                     contexts.Add(CreateContextGroup(prompt, "menu-prompt", promptEntries));
+                }
+
+                if (remainingPromptCharacters <= 0)
+                {
+                    break;
                 }
             }
 
@@ -612,8 +631,41 @@ public sealed class ErbTranslationGroupingService
         }
 
         int lineGap = current.ParsedLine - previous.ParsedLine;
-        return lineGap <= 4 || lineGap == 0;
+        bool previousMenuCall = IsMenuCall(previous.CallTarget);
+        bool currentMenuCall = IsMenuCall(current.CallTarget);
+        if (previousMenuCall || currentMenuCall)
+        {
+            return lineGap <= 8 &&
+                   (previousMenuCall || IsVisibleTextOutput(previous.OutputType)) &&
+                   (currentMenuCall || IsVisibleTextOutput(current.OutputType));
+        }
+
+        bool previousVisible = IsVisibleTextOutput(previous.OutputType);
+        bool currentVisible = IsVisibleTextOutput(current.OutputType);
+        if (previousVisible || currentVisible)
+        {
+            return previousVisible && currentVisible && lineGap <= 12;
+        }
+
+        if (previousCondition || currentCondition)
+        {
+            return previousCondition &&
+                   currentCondition &&
+                   string.Equals(previous.OutputType, current.OutputType, StringComparison.Ordinal) &&
+                   lineGap <= 4;
+        }
+
+        return lineGap == 0 &&
+               string.Equals(previous.OutputType, current.OutputType, StringComparison.Ordinal);
     }
+
+    private static bool IsVisibleTextOutput(string outputType) =>
+        outputType.StartsWith("PRINT", StringComparison.Ordinal) ||
+        outputType is "HTML_PRINT" or "DATA" or "REUSELASTLINE" or "PUTFORM";
+
+    private static bool IsMenuCall(string? callTarget) =>
+        callTarget?.Contains("CHOICE", StringComparison.OrdinalIgnoreCase) == true ||
+        callTarget?.Contains("ASK", StringComparison.OrdinalIgnoreCase) == true;
 
     private static string ClassifyGroupType(
         IReadOnlyList<ErbTranslationSourceEntry> entries,

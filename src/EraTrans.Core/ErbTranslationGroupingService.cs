@@ -796,12 +796,12 @@ public sealed class ErbTranslationGroupingService
         if (previousMenuCall || currentMenuCall)
         {
             return lineGap <= 8 &&
-                   (previousMenuCall || IsVisibleTextOutput(previous.OutputType)) &&
-                   (currentMenuCall || IsVisibleTextOutput(current.OutputType));
+                   (previousMenuCall || IsVisibleTextOutput(previous)) &&
+                   (currentMenuCall || IsVisibleTextOutput(current));
         }
 
-        bool previousVisible = IsVisibleTextOutput(previous.OutputType);
-        bool currentVisible = IsVisibleTextOutput(current.OutputType);
+        bool previousVisible = IsVisibleTextOutput(previous);
+        bool currentVisible = IsVisibleTextOutput(current);
         if (previousVisible || currentVisible)
         {
             return previousVisible && currentVisible && lineGap <= 12;
@@ -819,9 +819,22 @@ public sealed class ErbTranslationGroupingService
                string.Equals(previous.OutputType, current.OutputType, StringComparison.Ordinal);
     }
 
-    private static bool IsVisibleTextOutput(string outputType) =>
-        outputType.StartsWith("PRINT", StringComparison.Ordinal) ||
-        outputType is "HTML_PRINT" or "DATA" or "REUSELASTLINE" or "PUTFORM";
+    private static bool IsVisibleTextOutput(ErbTranslationSourceEntry entry)
+    {
+        if (entry.OutputType.StartsWith("PRINT", StringComparison.Ordinal) ||
+            entry.OutputType is "HTML_PRINT" or "DATA" or "REUSELASTLINE" or "PUTFORM")
+        {
+            return true;
+        }
+
+        string? callTarget = entry.CallTarget;
+        return callTarget is not null &&
+               (callTarget.StartsWith("HTMLPRINT", StringComparison.OrdinalIgnoreCase) ||
+                callTarget.StartsWith("HTML_PRINT", StringComparison.OrdinalIgnoreCase) ||
+                callTarget.StartsWith("PRINTHTML", StringComparison.OrdinalIgnoreCase) ||
+                callTarget.StartsWith("PRINT_HTML", StringComparison.OrdinalIgnoreCase) ||
+                callTarget.StartsWith("TAG_PRINT", StringComparison.OrdinalIgnoreCase));
+    }
 
     private static bool IsMenuCall(string? callTarget) =>
         callTarget?.Contains("CHOICE", StringComparison.OrdinalIgnoreCase) == true ||

@@ -87,6 +87,18 @@ public sealed class EraTransUserSettingsTests
     }
 
     [Fact]
+    public void Store_LoadSettingsWithoutSemanticSwitch_DefaultsToLegacyTranslationMode()
+    {
+        using var temporary = new TemporaryDirectory();
+        string path = Path.Combine(temporary.Path, "settings.json");
+        File.WriteAllText(path, """{ "FileEncodingId": "utf8" }""");
+
+        EraTransUserSettings settings = new EraTransUserSettingsStore(path).Load();
+
+        Assert.False(settings.EnableErbSemanticGroupingTranslation);
+    }
+
+    [Fact]
     public void Store_LoadLegacyAppDataSettings_CopiesSettingsBesideExecutableAndKeepsSource()
     {
         using var temporary = new TemporaryDirectory();

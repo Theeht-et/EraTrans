@@ -25,6 +25,7 @@ public class ERBParser
     private readonly List<ErbControlFrame> _controlFrames = [];
     private readonly List<ErbTranslationControlMarker> _controlMarkers = [];
     private int _nextControlScopeId;
+    private string? _pendingMenuScopeId;
 
     private sealed class ErbControlFrame(string id, string type, string branch)
     {
@@ -132,16 +133,12 @@ public class ERBParser
             }
 
             UpdateStructureBeforeLine(lineString);
-            textList.CurrentSourceMetadata = CreateSourceMetadata(i + 1, lineString);
             string commandType = GetCommandType(lineString);
             if (commandType is "INPUT" or "INPUTS")
             {
-                _controlMarkers.Add(new ErbTranslationControlMarker(
-                    i + 1,
-                    _currentFunctionName,
-                    BuildBranchPath(),
-                    commandType));
+                BeginMenuScope(i + 1, commandType);
             }
+            textList.CurrentSourceMetadata = CreateSourceMetadata(i + 1, lineString);
 
             // TRYCALLLIST
             if (lineString.StartsWith("TRYCALLLIST") || lineString.StartsWith("ENDFUNC"))
@@ -1174,6 +1171,7 @@ public class ERBParser
             }
             _currentFunctionName = function.Length == 0 ? "(unnamed)" : function;
             _controlFrames.Clear();
+            _pendingMenuScopeId = null;
             return;
         }
 
@@ -1236,8 +1234,54 @@ public class ERBParser
 
     private void PushControl(string type, string branch)
     {
-        string id = type.ToLowerInvariant() + "_" + (++_nextControlScopeId).ToString("D4");
+        string id;
+        if (type == "SELECTCASE" && _pendingMenuScopeId is not null)
+        {
+            id = _pendingMenuScopeId;
+            _pendingMenuScopeId = null;
+        }
+        else
+        {
+            id = type.ToLowerInvariant() + "_" + (++_nextControlScopeId).ToString("D4");
+        }
+
         _controlFrames.Add(new ErbControlFrame(id, type, branch));
+    }
+
+    private void BeginMenuScope(int parsedLine, string command)
+    {
+        string menuScopeId = "menu_" + (++_nextControlScopeId).ToString("D4");
+        _pendingMenuScopeId = menuScopeId;
+        _controlMarkers.Add(new ErbTranslationControlMarker(
+            parsedLine,
+            _currentFunctionName,
+            BuildBranchPath(),
+            command));
+
+        // The menu prompt is printed before INPUT. Reassign only nearby output
+        // entries from the same function and execution branch so the subsequent
+        // SELECTCASE alternatives can reference the prompt without merging their
+        // mutually exclusive text into one target group.
+        for (int index = textList.sourceMetadata.Count - 1; index >= 0; index--)
+        {
+            ErbTranslationSourceMetadata metadata = textList.sourceMetadata[index];
+            int lineDistance = parsedLine - metadata.ParsedLine;
+            if (lineDistance > 8)
+            {
+                break;
+            }
+
+            if (lineDistance >= 0 &&
+                string.Equals(metadata.FunctionId, _currentFunctionName, StringComparison.Ordinal) &&
+                string.Equals(metadata.BranchPath, BuildBranchPath(), StringComparison.Ordinal))
+            {
+                textList.sourceMetadata[index] = metadata with
+                {
+                    ControlScopeId = menuScopeId,
+                    BranchLabel = "MENU_PROMPT"
+                };
+            }
+        }
     }
 
     private void PopNearestControl(string type)

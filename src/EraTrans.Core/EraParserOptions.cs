@@ -14,4 +14,15 @@ public sealed class EraParserOptions
     public bool HideVariableEntries { get; init; } = false;
     public bool MergeConcatenatedStrings { get; init; } = true;
     public bool WriteContext { get; init; } = true;
+
+    /// <summary>
+    /// File extensions the legacy translator checks for a dictionary with the same relative path.
+    /// </summary>
+    public IReadOnlyList<string> TargetFileExtensions { get; init; } =
+    [
+        ".csv",
+        ".erb",
+        ".erh",
+        ".erd"
+    ];
 }

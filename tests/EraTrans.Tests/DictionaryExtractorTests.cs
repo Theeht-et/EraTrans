@@ -377,6 +377,48 @@ public sealed class DictionaryExtractorTests
         Assert.Contains("文本ERB", sidecar, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void Extract_ErbGrouping_SeparatesIfElseBranchesAndControlFlowSegments()
+    {
+        string root = CreateTempDirectory();
+        string game = Path.Combine(root, "Game");
+        string output = Path.Combine(root, "Output");
+        Write(game, "ERB/flow.erb", string.Join(Environment.NewLine,
+        [
+            "@FLOW",
+            "IF FLAG:1",
+            "PRINTFORML 条件成立时的文本",
+            "ELSE",
+            "PRINTFORML 条件不成立时的文本",
+            "ENDIF",
+            "PRINTFORML 控制转移前的文本",
+            "GOTO LABEL_END",
+            "PRINTFORML 控制转移后的文本",
+            "@LABEL_END",
+            "PRINTFORML 标签函数中的文本"
+        ]));
+
+        new DictionaryExtractor().Extract(game, output);
+
+        JObject sidecar = JObject.Parse(File.ReadAllText(
+            Path.Combine(output, "AI上下文", "ERB", "flow.groups.json")));
+        JArray entries = Assert.IsType<JArray>(sidecar["entries"]);
+
+        string GroupFor(string original) =>
+            entries.Children<JObject>()
+                .Single(entry => (string?)entry["original"] == original)["groupId"]!.Value<string>()!;
+
+        Assert.NotEqual(
+            GroupFor("条件成立时的文本"),
+            GroupFor("条件不成立时的文本"));
+        Assert.NotEqual(
+            GroupFor("控制转移前的文本"),
+            GroupFor("控制转移后的文本"));
+        Assert.NotEqual(
+            GroupFor("控制转移后的文本"),
+            GroupFor("标签函数中的文本"));
+    }
+
     private static List<string> ReadOriginals(string path)
     {
         return JArray.Parse(File.ReadAllText(path))

@@ -7,6 +7,17 @@ namespace EraTrans.Tests;
 public sealed class EraTransUserSettingsTests
 {
     [Fact]
+    public void DefaultConfigurationPaths_AreBesideApplicationInConfigurationFolder()
+    {
+        Assert.Equal(
+            Path.Combine(AppContext.BaseDirectory, "配置", "settings.json"),
+            EraTransPaths.UserSettingsFilePath);
+        Assert.Equal(
+            Path.Combine(AppContext.BaseDirectory, "配置", "ai-providers.json"),
+            EraTransPaths.AiProviderSettingsFilePath);
+    }
+
+    [Fact]
     public void CreateDefault_MatchesOriginalParserFirstRunSettings()
     {
         EraTransUserSettings settings = EraTransUserSettings.CreateDefault();
@@ -70,6 +81,28 @@ public sealed class EraTransUserSettingsTests
         Assert.Equal(settings.VariableNameCharacters, loaded.VariableNameCharacters);
         Assert.Equal(settings.Operators, loaded.Operators);
         Assert.Equal(932, loaded.ToParserOptions().FileEncoding.CodePage);
+    }
+
+    [Fact]
+    public void Store_LoadLegacyAppDataSettings_CopiesSettingsBesideExecutableAndKeepsSource()
+    {
+        using var temporary = new TemporaryDirectory();
+        string legacyPath = Path.Combine(temporary.Path, "AppData", "EraTrans", "settings.json");
+        string portablePath = Path.Combine(temporary.Path, "Software", "配置", "settings.json");
+        var legacyStore = new EraTransUserSettingsStore(legacyPath);
+        var settings = EraTransUserSettings.CreateDefault();
+        settings.FileEncodingId = "936";
+        settings.HideEnglishText = false;
+        legacyStore.Save(settings);
+        byte[] originalLegacyFile = File.ReadAllBytes(legacyPath);
+
+        var portableStore = new EraTransUserSettingsStore(portablePath, legacyPath);
+        EraTransUserSettings loaded = portableStore.Load();
+
+        Assert.Equal("936", loaded.FileEncodingId);
+        Assert.False(loaded.HideEnglishText);
+        Assert.True(File.Exists(portablePath));
+        Assert.Equal(originalLegacyFile, File.ReadAllBytes(legacyPath));
     }
 
     [Fact]

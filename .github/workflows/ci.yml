@@ -30,22 +30,53 @@ jobs:
       - name: Test
         run: dotnet test EraTrans.sln --configuration Release --no-build --verbosity normal
 
-      - name: Publish Windows x64 application
-        run: dotnet publish src/EraTrans.App/EraTrans.App.csproj --configuration Release --runtime win-x64 --self-contained true --output publish/win-x64
+      - name: Publish single-file Windows x64 application
+        run: dotnet publish src/EraTrans.App/EraTrans.App.csproj --configuration Release --runtime win-x64 --self-contained true --output publish/win-x64 -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugSymbols=false -p:DebugType=None
 
-      - name: Add run instructions
+      - name: Prepare portable folder layout
         shell: pwsh
         run: |
+          $publishDirectory = "publish/win-x64"
+          $exePath = Join-Path $publishDirectory "EraTrans.App.exe"
+          if (-not (Test-Path -LiteralPath $exePath -PathType Leaf)) {
+            throw "Single-file publish did not produce EraTrans.App.exe."
+          }
+
+          $rootFiles = @(Get-ChildItem -LiteralPath $publishDirectory -File)
+          $unexpectedRootFiles = @($rootFiles | Where-Object { $_.Name -ne "EraTrans.App.exe" })
+          if ($unexpectedRootFiles.Count -gt 0) {
+            $names = ($unexpectedRootFiles | ForEach-Object { $_.Name }) -join ", "
+            throw "Unexpected files remain beside the EXE after single-file publish: $names"
+          }
+
+          $configDirectory = Join-Path $publishDirectory "配置"
+          $docsDirectory = Join-Path $publishDirectory "说明"
+          New-Item -ItemType Directory -Force -Path $configDirectory, $docsDirectory | Out-Null
+
+          @'
+          EraTrans configuration files are stored in this folder:
+          - settings.json: parser and extraction settings
+          - ai-providers.json: AI provider profiles; API keys are encrypted with Windows DPAPI
+
+          Configuration is created automatically when settings are first saved.
+          Existing settings from %AppData%\EraTrans are copied here on first launch.
+          The original AppData files are kept as backups.
+          '@ | Set-Content -LiteralPath (Join-Path $configDirectory "文件说明.txt") -Encoding utf8
+
           @'
           EraTrans - Windows x64
 
-          1. Extract the entire ZIP archive to a folder.
+          1. Extract the entire ZIP archive into a writable folder.
           2. Run EraTrans.App.exe.
-          3. Configure an OpenAI-compatible AI provider in the dictionary editor before using AI translation.
+          3. Configure parser options in 设置.
+          4. Configure an OpenAI-compatible AI provider in the dictionary editor before using AI translation.
 
-          This is a self-contained Windows x64 build. A separately installed .NET runtime is not required.
-          Keep all files in the extracted folder together. Do not run the EXE from inside the ZIP preview.
-          '@ | Set-Content -Path "publish/win-x64/运行说明.txt" -Encoding utf8
+          This is a self-contained single-file Windows x64 build. A separately installed .NET runtime is not required.
+          The EXE is kept in the package root. Configuration files are stored in the 配置 folder.
+          Keep the 配置 and 说明 folders beside the EXE. Do not run the EXE from inside the ZIP preview.
+          '@ | Set-Content -LiteralPath (Join-Path $docsDirectory "运行说明.txt") -Encoding utf8
+
+          Copy-Item -LiteralPath "README.md" -Destination (Join-Path $docsDirectory "README.md")
 
       - name: Package Windows x64 application
         shell: pwsh

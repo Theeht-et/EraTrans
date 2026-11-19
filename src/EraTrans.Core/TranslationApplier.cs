@@ -379,7 +379,6 @@ public sealed class TranslationApplier
         string csvDictionaryRoot = Path.Combine(dictionaryRoot, "CSV");
         if (!Directory.Exists(csvDictionaryRoot))
         {
-            warnings.Add("自动变量修正已启用，但字典目录下未找到 CSV 文件夹，已跳过。");
             return;
         }
 
@@ -407,7 +406,6 @@ public sealed class TranslationApplier
 
         if (selectedDictionaries.Count == 0)
         {
-            warnings.Add("自动变量修正已启用，但未找到配置的参考字典，已跳过。");
             return;
         }
 

@@ -46,6 +46,47 @@ public sealed class AiTranslationServiceTests
     }
 
     [Fact]
+    public async Task TranslateWithSemanticContextAsync_OnlyTargetsExplicitEntries_AndMarksAlternativeBranchesAsReference()
+    {
+        var fake = new FakeChatClient(
+            """[{ "id": 5, "translation": "目标译文" }]""");
+        var service = new AiTranslationService(fake);
+        var requests = new[]
+        {
+            new AiTranslationRequest(5, "文本ERB\\MENU00000", "请做出选择", "PRINTFORML 请做出选择")
+        };
+        AiTranslationSemanticContextGroup[] context =
+        [
+            new(
+                "group_000001",
+                "menu",
+                "MENU",
+                "menu_0001:SELECTCASE:SELECTOR",
+                "same-group",
+                [new AiTranslationContextEntry("文本ERB\\MENU00001", "第一个选项")]),
+            new(
+                "group_000003",
+                "branch",
+                "MENU",
+                "menu_0001:SELECTCASE:CASE 1",
+                "alternative-branch",
+                [new AiTranslationContextEntry("文本ERB\\MENU00002", "第二个分支")])
+        ];
+
+        IReadOnlyList<AiTranslationResult> results =
+            await service.TranslateWithSemanticContextAsync(CreateProfile(), requests, context);
+
+        Assert.Single(results);
+        Assert.Equal(5, results[0].Id);
+        Assert.Contains("\\"targets\\"".Replace("\\\\", "\\"), fake.LastUserPrompt);
+        Assert.Contains("第一个选项", fake.LastUserPrompt);
+        Assert.Contains("第二个分支", fake.LastUserPrompt);
+        Assert.Contains("alternative-branch", fake.LastUserPrompt);
+        Assert.Contains("互斥", fake.LastSystemPrompt);
+        Assert.DoesNotContain("文本ERB\\MENU00001", results.Select(result => result.Id.ToString()));
+    }
+
+    [Fact]
     public async Task TranslateAsync_RejectsVariableEntriesBeforeCallingProvider()
     {
         var fake = new FakeChatClient("[]");

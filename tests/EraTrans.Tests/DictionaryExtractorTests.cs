@@ -331,6 +331,52 @@ public sealed class DictionaryExtractorTests
         Assert.Equal("商品名", (string?)entries[0]?["original"]);
     }
 
+    [Fact]
+    public void Extract_ErbFiles_GeneratesSemanticGroupingSidecarWithoutChangingDictionaryShape()
+    {
+        using var temporary = new TemporaryDirectory();
+        string game = Path.Combine(temporary.Path, "Game");
+        string output = Path.Combine(temporary.Path, "Output");
+        Write(game, "ERB/menu.erb", string.Join(Environment.NewLine,
+        [
+            "@MENU",
+            "PRINTFORML 選択してください",
+            "PRINTFORML 項目を選んでください",
+            "INPUT",
+            "SELECTCASE RESULT",
+            "CASE 0",
+            "PRINTFORML 第一項",
+            "CASEELSE",
+            "PRINTFORML 第二項",
+            "ENDSELECT",
+            "ENDFUNC"
+        ]));
+
+        DictionaryExtractionResult result = new DictionaryExtractor().Extract(game, output);
+
+        string dictionaryPath = Path.Combine(output, "ERB", "menu.json");
+        string sidecarPath = Path.Combine(output, "AI上下文", "ERB", "menu.groups.json");
+        Assert.True(File.Exists(dictionaryPath));
+        Assert.True(File.Exists(sidecarPath));
+        Assert.Contains(sidecarPath, result.UpdatedGroupingFiles ?? Array.Empty<string>());
+
+        JArray dictionary = JArray.Parse(File.ReadAllText(dictionaryPath));
+        Assert.All(dictionary, entry =>
+        {
+            Assert.NotNull(entry["key"]);
+            Assert.NotNull(entry["original"]);
+            Assert.NotNull(entry["translation"]);
+            Assert.NotNull(entry["stage"]);
+            Assert.Equal(5, ((JObject)entry!).Properties().Count());
+        });
+
+        string sidecar = File.ReadAllText(sidecarPath);
+        Assert.Contains("MENU_PROMPT", sidecar, StringComparison.Ordinal);
+        Assert.Contains("CASE 0", sidecar, StringComparison.Ordinal);
+        Assert.Contains("CASEELSE", sidecar, StringComparison.Ordinal);
+        Assert.Contains("文本ERB", sidecar, StringComparison.Ordinal);
+    }
+
     private static List<string> ReadOriginals(string path)
     {
         return JArray.Parse(File.ReadAllText(path))

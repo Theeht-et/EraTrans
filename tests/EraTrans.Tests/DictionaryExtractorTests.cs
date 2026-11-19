@@ -86,7 +86,8 @@ public sealed class DictionaryExtractorTests
         string game = Path.Combine(root, "Game");
         string output = Path.Combine(root, "Output");
         Write(game, "ERB/functionNames.erb", string.Join(Environment.NewLine,
-        [
+        new[]
+        {
             "CALLFORM KOJO_{NO:TARGET}_{SELECTCOM}(ARG:0, \"花括号动态名称参数文本\")",
             "CALLFORM %HOGES%(ARG:0, \"百分号动态名称参数文本\")",
             "CALLFORM \\@NO == 1 ? 関数甲 : 関数乙\\@(ARG:0, \"条件表达式动态名称参数文本\")",
@@ -97,7 +98,7 @@ public sealed class DictionaryExtractorTests
             "CALLFORM ASCII_FUNCTION(ARG:0, \"静态英文函数参数文本\")",
             "TRYCALLFORM KOJO_{NO:TARGET}_{SELECTCOM}(ARG:0, \"TRYCALLFORM参数文本\")",
             "CALL 日本語CALL(ARG:0, \"普通CALL参数文本\")"
-        ]));
+        }));
 
         new DictionaryExtractor().Extract(game, output);
 

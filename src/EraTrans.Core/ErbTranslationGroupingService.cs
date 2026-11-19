@@ -682,11 +682,13 @@ public sealed class ErbTranslationGroupingService
     {
         string root = Path.GetFullPath(dictionaryDirectory);
         string relative = GetSafeRelativePath(root, dictionaryFilePath);
-        string? outputRoot = Directory.GetParent(root)?.FullName;
-        if (outputRoot is null)
-        {
-            throw new InvalidOperationException("无法定位字典目录对应的输出目录。");
-        }
+        string outputRoot = string.Equals(
+                Path.GetFileName(root),
+                "字典",
+                StringComparison.OrdinalIgnoreCase)
+            ? Directory.GetParent(root)?.FullName ??
+              throw new InvalidOperationException("无法定位字典目录对应的输出目录。")
+            : root;
 
         string sidecarRelative = Path.ChangeExtension(relative, ".groups.json");
         return Path.GetFullPath(Path.Combine(outputRoot, "AI上下文", sidecarRelative));

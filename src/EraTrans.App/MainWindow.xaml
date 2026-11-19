@@ -21,7 +21,7 @@
                        FontWeight="SemiBold"
                        Foreground="#20242A" />
             <TextBlock Margin="0,6,0,0"
-                       Text="ERA 游戏翻译工具"
+                       Text="ERA 游戏字典提取、编辑与安全应用"
                        FontSize="14"
                        Foreground="#68717D" />
         </StackPanel>
@@ -187,9 +187,17 @@
                             Content="生成副本并应用译文"
                             Width="210"
                             Height="40"
+                            Margin="0,0,12,0"
                             FontSize="14"
                             FontWeight="SemiBold"
                             Click="ApplyTranslations_Click" />
+                    <Button x:Name="EditDictionaryButton"
+                            Content="编辑字典"
+                            Width="130"
+                            Height="40"
+                            FontSize="14"
+                            FontWeight="SemiBold"
+                            Click="EditDictionary_Click" />
                 </StackPanel>
 
                 <TextBlock x:Name="StatusText"

@@ -385,7 +385,7 @@ public sealed class TranslationApplier
 
         string[] availableDictionaries = Directory.EnumerateFiles(
                 csvDictionaryRoot,
-                "*.json",
+                "*",
                 SearchOption.TopDirectoryOnly)
             .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
             .ThenBy(path => path, StringComparer.Ordinal)

@@ -6,6 +6,12 @@
 >
 > EraTrans 当前基准：main，SHA 720227bd3f7f5777a899c8335796354e68b9a0a8。扫描器 PR #2（feature/dictionary-extraction）仍为 Open、未合并；CI run 44447597687 已成功。
 
+## 0. 上游源码许可边界
+
+旧版上游仓库当前没有 LICENSE 文件，GitHub 仓库元数据的 license 字段也为空。因此本项目不应直接复制或逐文件搬运上游源码；公开可见本身不等于获得复制、修改和再发布许可。迁移应依据本文记录的功能行为、数据格式和回归样本进行独立实现。若取得上游作者的明确授权或适用许可证，再单独复核是否可复用原实现。
+
+参考：GitHub Docs《Licensing a repository》说明未提供许可证时适用默认版权规则：https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/licensing-a-repository
+
 ## 1. 迁移验收原则
 
 1. 目标是保留旧程序所有有实际用途的非破坏性功能，而不是只迁移“提取字典”。

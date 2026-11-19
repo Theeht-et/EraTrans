@@ -13,6 +13,7 @@ public partial class DictionaryEditorWindow : Window
     private const int TranslationBatchSize = 12;
 
     private readonly string _dictionaryDirectory;
+    private readonly string _gameDirectory;
     private readonly EraTransUserSettings _settings;
     private readonly DictionaryEditorService _service = new();
     private readonly ErbTranslationGroupingService _groupingService = new();
@@ -28,11 +29,16 @@ public partial class DictionaryEditorWindow : Window
     private bool _changingFileSelection;
     private bool _isTranslating;
 
-    public DictionaryEditorWindow(string dictionaryDirectory, EraTransUserSettings settings)
+    public DictionaryEditorWindow(
+        string dictionaryDirectory,
+        string gameDirectory,
+        EraTransUserSettings settings)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(dictionaryDirectory);
+        ArgumentException.ThrowIfNullOrWhiteSpace(gameDirectory);
         ArgumentNullException.ThrowIfNull(settings);
         _dictionaryDirectory = Path.GetFullPath(dictionaryDirectory);
+        _gameDirectory = Path.GetFullPath(gameDirectory);
         _settings = settings;
 
         InitializeComponent();
@@ -165,6 +171,7 @@ public partial class DictionaryEditorWindow : Window
                         _dictionaryDirectory,
                         file.FullPath,
                         document.Entries.ToArray(),
+                        _gameDirectory,
                         out ErbTranslationGroupingIndex? groupingIndex,
                         out string? reason))
                 {

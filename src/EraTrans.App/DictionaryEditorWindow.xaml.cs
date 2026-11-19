@@ -498,20 +498,30 @@ public partial class DictionaryEditorWindow : Window
                                        _document is not null;
             if (useSemanticGrouping)
             {
-                batches = _groupingService.BuildTranslationBatches(
-                    entries,
-                    _document!.Entries.ToArray(),
-                    _activeGroupingIndex!);
+                try
+                {
+                    batches = _groupingService.BuildTranslationBatches(
+                        entries,
+                        _document!.Entries.ToArray(),
+                        _activeGroupingIndex!);
+                }
+                catch (Exception ex) when (ex is InvalidDataException or ArgumentException or KeyNotFoundException)
+                {
+                    useSemanticGrouping = false;
+                    _groupingFallbackReason =
+                        $"当前待翻译词条无法完整匹配分组文件：{ex.Message}";
+                    batches = CreateLegacyTranslationBatches(entries);
+                    MessageBox.Show(
+                        this,
+                        _groupingFallbackReason + "\n\n本次将使用现有的 AI 翻译方式继续。",
+                        "ERB 语义分组回退",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
+                }
             }
             else
             {
-                batches = entries
-                    .Select((entry, index) => (entry, index))
-                    .GroupBy(item => item.index / TranslationBatchSize)
-                    .Select(group => new ErbTranslationBatch(
-                        group.Select(item => item.entry).ToArray(),
-                        Array.Empty<AiTranslationSemanticContextGroup>()))
-                    .ToArray();
+                batches = CreateLegacyTranslationBatches(entries);
             }
 
             foreach (ErbTranslationBatch workBatch in batches)
@@ -582,6 +592,16 @@ public partial class DictionaryEditorWindow : Window
             UpdateProviderStatus();
         }
     }
+
+    private static IReadOnlyList<ErbTranslationBatch> CreateLegacyTranslationBatches(
+        IReadOnlyList<DictionaryEditorEntry> entries) =>
+        entries
+            .Select((entry, index) => (entry, index))
+            .GroupBy(item => item.index / TranslationBatchSize)
+            .Select(group => new ErbTranslationBatch(
+                group.Select(item => item.entry).ToArray(),
+                Array.Empty<AiTranslationSemanticContextGroup>()))
+            .ToArray();
 
     private void SetTranslationControlsEnabled(bool enabled)
     {

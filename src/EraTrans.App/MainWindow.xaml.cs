@@ -164,7 +164,7 @@ public partial class MainWindow : Window
 
         ExtractButton.IsEnabled = false;
         ApplyTranslationsButton.IsEnabled = false;
-        StatusText.Text = "正在向输出目录的“游戏副本”中复制并应用译文，原游戏目录不会被修改……";
+        StatusText.Text = "正在将整个原游戏目录完整复制到输出目录的“游戏副本”，然后应用译文；原游戏目录不会被修改……";
 
         try
         {
@@ -181,10 +181,10 @@ public partial class MainWindow : Window
                 options));
 
             StatusText.Text =
-                $"副本处理完成：复制 {result.CopiedFiles.Count} 个文件，应用译文 {result.ModifiedFiles.Count} 个，重命名 ERD {result.RenamedFiles.Count} 个，{result.Warnings.Count} 条警告。输出位置：{workingCopyDirectory}";
+                $"副本处理完成：完整复制 {result.CopiedFiles.Count} 个游戏文件，应用译文 {result.ModifiedFiles.Count} 个，重命名 ERD {result.RenamedFiles.Count} 个，{result.Warnings.Count} 条警告。输出位置：{workingCopyDirectory}";
 
             string message =
-                $"复制文件：{result.CopiedFiles.Count}\n" +
+                $"完整复制游戏文件：{result.CopiedFiles.Count}\n" +
                 $"应用译文：{result.ModifiedFiles.Count}\n" +
                 $"重命名 ERD：{result.RenamedFiles.Count}\n" +
                 $"警告：{result.Warnings.Count}\n输出位置：{workingCopyDirectory}";

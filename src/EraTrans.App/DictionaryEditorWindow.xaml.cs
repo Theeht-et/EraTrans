@@ -13,8 +13,12 @@ public partial class DictionaryEditorWindow : Window
     private const int TranslationBatchSize = 12;
 
     private readonly string _dictionaryDirectory;
+    private readonly EraTransUserSettings _settings;
     private readonly DictionaryEditorService _service = new();
+    private readonly ErbTranslationGroupingService _groupingService = new();
     private readonly AiProviderSettingsStore _providerStore = new();
+    private ErbTranslationGroupingIndex? _activeGroupingIndex;
+    private string? _groupingFallbackReason;
     private readonly AiTranslationService _translationService = new();
     private readonly Dictionary<string, TreeViewItem> _fileTreeItems = new(StringComparer.OrdinalIgnoreCase);
     private DictionaryEditorDocument? _document;
@@ -24,10 +28,12 @@ public partial class DictionaryEditorWindow : Window
     private bool _changingFileSelection;
     private bool _isTranslating;
 
-    public DictionaryEditorWindow(string dictionaryDirectory)
+    public DictionaryEditorWindow(string dictionaryDirectory, EraTransUserSettings settings)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(dictionaryDirectory);
+        ArgumentNullException.ThrowIfNull(settings);
         _dictionaryDirectory = Path.GetFullPath(dictionaryDirectory);
+        _settings = settings;
 
         InitializeComponent();
         DictionaryDirectoryTextBlock.Text = _dictionaryDirectory;
@@ -149,6 +155,27 @@ public partial class DictionaryEditorWindow : Window
             _document = document;
             _document.PropertyChanged += Document_PropertyChanged;
             _currentFile = file;
+            _activeGroupingIndex = null;
+            _groupingFallbackReason = null;
+
+            if (_settings.EnableErbSemanticGroupingTranslation &&
+                file.RelativePath.StartsWith("ERB" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            {
+                if (_groupingService.TryLoad(
+                        _dictionaryDirectory,
+                        file.FullPath,
+                        document.Entries.ToArray(),
+                        out ErbTranslationGroupingIndex? groupingIndex,
+                        out string? reason))
+                {
+                    _activeGroupingIndex = groupingIndex;
+                }
+                else
+                {
+                    _groupingFallbackReason = reason ??
+                        "分组文件不可用，本文件将使用现有翻译方式。";
+                }
+            }
             SelectedFileTextBlock.Text = file.RelativePath;
             _entriesView = CollectionViewSource.GetDefaultView(document.Entries);
             _entriesView.Filter = FilterEntry;
@@ -164,6 +191,14 @@ public partial class DictionaryEditorWindow : Window
                 EntryContextTextBox.Text = "当前字典没有词条。";
             }
             StatusTextBlock.Text = "变量类词条只读；状态值：-1 忽略、0 未翻译、1 已翻译。";
+            if (_activeGroupingIndex is not null)
+            {
+                StatusTextBlock.Text += " · 当前文件使用 ERB 语义分组上下文";
+            }
+            else if (!string.IsNullOrWhiteSpace(_groupingFallbackReason))
+            {
+                StatusTextBlock.Text += " · " + _groupingFallbackReason;
+            }
             UpdateDocumentStatus();
             UpdateTranslationButtons();
         }
@@ -437,14 +472,33 @@ public partial class DictionaryEditorWindow : Window
         int total = entries.Count;
         try
         {
-            for (int offset = 0; offset < total; offset += TranslationBatchSize)
+            IReadOnlyList<ErbTranslationBatch> batches;
+            bool useSemanticGrouping = _settings.EnableErbSemanticGroupingTranslation &&
+                                       _activeGroupingIndex is not null &&
+                                       _document is not null;
+            if (useSemanticGrouping)
+            {
+                batches = _groupingService.BuildTranslationBatches(
+                    entries,
+                    _document!.Entries.ToArray(),
+                    _activeGroupingIndex!);
+            }
+            else
+            {
+                batches = entries
+                    .Select((entry, index) => (entry, index))
+                    .GroupBy(item => item.index / TranslationBatchSize)
+                    .Select(group => new ErbTranslationBatch(
+                        group.Select(item => item.entry).ToArray(),
+                        Array.Empty<AiTranslationSemanticContextGroup>()))
+                    .ToArray();
+            }
+
+            foreach (ErbTranslationBatch workBatch in batches)
             {
                 cancellation.Token.ThrowIfCancellationRequested();
 
-                DictionaryEditorEntry[] batch = entries
-                    .Skip(offset)
-                    .Take(TranslationBatchSize)
-                    .ToArray();
+                DictionaryEditorEntry[] batch = workBatch.Targets.ToArray();
                 AiTranslationRequest[] requests = batch
                     .Select(entry => new AiTranslationRequest(
                         entry.Index,
@@ -454,13 +508,19 @@ public partial class DictionaryEditorWindow : Window
                     .ToArray();
 
                 StatusTextBlock.Text =
-                    $"正在请求 AI 翻译：{completed}/{total}（本批 {batch.Length} 项）……";
+                    $"正在请求 AI 翻译：{completed}/{total}（本批 {batch.Length} 项，{(useSemanticGrouping ? "语义分组" : "旧方式")}）……";
 
                 IReadOnlyList<AiTranslationResult> results =
-                    await _translationService.TranslateAsync(
-                        profile,
-                        requests,
-                        cancellation.Token);
+                    useSemanticGrouping && workBatch.SemanticContextGroups.Count > 0
+                        ? await _translationService.TranslateWithSemanticContextAsync(
+                            profile,
+                            requests,
+                            workBatch.SemanticContextGroups,
+                            cancellation.Token)
+                        : await _translationService.TranslateAsync(
+                            profile,
+                            requests,
+                            cancellation.Token);
 
                 var entriesByIndex = batch.ToDictionary(entry => entry.Index);
                 var requestsById = requests.ToDictionary(request => request.Id);

@@ -1,9 +1,9 @@
 using EraTrans.Core;
-using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using System.Windows;
 using System.Windows.Data;
+using System.Windows.Controls;
 using System.Windows.Input;
 
 namespace EraTrans.App;
@@ -16,7 +16,7 @@ public partial class DictionaryEditorWindow : Window
     private readonly DictionaryEditorService _service = new();
     private readonly AiProviderSettingsStore _providerStore = new();
     private readonly AiTranslationService _translationService = new();
-    private readonly ObservableCollection<DictionaryEditorFile> _files = [];
+    private readonly Dictionary<string, TreeViewItem> _fileTreeItems = new(StringComparer.OrdinalIgnoreCase);
     private DictionaryEditorDocument? _document;
     private DictionaryEditorFile? _currentFile;
     private ICollectionView? _entriesView;
@@ -31,7 +31,6 @@ public partial class DictionaryEditorWindow : Window
 
         InitializeComponent();
         DictionaryDirectoryTextBlock.Text = _dictionaryDirectory;
-        DictionaryFilesListBox.ItemsSource = _files;
         UpdateProviderStatus();
     }
 
@@ -39,18 +38,16 @@ public partial class DictionaryEditorWindow : Window
     {
         try
         {
-            foreach (DictionaryEditorFile file in _service.ListDictionaryFiles(_dictionaryDirectory))
-            {
-                _files.Add(file);
-            }
+            IReadOnlyList<DictionaryEditorFile> files = _service.ListDictionaryFiles(_dictionaryDirectory);
+            BuildDictionaryTree(files);
 
-            if (_files.Count == 0)
+            if (files.Count == 0)
             {
                 StatusTextBlock.Text = "此目录及其子目录中没有找到 JSON 字典文件。";
                 return;
             }
 
-            DictionaryFilesListBox.SelectedIndex = 0;
+            _fileTreeItems[files[0].FullPath].IsSelected = true;
         }
         catch (Exception ex)
         {
@@ -59,11 +56,14 @@ public partial class DictionaryEditorWindow : Window
         }
     }
 
-    private void DictionaryFilesListBox_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    private void DictionaryFilesTreeView_SelectedItemChanged(
+        object sender,
+        RoutedPropertyChangedEventArgs<object> e)
     {
         if (_changingFileSelection ||
             _isTranslating ||
-            DictionaryFilesListBox.SelectedItem is not DictionaryEditorFile selectedFile)
+            e.NewValue is not TreeViewItem selectedNode ||
+            selectedNode.Tag is not DictionaryEditorFile selectedFile)
         {
             return;
         }
@@ -93,6 +93,49 @@ public partial class DictionaryEditorWindow : Window
         LoadDictionary(selectedFile);
     }
 
+    private void BuildDictionaryTree(IReadOnlyList<DictionaryEditorFile> files)
+    {
+        DictionaryFilesTreeView.Items.Clear();
+        _fileTreeItems.Clear();
+
+        var folders = new Dictionary<string, TreeViewItem>(StringComparer.OrdinalIgnoreCase);
+        foreach (DictionaryEditorFile file in files)
+        {
+            string relativePath = file.RelativePath
+                .Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
+            string[] segments = relativePath.Split(
+                Path.DirectorySeparatorChar,
+                StringSplitOptions.RemoveEmptyEntries);
+
+            ItemCollection children = DictionaryFilesTreeView.Items;
+            string currentFolder = string.Empty;
+            for (int index = 0; index < segments.Length - 1; index++)
+            {
+                currentFolder = currentFolder.Length == 0
+                    ? segments[index]
+                    : Path.Combine(currentFolder, segments[index]);
+
+                if (!folders.TryGetValue(currentFolder, out TreeViewItem? folderNode))
+                {
+                    folderNode = new TreeViewItem
+                    {
+                        Header = segments[index],
+                        IsExpanded = true,
+                        FontWeight = FontWeights.SemiBold
+                    };
+                    children.Add(folderNode);
+                    folders.Add(currentFolder, folderNode);
+                }
+
+                children = folderNode.Items;
+            }
+
+            var fileNode = new TreeViewItem { Header = segments[^1], Tag = file };
+            children.Add(fileNode);
+            _fileTreeItems[file.FullPath] = fileNode;
+        }
+    }
+
     private void LoadDictionary(DictionaryEditorFile file)
     {
         try
@@ -111,6 +154,15 @@ public partial class DictionaryEditorWindow : Window
             _entriesView.Filter = FilterEntry;
             EntriesDataGrid.ItemsSource = _entriesView;
             EntrySearchTextBox.Text = string.Empty;
+            if (document.Entries.Count > 0)
+            {
+                EntriesDataGrid.SelectedIndex = 0;
+                UpdateContextPreview();
+            }
+            else
+            {
+                EntryContextTextBox.Text = "当前字典没有词条。";
+            }
             StatusTextBlock.Text = "变量类词条只读；状态值：-1 忽略、0 未翻译、1 已翻译。";
             UpdateDocumentStatus();
             UpdateTranslationButtons();
@@ -121,6 +173,7 @@ public partial class DictionaryEditorWindow : Window
             _currentFile = null;
             _entriesView = null;
             EntriesDataGrid.ItemsSource = null;
+            EntryContextTextBox.Text = string.Empty;
             SelectedFileTextBlock.Text = file.RelativePath;
             SummaryTextBlock.Text = "无法加载此字典";
             SaveButton.IsEnabled = false;
@@ -155,6 +208,31 @@ public partial class DictionaryEditorWindow : Window
     private void EntrySearchTextBox_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
     {
         _entriesView?.Refresh();
+        UpdateContextPreview();
+    }
+
+    private void EntriesDataGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        UpdateContextPreview();
+    }
+
+    private void EntriesDataGrid_CurrentCellChanged(object? sender, EventArgs e)
+    {
+        UpdateContextPreview();
+    }
+
+    private void UpdateContextPreview()
+    {
+        DictionaryEditorEntry? entry = EntriesDataGrid.SelectedCells
+            .Select(cell => cell.Item)
+            .OfType<DictionaryEditorEntry>()
+            .FirstOrDefault() ?? EntriesDataGrid.CurrentItem as DictionaryEditorEntry;
+
+        EntryContextTextBox.Text = entry is null
+            ? "选择一个词条查看上下文。"
+            : string.IsNullOrWhiteSpace(entry.Context)
+                ? "此词条在字典文件中没有保存上下文。"
+                : entry.Context;
     }
 
     private void Document_PropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -421,7 +499,7 @@ public partial class DictionaryEditorWindow : Window
 
     private void SetTranslationControlsEnabled(bool enabled)
     {
-        DictionaryFilesListBox.IsEnabled = enabled;
+        DictionaryFilesTreeView.IsEnabled = enabled;
         EntriesDataGrid.IsEnabled = enabled;
         AiSettingsButton.IsEnabled = enabled;
         TranslateSelectedButton.IsEnabled = enabled && _document is not null;
@@ -438,7 +516,11 @@ public partial class DictionaryEditorWindow : Window
     private void RestoreFileSelection()
     {
         _changingFileSelection = true;
-        DictionaryFilesListBox.SelectedItem = _currentFile;
+        if (_currentFile is not null &&
+            _fileTreeItems.TryGetValue(_currentFile.FullPath, out TreeViewItem? fileNode))
+        {
+            fileNode.IsSelected = true;
+        }
         _changingFileSelection = false;
     }
 

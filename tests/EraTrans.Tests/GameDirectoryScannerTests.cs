@@ -32,7 +32,7 @@ public sealed class GameDirectoryScannerTests
                 "XML/CONFIG.XML",
                 "resources/RESOURCE.CSV"
             }.OrderBy(path => path, StringComparer.OrdinalIgnoreCase),
-            files.Select(file => file.RelativePath).OrderBy(path => path, StringComparer.OrdinalIgnoreCase));
+            files.Select(file => file.RelativePath.Replace('\\\\', '/')).OrderBy(path => path, StringComparer.OrdinalIgnoreCase));
 
         Assert.DoesNotContain(files, file => file.RelativePath.Equals("ERB/MAIN.ERH", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(files, file => file.Kind == GameFileKind.ResourceCsv);

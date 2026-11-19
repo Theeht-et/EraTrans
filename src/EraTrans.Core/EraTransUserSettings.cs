@@ -109,14 +109,29 @@ public sealed class EraTransUserSettings
         string displayName,
         Func<string, bool> predicate)
     {
-        if (values is null || values.Count == 0 ||
-            values.Any(value => string.IsNullOrWhiteSpace(value) || !predicate(value.Trim())))
+        if (values is null || values.Count == 0)
         {
             throw new InvalidDataException($"{displayName}列表不能为空，且不能包含无效项目。");
         }
 
-        string[] normalized = values.Select(value => value.Trim()).ToArray();
-        if (normalized.Distinct(StringComparer.OrdinalIgnoreCase).Count() != normalized.Length)
+        for (int index = 0; index < values.Count; index++)
+        {
+            string? value = values[index];
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                throw new InvalidDataException($"{displayName}列表不能为空，且不能包含无效项目。");
+            }
+
+            string normalizedValue = value.Trim();
+            if (!predicate(normalizedValue))
+            {
+                throw new InvalidDataException($"{displayName}列表不能为空，且不能包含无效项目。");
+            }
+
+            values[index] = normalizedValue;
+        }
+
+        if (values.Distinct(StringComparer.OrdinalIgnoreCase).Count() != values.Count)
         {
             throw new InvalidDataException($"{displayName}列表包含重复项目。");
         }

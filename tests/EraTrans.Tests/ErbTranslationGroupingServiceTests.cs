@@ -181,6 +181,7 @@ public sealed class ErbTranslationGroupingServiceTests
             dictionaryPath,
             candidatePath,
             sourcePath,
+            ErbTranslationGroupingService.ComputeSourceFingerprint(sourcePath),
             "ERB/menu.erb",
             sourceEntries,
             [new ErbTranslationControlMarker(4, "MENU", "", "INPUT")],

@@ -113,6 +113,10 @@ public static class GameFileWorkspace
         {
             throw new ArgumentException("The requested file path must be relative to the game directory.", nameof(relativePath));
         }
+        if (!File.Exists(sourcePath))
+        {
+            throw new FileNotFoundException("Game file was not found.", sourcePath);
+        }
         if (!IsOutside(gameRoot, outputRoot))
         {
             throw new InvalidOperationException("Working-copy output directory must be outside the game directory.");

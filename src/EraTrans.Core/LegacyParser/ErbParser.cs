@@ -25,6 +25,7 @@ public class ERBParser
     private readonly List<ErbControlFrame> _controlFrames = [];
     private readonly List<ErbTranslationControlMarker> _controlMarkers = [];
     private int _nextControlScopeId;
+    private int _controlFlowSegment;
     private string? _pendingMenuScopeId;
 
     private sealed class ErbControlFrame(string id, string type, string branch)
@@ -1171,6 +1172,7 @@ public class ERBParser
             }
             _currentFunctionName = function.Length == 0 ? "(unnamed)" : function;
             _controlFrames.Clear();
+            _controlFlowSegment = 0;
             _pendingMenuScopeId = null;
             return;
         }
@@ -1180,6 +1182,9 @@ public class ERBParser
         {
             case "ENDFUNC":
                 _controlFrames.Clear();
+                _controlFlowSegment++;
+                _pendingMenuScopeId = null;
+                _currentFunctionName = "(global)";
                 return;
             case "ENDIF":
                 PopNearestControl("IF");
@@ -1208,6 +1213,14 @@ public class ERBParser
             case "CASEELSE":
                 SwitchNearestBranch("SELECTCASE", "CASEELSE");
                 return;
+        }
+
+        if (command is "GOTO" or "JUMP" or "RETURN" or "RETURNFORM" or "RETURNF" or
+            "BREAK" or "CONTINUE" or "RESTART" or "QUIT" or "END")
+        {
+            // These commands may make later printed lines unreachable from the
+            // current text segment. Keep the next output in a separate group.
+            _controlFlowSegment++;
         }
 
         if (command == "IF")
@@ -1308,9 +1321,12 @@ public class ERBParser
         }
     }
 
-    private string BuildBranchPath() =>
-        string.Join("/", _controlFrames.Select(frame =>
+    private string BuildBranchPath()
+    {
+        string nestedControls = string.Join("/", _controlFrames.Select(frame =>
             $"{frame.Id}:{frame.Type}:{frame.Branch}"));
+        return $"{nestedControls}/flow:{_controlFlowSegment}";
+    }
 
     private static string GetCommandType(string lineString)
     {

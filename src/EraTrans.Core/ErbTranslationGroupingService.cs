@@ -214,11 +214,15 @@ public sealed class ErbTranslationGroupingService
         ArgumentException.ThrowIfNullOrWhiteSpace(dictionaryDirectory);
         ArgumentException.ThrowIfNullOrWhiteSpace(dictionaryFilePath);
         ArgumentNullException.ThrowIfNull(dictionaryEntries);
-        ArgumentException.ThrowIfNullOrWhiteSpace(gameDirectory);
 
         index = null;
         reason = null;
         string sidecarPath = GetSidecarPath(dictionaryDirectory, dictionaryFilePath);
+        if (string.IsNullOrWhiteSpace(gameDirectory))
+        {
+            reason = "没有选择原游戏目录，无法验证 ERB 源文件；本次将使用现有翻译方式。";
+            return false;
+        }
         if (!File.Exists(sidecarPath))
         {
             reason = "没有找到分组文件。请重新提取当前游戏文件的字典。";

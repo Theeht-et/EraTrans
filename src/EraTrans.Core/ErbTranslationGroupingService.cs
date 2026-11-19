@@ -64,6 +64,7 @@ public sealed record ErbTranslationGroup(
 public sealed record ErbTranslationGroupingIndex(
     int SchemaVersion,
     string SourceFile,
+    string SourceFingerprint,
     string DictionaryFile,
     string DictionaryFingerprint,
     IReadOnlyList<ErbTranslationGroup> Groups,
@@ -95,6 +96,7 @@ public sealed class ErbTranslationGroupingService
         string dictionaryDirectory,
         string dictionaryFilePath,
         string candidateDictionaryPath,
+        string sourceFilePath,
         string sourceRelativePath,
         IReadOnlyList<ErbTranslationSourceEntry> sourceEntries,
         IReadOnlyList<ErbTranslationControlMarker> controlMarkers,
@@ -169,9 +171,21 @@ public sealed class ErbTranslationGroupingService
 
         string dictionaryRoot = Path.GetFullPath(dictionaryDirectory);
         string dictionaryRelativePath = GetSafeRelativePath(dictionaryRoot, dictionaryFilePath);
+        string sourceFingerprint;
+        try
+        {
+            sourceFingerprint = ComputeSourceFingerprint(sourceFilePath);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or FileNotFoundException)
+        {
+            warning = $"未更新 ERB AI 分组文件，无法校验源文件：{sourceFilePath} - {ex.Message}";
+            return false;
+        }
+
         var index = new ErbTranslationGroupingIndex(
             SchemaVersion,
             NormalizeRelativePath(sourceRelativePath),
+            sourceFingerprint,
             NormalizeRelativePath(dictionaryRelativePath),
             ComputeFingerprint(currentEntries),
             groupBuild.Groups,
@@ -193,6 +207,7 @@ public sealed class ErbTranslationGroupingService
         string dictionaryDirectory,
         string dictionaryFilePath,
         IReadOnlyList<DictionaryEditorEntry> dictionaryEntries,
+        string gameDirectory,
         out ErbTranslationGroupingIndex? index,
         out string? reason)
     {
@@ -246,8 +261,51 @@ public sealed class ErbTranslationGroupingService
                 return false;
             }
 
+            string gameRoot = Path.GetFullPath(gameDirectory);
+            if (!Directory.Exists(gameRoot))
+            {
+                reason = "原游戏目录不存在，无法验证 ERB 源文件。请选择正确的游戏目录。";
+                return false;
+            }
+
+            string sourceRelativePath = loaded.SourceFile.Replace('/', Path.DirectorySeparatorChar);
+            string sourceFilePath = Path.GetFullPath(Path.Combine(gameRoot, sourceRelativePath));
+            string gameRootWithSeparator = Path.EndsInDirectorySeparator(gameRoot)
+                ? gameRoot
+                : gameRoot + Path.DirectorySeparatorChar;
+            if (!sourceFilePath.StartsWith(gameRootWithSeparator, StringComparison.OrdinalIgnoreCase) ||
+                !Path.GetDirectoryName(sourceFilePath)!.StartsWith(gameRootWithSeparator, StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(
+                    Path.GetFileNameWithoutExtension(sourceFilePath),
+                    Path.GetFileNameWithoutExtension(dictionaryFilePath),
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                reason = "分组文件记录的源文件路径与当前字典不匹配。请重新提取字典。";
+                return false;
+            }
+
+            string currentSourceFingerprint;
+            try
+            {
+                currentSourceFingerprint = ComputeSourceFingerprint(sourceFilePath);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or FileNotFoundException)
+            {
+                reason = $"无法读取当前 ERB 源文件，分组文件不可使用：{ex.Message}";
+                return false;
+            }
+
+            if (!string.Equals(
+                    loaded.SourceFingerprint,
+                    currentSourceFingerprint,
+                    StringComparison.Ordinal))
+            {
+                reason = "ERB 源文件或其同名 ERH 文件已发生变化，分组信息已过期。请重新提取字典。";
+                return false;
+            }
+
             var currentEntries = dictionaryEntries
-                .Where(entry => !entry.IsVariable)
+                .Where(entry => entry.Key.StartsWith("文本", StringComparison.Ordinal))
                 .Select(entry => (entry.Key, entry.Original))
                 .ToArray();
             if (!string.Equals(
@@ -759,6 +817,45 @@ public sealed class ErbTranslationGroupingService
         left.Zip(right).All(pair =>
             string.Equals(pair.First.Key, pair.Second.Key, StringComparison.Ordinal) &&
             string.Equals(pair.First.Original, pair.Second.Original, StringComparison.Ordinal));
+
+    private static string ComputeSourceFingerprint(string sourceFilePath)
+    {
+        string fullPath = Path.GetFullPath(sourceFilePath);
+        if (!File.Exists(fullPath))
+        {
+            throw new FileNotFoundException("ERB 源文件不存在。", fullPath);
+        }
+
+        using IncrementalHash hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        AppendFile(fullPath);
+
+        if (Path.GetExtension(fullPath).Equals(".erb", StringComparison.OrdinalIgnoreCase))
+        {
+            string directory = Path.GetDirectoryName(fullPath)!;
+            string baseName = Path.GetFileNameWithoutExtension(fullPath);
+            string? companionErh = Directory.EnumerateFiles(directory, "*", SearchOption.TopDirectoryOnly)
+                .FirstOrDefault(candidate =>
+                    Path.GetFileNameWithoutExtension(candidate).Equals(baseName, StringComparison.OrdinalIgnoreCase) &&
+                    Path.GetExtension(candidate).Equals(".erh", StringComparison.OrdinalIgnoreCase));
+            if (companionErh is not null)
+            {
+                AppendFile(companionErh);
+            }
+        }
+
+        return Convert.ToHexString(hash.GetHashAndReset());
+
+        void AppendFile(string path)
+        {
+            string fileName = Path.GetFileName(path);
+            byte[] nameBytes = Encoding.UTF8.GetBytes(fileName);
+            byte[] fileBytes = File.ReadAllBytes(path);
+            hash.AppendData(BitConverter.GetBytes(nameBytes.Length));
+            hash.AppendData(nameBytes);
+            hash.AppendData(BitConverter.GetBytes(fileBytes.Length));
+            hash.AppendData(fileBytes);
+        }
+    }
 
     private static string ComputeFingerprint(IEnumerable<(string Key, string Original)> entries)
     {

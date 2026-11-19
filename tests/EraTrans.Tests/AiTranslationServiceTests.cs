@@ -42,6 +42,8 @@ public sealed class AiTranslationServiceTests
         Assert.Contains("Opening scene", fake.LastUserPrompt);
         Assert.Contains("文本ERB", fake.LastUserPrompt);
         Assert.Contains("First line", fake.LastUserPrompt);
+        Assert.DoesNotContain("semanticContext", fake.LastUserPrompt);
+        Assert.DoesNotContain("targets", fake.LastUserPrompt);
         Assert.Contains("JSON 数组", fake.LastSystemPrompt);
     }
 

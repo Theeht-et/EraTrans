@@ -103,6 +103,8 @@ public sealed class DictionaryEditorEntry : INotifyPropertyChanged
     private readonly Action _markDocumentDirty;
     private string _translation;
     private int _stage;
+    private string _semanticGroupLabel = string.Empty;
+    private string _semanticGroupEntriesPreview = string.Empty;
 
     internal DictionaryEditorEntry(JObject source, Action markDocumentDirty, int index)
     {
@@ -150,6 +152,16 @@ public sealed class DictionaryEditorEntry : INotifyPropertyChanged
     public bool IsVariable { get; }
     public bool IsEditable { get; }
     public IReadOnlyList<DictionaryStageOption> StageOptions { get; }
+    public string SemanticGroupLabel => _semanticGroupLabel;
+    public string SemanticGroupEntriesPreview => _semanticGroupEntriesPreview;
+
+    internal void SetSemanticGroupInfo(string label, string entriesPreview)
+    {
+        _semanticGroupLabel = label ?? string.Empty;
+        _semanticGroupEntriesPreview = entriesPreview ?? string.Empty;
+        OnPropertyChanged(nameof(SemanticGroupLabel));
+        OnPropertyChanged(nameof(SemanticGroupEntriesPreview));
+    }
 
     public string Translation
     {

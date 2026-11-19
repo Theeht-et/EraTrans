@@ -62,9 +62,75 @@ public sealed class ErbTranslationGroupingServiceTests
             [document.Entries[0]],
             document.Entries.ToArray(),
             index));
-        AiTranslationSemanticContextGroup sameGroup = Assert.Single(batch.SemanticContextGroups);
-        Assert.Equal("same-group", sameGroup.Relationship);
-        Assert.Equal(new[] { "文本ERB\\sample00000" }, sameGroup.Entries.Select(entry => entry.Key));
+        Assert.Empty(batch.SemanticContextGroups);
+    }
+
+    [Fact]
+    public void BuildTranslationBatches_SendsAllPendingDialogueLinesTogetherWithoutDuplicatingThemAsContext()
+    {
+        using var temporary = new TemporaryDirectory();
+        string dictionaryDirectory = Path.Combine(temporary.Path, "字典");
+        string dictionaryPath = Path.Combine(dictionaryDirectory, "ERB", "dialogue.json");
+        string candidatePath = Path.Combine(temporary.Path, "candidate.json");
+        string gameDirectory = Path.Combine(temporary.Path, "Game");
+        string sourcePath = WriteSource(gameDirectory, "ERB/dialogue.erb",
+            "@DIALOGUE\\nPRINTFORML A句\\nPRINTFORML B句\\nPRINTFORML C句");
+        ErbTranslationSourceEntry[] sourceEntries =
+        [
+            Source("文本ERB\\dialogue00000", "A句", 0, 2, "DIALOGUE", "flow:0", "", "", null),
+            Source("文本ERB\\dialogue00001", "B句", 1, 3, "DIALOGUE", "flow:0", "", "", null),
+            Source("文本ERB\\dialogue00002", "C句", 2, 4, "DIALOGUE", "flow:0", "", "", null)
+        ];
+        WriteDictionary(dictionaryPath, sourceEntries);
+        WriteDictionary(candidatePath, sourceEntries);
+        var service = new ErbTranslationGroupingService();
+        Assert.True(service.TryWriteOrUpdate(dictionaryDirectory, dictionaryPath, candidatePath, sourcePath,
+            ErbTranslationGroupingService.ComputeSourceFingerprint(sourcePath), "ERB/dialogue.erb",
+            sourceEntries, [], out _, out string? warning), warning);
+        DictionaryEditorDocument document = new DictionaryEditorService().Load(dictionaryPath);
+        Assert.True(service.TryLoad(dictionaryDirectory, dictionaryPath, document.Entries.ToArray(), gameDirectory,
+            out ErbTranslationGroupingIndex? index, out string? reason), reason);
+
+        ErbTranslationBatch batch = Assert.Single(service.BuildTranslationBatches(
+            document.Entries.ToArray(), document.Entries.ToArray(), index!));
+        Assert.Equal(new[] { "A句", "B句", "C句" }, batch.Targets.Select(entry => entry.Original));
+        var targetKeys = batch.Targets.Select(entry => entry.Key).ToHashSet(StringComparer.Ordinal);
+        Assert.DoesNotContain(batch.SemanticContextGroups.SelectMany(group => group.Entries),
+            entry => targetKeys.Contains(entry.Key));
+        Assert.Empty(batch.SemanticContextGroups);
+    }
+
+    [Fact]
+    public void BuildTranslationBatches_KeepsNonTargetDialogueLinesAsReadOnlyContext()
+    {
+        using var temporary = new TemporaryDirectory();
+        string dictionaryDirectory = Path.Combine(temporary.Path, "字典");
+        string dictionaryPath = Path.Combine(dictionaryDirectory, "ERB", "dialogue.json");
+        string candidatePath = Path.Combine(temporary.Path, "candidate.json");
+        string gameDirectory = Path.Combine(temporary.Path, "Game");
+        string sourcePath = WriteSource(gameDirectory, "ERB/dialogue.erb",
+            "@DIALOGUE\\nPRINTFORML A句\\nPRINTFORML B句\\nPRINTFORML C句");
+        ErbTranslationSourceEntry[] sourceEntries =
+        [
+            Source("文本ERB\\dialogue00000", "A句", 0, 2, "DIALOGUE", "flow:0", "", "", null),
+            Source("文本ERB\\dialogue00001", "B句", 1, 3, "DIALOGUE", "flow:0", "", "", null),
+            Source("文本ERB\\dialogue00002", "C句", 2, 4, "DIALOGUE", "flow:0", "", "", null)
+        ];
+        WriteDictionary(dictionaryPath, sourceEntries);
+        WriteDictionary(candidatePath, sourceEntries);
+        var service = new ErbTranslationGroupingService();
+        Assert.True(service.TryWriteOrUpdate(dictionaryDirectory, dictionaryPath, candidatePath, sourcePath,
+            ErbTranslationGroupingService.ComputeSourceFingerprint(sourcePath), "ERB/dialogue.erb",
+            sourceEntries, [], out _, out string? warning), warning);
+        DictionaryEditorDocument document = new DictionaryEditorService().Load(dictionaryPath);
+        Assert.True(service.TryLoad(dictionaryDirectory, dictionaryPath, document.Entries.ToArray(), gameDirectory,
+            out ErbTranslationGroupingIndex? index, out string? reason), reason);
+
+        ErbTranslationBatch batch = Assert.Single(service.BuildTranslationBatches(
+            [document.Entries[1]], document.Entries.ToArray(), index!));
+        AiTranslationSemanticContextGroup context = Assert.Single(batch.SemanticContextGroups);
+        Assert.Equal("same-group", context.Relationship);
+        Assert.Equal(new[] { "A句", "C句" }, context.Entries.Select(entry => entry.Original));
     }
 
     [Fact]

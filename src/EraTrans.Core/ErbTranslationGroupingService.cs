@@ -515,49 +515,30 @@ public sealed class ErbTranslationGroupingService
 
         var result = new List<ErbTranslationBatch>();
         var currentTargets = new List<DictionaryEditorEntry>();
-        var currentContexts = new Dictionary<string, AiTranslationSemanticContextGroup>(StringComparer.Ordinal);
-        int currentCharacters = 0;
+        IReadOnlyList<AiTranslationSemanticContextGroup> currentContexts = [];
 
         foreach (ErbTranslationBatch unit in units)
         {
-            int unitCharacters = EstimateCharacters(unit);
-            if (currentTargets.Count > 0 && currentCharacters + unitCharacters > MaxBatchCharacters)
+            DictionaryEditorEntry[] candidateTargets = currentTargets.Concat(unit.Targets).ToArray();
+            IReadOnlyList<AiTranslationSemanticContextGroup> candidateContexts =
+                MergeContextGroups(currentContexts, unit.SemanticContextGroups, candidateTargets);
+
+            if (currentTargets.Count > 0 &&
+                EstimateCharacters(candidateTargets, candidateContexts) > MaxBatchCharacters)
             {
-                result.Add(new ErbTranslationBatch(
-                    currentTargets.ToArray(),
-                    currentContexts.Values.ToArray()));
+                result.Add(new ErbTranslationBatch(currentTargets.ToArray(), currentContexts));
                 currentTargets.Clear();
-                currentContexts.Clear();
-                currentCharacters = 0;
+                currentContexts = [];
+                candidateTargets = unit.Targets.ToArray();
+                candidateContexts = MergeContextGroups([], unit.SemanticContextGroups, candidateTargets);
             }
 
             currentTargets.AddRange(unit.Targets);
-            foreach (AiTranslationSemanticContextGroup contextGroup in unit.SemanticContextGroups)
-            {
-                string contextKey = contextGroup.GroupId + "|" + contextGroup.Relationship;
-                if (currentContexts.TryGetValue(contextKey, out AiTranslationSemanticContextGroup? existing))
-                {
-                    AiTranslationContextEntry[] mergedEntries = existing.Entries
-                        .Concat(contextGroup.Entries)
-                        .GroupBy(entry => entry.Key, StringComparer.Ordinal)
-                        .Select(group => group.First())
-                        .ToArray();
-                    currentContexts[contextKey] = existing with { Entries = mergedEntries };
-                }
-                else
-                {
-                    currentContexts.Add(contextKey, contextGroup);
-                }
-            }
-            currentCharacters += unitCharacters;
+            currentContexts = candidateContexts;
         }
 
         if (currentTargets.Count > 0)
-        {
-            result.Add(new ErbTranslationBatch(
-                currentTargets.ToArray(),
-                currentContexts.Values.ToArray()));
-        }
+            result.Add(new ErbTranslationBatch(currentTargets.ToArray(), currentContexts));
 
         return result;
     }
@@ -571,10 +552,10 @@ public sealed class ErbTranslationGroupingService
         IReadOnlyDictionary<string, DictionaryEditorEntry> dictionaryEntries)
     {
         var contexts = new List<AiTranslationSemanticContextGroup>();
-        contexts.Add(CreateContextGroup(
-            targetGroup,
-            "same-group",
-            SelectSameGroupContext(targetGroup, targets, index, dictionaryEntries, linksByKey)));
+        IReadOnlyList<AiTranslationContextEntry> sameGroupEntries =
+            SelectSameGroupContext(targetGroup, targets, dictionaryEntries, linksByKey);
+        if (sameGroupEntries.Count > 0)
+            contexts.Add(CreateContextGroup(targetGroup, "same-group", sameGroupEntries));
 
         if (targetGroup.ControlScopeId.Length > 0)
         {
@@ -665,7 +646,6 @@ public sealed class ErbTranslationGroupingService
     private static IReadOnlyList<AiTranslationContextEntry> SelectSameGroupContext(
         ErbTranslationGroup group,
         IReadOnlyList<DictionaryEditorEntry> targets,
-        ErbTranslationGroupingIndex index,
         IReadOnlyDictionary<string, DictionaryEditorEntry> dictionaryEntries,
         IReadOnlyDictionary<string, ErbTranslationGroupEntry> linksByKey)
     {
@@ -674,12 +654,13 @@ public sealed class ErbTranslationGroupingService
             .Where(entry => entry is not null)
             .Cast<DictionaryEditorEntry>()
             .ToArray();
+        var targetKeys = targets.Select(entry => entry.Key).ToHashSet(StringComparer.Ordinal);
 
-        int totalCharacters = all.Sum(entry => entry.Original.Length + entry.Key.Length + 24);
+        int totalCharacters = all.Where(entry => !targetKeys.Contains(entry.Key))
+            .Sum(entry => entry.Original.Length + entry.Key.Length + 24);
         if (totalCharacters <= MaxSameGroupContextCharacters)
-        {
-            return all.Select(entry => new AiTranslationContextEntry(entry.Key, entry.Original)).ToArray();
-        }
+            return all.Where(entry => !targetKeys.Contains(entry.Key))
+                .Select(entry => new AiTranslationContextEntry(entry.Key, entry.Original)).ToArray();
 
         int firstTargetSequence = targets.Min(entry => linksByKey[entry.Key].Sequence);
         int lastTargetSequence = targets.Max(entry => linksByKey[entry.Key].Sequence);
@@ -694,6 +675,9 @@ public sealed class ErbTranslationGroupingService
         for (int indexInGroup = firstIndex; indexInGroup <= lastIndex; indexInGroup++)
         {
             DictionaryEditorEntry entry = all[indexInGroup];
+            if (targetKeys.Contains(entry.Key))
+                continue;
+
             int length = entry.Original.Length + entry.Key.Length + 24;
             if (selected.Count > 0 && usedCharacters + length > MaxSameGroupContextCharacters)
             {
@@ -718,10 +702,34 @@ public sealed class ErbTranslationGroupingService
             relationship,
             entries);
 
-    private static int EstimateCharacters(ErbTranslationBatch batch) =>
-        batch.Targets.Sum(entry => entry.Original.Length + entry.Context.Length + entry.Key.Length + 96) +
-        batch.SemanticContextGroups.Sum(group =>
-            group.Entries.Sum(entry => entry.Original.Length + entry.Key.Length + 24));
+    private static IReadOnlyList<AiTranslationSemanticContextGroup> MergeContextGroups(
+        IReadOnlyList<AiTranslationSemanticContextGroup> existing,
+        IReadOnlyList<AiTranslationSemanticContextGroup> incoming,
+        IReadOnlyList<DictionaryEditorEntry> targets)
+    {
+        var targetKeys = targets.Select(entry => entry.Key).ToHashSet(StringComparer.Ordinal);
+        var merged = new Dictionary<string, AiTranslationSemanticContextGroup>(StringComparer.Ordinal);
+        foreach (AiTranslationSemanticContextGroup group in existing.Concat(incoming))
+        {
+            string key = group.GroupId + "|" + group.Relationship;
+            IEnumerable<AiTranslationContextEntry> entries =
+                (merged.TryGetValue(key, out AiTranslationSemanticContextGroup? previous)
+                    ? previous.Entries.Concat(group.Entries)
+                    : group.Entries)
+                .Where(entry => !targetKeys.Contains(entry.Key))
+                .GroupBy(entry => entry.Key, StringComparer.Ordinal)
+                .Select(items => items.First());
+            merged[key] = group with { Entries = entries.ToArray() };
+        }
+
+        return merged.Values.Where(group => group.Entries.Count > 0).ToArray();
+    }
+
+    private static int EstimateCharacters(
+        IReadOnlyList<DictionaryEditorEntry> targets,
+        IReadOnlyList<AiTranslationSemanticContextGroup> contexts) =>
+        targets.Sum(entry => entry.Original.Length + entry.Context.Length + entry.Key.Length + 96) +
+        contexts.Sum(group => group.Entries.Sum(entry => entry.Original.Length + entry.Key.Length + 24));
 
     private static (IReadOnlyList<ErbTranslationGroup> Groups, Dictionary<string, ErbTranslationGroup> GroupsByEntryKey)
         BuildGroups(

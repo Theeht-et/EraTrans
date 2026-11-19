@@ -165,8 +165,7 @@ public partial class DictionaryEditorWindow : Window
             _activeGroupingIndex = null;
             _groupingFallbackReason = null;
 
-            if (_settings.EnableErbSemanticGroupingTranslation &&
-                file.RelativePath.StartsWith("ERB" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            if (file.RelativePath.StartsWith("ERB" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
             {
                 if (_groupingService.TryLoad(
                         _dictionaryDirectory,
@@ -177,6 +176,7 @@ public partial class DictionaryEditorWindow : Window
                         out string? reason))
                 {
                     _activeGroupingIndex = groupingIndex;
+                    ApplySemanticGroupDisplay(document.Entries, groupingIndex);
                 }
                 else
                 {
@@ -197,11 +197,15 @@ public partial class DictionaryEditorWindow : Window
             else
             {
                 EntryContextTextBox.Text = "当前字典没有词条。";
+                EntryGroupTextBox.Text = "当前字典没有词条。";
+                EntryGroupLabelTextBlock.Text = "同组条目";
             }
             StatusTextBlock.Text = "变量类词条只读；状态值：-1 忽略、0 未翻译、1 已翻译。";
             if (_activeGroupingIndex is not null)
             {
-                StatusTextBlock.Text += " · 当前文件使用 ERB 语义分组上下文";
+                StatusTextBlock.Text += _settings.EnableErbSemanticGroupingTranslation
+                    ? " · 已加载 ERB 分组，语义分组翻译已启用"
+                    : " · 已加载 ERB 分组（语义分组翻译未启用）";
             }
             else if (!string.IsNullOrWhiteSpace(_groupingFallbackReason))
             {
@@ -217,12 +221,40 @@ public partial class DictionaryEditorWindow : Window
             _entriesView = null;
             EntriesDataGrid.ItemsSource = null;
             EntryContextTextBox.Text = string.Empty;
+            EntryGroupTextBox.Text = string.Empty;
+            EntryGroupLabelTextBlock.Text = "同组条目";
             SelectedFileTextBlock.Text = file.RelativePath;
             SummaryTextBlock.Text = "无法加载此字典";
             SaveButton.IsEnabled = false;
             StatusTextBlock.Text = "文件未被修改。请检查 JSON 格式。";
             MessageBox.Show(this, ex.Message, "字典加载失败", MessageBoxButton.OK, MessageBoxImage.Error);
             RestoreFileSelection();
+        }
+    }
+
+    private static void ApplySemanticGroupDisplay(
+        IReadOnlyList<DictionaryEditorEntry> dictionaryEntries,
+        ErbTranslationGroupingIndex index)
+    {
+        var entriesByKey = dictionaryEntries.ToDictionary(entry => entry.Key, StringComparer.Ordinal);
+        foreach (ErbTranslationGroup group in index.Groups)
+        {
+            string typeLabel = group.Type switch
+            {
+                "dialogue" => "对白",
+                "menu" => "菜单",
+                "branch" => "分支",
+                "condition" => "条件",
+                _ => "语义"
+            };
+            string label = $"{typeLabel} {group.Id.Replace("group_", "#", StringComparison.Ordinal)}";
+            string preview = string.Join(Environment.NewLine,
+                group.EntryKeys.Where(entriesByKey.ContainsKey)
+                    .Select(key => $"{key}  {entriesByKey[key].Original}"));
+
+            foreach (string key in group.EntryKeys)
+                if (entriesByKey.TryGetValue(key, out DictionaryEditorEntry? entry))
+                    entry.SetSemanticGroupInfo(label, preview);
         }
     }
 
@@ -242,7 +274,8 @@ public partial class DictionaryEditorWindow : Window
         return Contains(entry.Key, search) ||
                Contains(entry.Original, search) ||
                Contains(entry.Translation, search) ||
-               Contains(entry.Context, search);
+               Contains(entry.Context, search) ||
+               Contains(entry.SemanticGroupEntriesPreview, search);
     }
 
     private static bool Contains(string source, string search) =>
@@ -276,6 +309,13 @@ public partial class DictionaryEditorWindow : Window
                 .Select(cell => cell.Item)
                 .OfType<DictionaryEditorEntry>()
                 .FirstOrDefault();
+
+        EntryGroupLabelTextBlock.Text = entry is null || string.IsNullOrWhiteSpace(entry.SemanticGroupLabel)
+            ? "同组条目"
+            : $"同组条目 · {entry.SemanticGroupLabel}";
+        EntryGroupTextBox.Text = entry is null || string.IsNullOrWhiteSpace(entry.SemanticGroupEntriesPreview)
+            ? "当前词条没有可用的 ERB 语义分组信息。"
+            : entry.SemanticGroupEntriesPreview;
 
         EntryContextTextBox.Text = entry is null
             ? "选择一个词条查看上下文。"
@@ -541,7 +581,7 @@ public partial class DictionaryEditorWindow : Window
                     $"正在请求 AI 翻译：{completed}/{total}（本批 {batch.Length} 项，{(useSemanticGrouping ? "语义分组" : "旧方式")}）……";
 
                 IReadOnlyList<AiTranslationResult> results =
-                    useSemanticGrouping && workBatch.SemanticContextGroups.Count > 0
+                    useSemanticGrouping
                         ? await _translationService.TranslateWithSemanticContextAsync(
                             profile,
                             requests,

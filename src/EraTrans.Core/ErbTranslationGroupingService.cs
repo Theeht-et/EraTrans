@@ -833,12 +833,15 @@ public sealed class ErbTranslationGroupingService
                 callTarget.StartsWith("HTML_PRINT", StringComparison.OrdinalIgnoreCase) ||
                 callTarget.StartsWith("PRINTHTML", StringComparison.OrdinalIgnoreCase) ||
                 callTarget.StartsWith("PRINT_HTML", StringComparison.OrdinalIgnoreCase) ||
-                callTarget.StartsWith("TAG_PRINT", StringComparison.OrdinalIgnoreCase));
+                callTarget.StartsWith("TAG_PRINT", StringComparison.OrdinalIgnoreCase) ||
+                callTarget.StartsWith("HTMLBUTTON", StringComparison.OrdinalIgnoreCase) ||
+                callTarget.StartsWith("HTML_BUTTON", StringComparison.OrdinalIgnoreCase));
     }
 
     private static bool IsMenuCall(string? callTarget) =>
         callTarget?.Contains("CHOICE", StringComparison.OrdinalIgnoreCase) == true ||
-        callTarget?.Contains("ASK", StringComparison.OrdinalIgnoreCase) == true;
+        callTarget?.Contains("ASK", StringComparison.OrdinalIgnoreCase) == true ||
+        callTarget?.Contains("BUTTON", StringComparison.OrdinalIgnoreCase) == true;
 
     private static string ClassifyGroupType(
         IReadOnlyList<ErbTranslationSourceEntry> entries,
@@ -846,8 +849,7 @@ public sealed class ErbTranslationGroupingService
     {
         if (entries.Any(entry =>
                 entry.OutputType.StartsWith("PRINTBUTTON", StringComparison.Ordinal) ||
-                entry.CallTarget?.Contains("CHOICE", StringComparison.OrdinalIgnoreCase) == true ||
-                entry.CallTarget?.Contains("ASK", StringComparison.OrdinalIgnoreCase) == true))
+                IsMenuCall(entry.CallTarget)))
         {
             return "menu";
         }

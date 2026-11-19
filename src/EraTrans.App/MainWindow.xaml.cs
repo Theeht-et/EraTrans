@@ -115,6 +115,27 @@ public partial class MainWindow : Window
         }
     }
 
+    private void EditDictionary_Click(object sender, RoutedEventArgs e)
+    {
+        string dictionaryDirectory = OutputDirectoryTextBox.Text.Trim();
+        if (!Directory.Exists(dictionaryDirectory))
+        {
+            MessageBox.Show(
+                this,
+                "请先选择包含 JSON 字典的目录，并确认目录存在。",
+                "字典目录无效",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return;
+        }
+
+        var editor = new DictionaryEditorWindow(dictionaryDirectory)
+        {
+            Owner = this
+        };
+        editor.ShowDialog();
+    }
+
     private async void ApplyTranslations_Click(object sender, RoutedEventArgs e)
     {
         string gameDirectory = GameDirectoryTextBox.Text.Trim();

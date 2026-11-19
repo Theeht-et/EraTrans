@@ -31,6 +31,7 @@ public sealed class EraTransUserSettingsTests
         Assert.False(settings.HideVariableEntries);
         Assert.True(settings.MergeConcatenatedStrings);
         Assert.True(settings.WriteContext);
+        Assert.False(settings.EnableErbSemanticGroupingTranslation);
         Assert.Equal(new[] { ".csv", ".erb", ".erh", ".erd" }, settings.TargetFileExtensions);
         Assert.Equal(
             new[]
@@ -59,6 +60,7 @@ public sealed class EraTransUserSettingsTests
         settings.HideVariableEntries = true;
         settings.MergeConcatenatedStrings = false;
         settings.WriteContext = false;
+        settings.EnableErbSemanticGroupingTranslation = true;
         settings.TargetFileExtensions = [".erb", ".erh"];
         settings.AutoReplaceReferenceFiles = ["Abl", "Base"];
         settings.VariableNameCharacters = ["☆", "※"];
@@ -76,6 +78,7 @@ public sealed class EraTransUserSettingsTests
         Assert.Equal(settings.HideVariableEntries, loaded.HideVariableEntries);
         Assert.Equal(settings.MergeConcatenatedStrings, loaded.MergeConcatenatedStrings);
         Assert.Equal(settings.WriteContext, loaded.WriteContext);
+        Assert.Equal(settings.EnableErbSemanticGroupingTranslation, loaded.EnableErbSemanticGroupingTranslation);
         Assert.Equal(settings.TargetFileExtensions, loaded.TargetFileExtensions);
         Assert.Equal(settings.AutoReplaceReferenceFiles, loaded.AutoReplaceReferenceFiles);
         Assert.Equal(settings.VariableNameCharacters, loaded.VariableNameCharacters);

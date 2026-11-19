@@ -15,6 +15,8 @@ public sealed class ErbTranslationGroupingServiceTests
         string dictionaryDirectory = Path.Combine(output, "字典");
         string dictionaryPath = Path.Combine(dictionaryDirectory, "ERB", "sample.json");
         string candidatePath = Path.Combine(temporary.Path, "candidate.json");
+        string gameDirectory = Path.Combine(temporary.Path, "Game");
+        string sourcePath = WriteSource(gameDirectory, "ERB/sample.erb", "@FIRST\\nPRINTFORML 重复文本\\n@SECOND\\nPRINTFORML 重复文本");
 
         var sourceEntries = new[]
         {
@@ -29,6 +31,7 @@ public sealed class ErbTranslationGroupingServiceTests
             dictionaryDirectory,
             dictionaryPath,
             candidatePath,
+            sourcePath,
             "ERB/sample.erb",
             sourceEntries,
             [],
@@ -45,6 +48,7 @@ public sealed class ErbTranslationGroupingServiceTests
             dictionaryDirectory,
             dictionaryPath,
             document.Entries.ToArray(),
+            gameDirectory,
             out ErbTranslationGroupingIndex? index,
             out string? reason), reason);
 
@@ -69,6 +73,8 @@ public sealed class ErbTranslationGroupingServiceTests
         string dictionaryDirectory = Path.Combine(temporary.Path, "字典");
         string dictionaryPath = Path.Combine(dictionaryDirectory, "ERB", "menu.json");
         string candidatePath = Path.Combine(temporary.Path, "candidate.json");
+        string gameDirectory = Path.Combine(temporary.Path, "Game");
+        string sourcePath = WriteSource(gameDirectory, "ERB/menu.erb", "@MENU\\nPRINTFORML 菜单提示");
         var sourceEntries = new[]
         {
             Source("文本ERB\\menu00000", "菜单提示", 0, 1, "MENU", "", "", "", null)
@@ -78,7 +84,7 @@ public sealed class ErbTranslationGroupingServiceTests
 
         var service = new ErbTranslationGroupingService();
         Assert.True(service.TryWriteOrUpdate(
-            dictionaryDirectory, dictionaryPath, candidatePath, "ERB/menu.erb",
+            dictionaryDirectory, dictionaryPath, candidatePath, sourcePath, "ERB/menu.erb",
             sourceEntries, [], out _, out string? warning), warning);
 
         JArray translated = JArray.Parse(File.ReadAllText(dictionaryPath));
@@ -89,6 +95,7 @@ public sealed class ErbTranslationGroupingServiceTests
         DictionaryEditorDocument translatedDocument = new DictionaryEditorService().Load(dictionaryPath);
         Assert.True(service.TryLoad(
             dictionaryDirectory, dictionaryPath, translatedDocument.Entries.ToArray(),
+            gameDirectory,
             out _, out string? translatedReason), translatedReason);
 
         JArray changed = JArray.Parse(File.ReadAllText(dictionaryPath));
@@ -98,6 +105,7 @@ public sealed class ErbTranslationGroupingServiceTests
 
         Assert.False(service.TryLoad(
             dictionaryDirectory, dictionaryPath, changedDocument.Entries.ToArray(),
+            gameDirectory,
             out _, out string? staleReason));
         Assert.Contains("已发生变化", staleReason ?? string.Empty, StringComparison.Ordinal);
     }
@@ -109,6 +117,8 @@ public sealed class ErbTranslationGroupingServiceTests
         string dictionaryDirectory = Path.Combine(temporary.Path, "字典");
         string dictionaryPath = Path.Combine(dictionaryDirectory, "ERB", "menu.json");
         string candidatePath = Path.Combine(temporary.Path, "candidate.json");
+        string gameDirectory = Path.Combine(temporary.Path, "Game");
+        string sourcePath = WriteSource(gameDirectory, "ERB/menu.erb", "@MENU\\nPRINTFORML 选择一个项目\\nINPUT\\nSELECTCASE RESULT\\nCASE 0\\nPRINTFORML 第一项\\nCASEELSE\\nPRINTFORML 第二项");
 
         var sourceEntries = new[]
         {
@@ -124,6 +134,7 @@ public sealed class ErbTranslationGroupingServiceTests
             dictionaryDirectory,
             dictionaryPath,
             candidatePath,
+            sourcePath,
             "ERB/menu.erb",
             sourceEntries,
             [new ErbTranslationControlMarker(4, "MENU", "", "INPUT")],
@@ -133,6 +144,7 @@ public sealed class ErbTranslationGroupingServiceTests
         DictionaryEditorDocument document = new DictionaryEditorService().Load(dictionaryPath);
         Assert.True(service.TryLoad(
             dictionaryDirectory, dictionaryPath, document.Entries.ToArray(),
+            gameDirectory,
             out ErbTranslationGroupingIndex? index, out string? reason), reason);
 
         ErbTranslationBatch batch = Assert.Single(service.BuildTranslationBatches(
@@ -147,6 +159,16 @@ public sealed class ErbTranslationGroupingServiceTests
             group.Relationship == "alternative-branch" &&
             group.Entries.Any(entry => entry.Original == "第二项"));
         Assert.DoesNotContain(batch.Targets, target => target.Original == "第二项");
+    }
+
+    private static string WriteSource(string gameDirectory, string relativePath, string content)
+    {
+        string fullPath = Path.Combine(
+            gameDirectory,
+            relativePath.Replace('/', Path.DirectorySeparatorChar));
+        Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+        File.WriteAllText(fullPath, content);
+        return fullPath;
     }
 
     private static ErbTranslationSourceEntry Source(

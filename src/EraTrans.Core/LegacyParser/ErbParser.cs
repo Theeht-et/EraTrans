@@ -217,25 +217,15 @@ public class ERBParser
                 }
                 else
                 {
-                    // CALLFORM also accepts a formatted function name without arguments.
-                    // Do not feed FORM placeholders into the expression parser as variable names.
-                    if (isFormattedFunctionCall && ContainsDynamicFormSyntax(rightValue))
+                    rightValue = PrepareFormattedFunctionArguments(
+                        lineString,
+                        rightValue,
+                        cmIndex,
+                        lfIndex,
+                        out bool skipFormattedCall);
+                    if (skipFormattedCall)
                     {
-                        if (lfIndex == -1 && cmIndex == -1)
-                        {
-                            // No argument list: the entire right side is a dynamic function name.
-                            continue;
-                        }
-
-                        if (lfIndex == -1 && cmIndex > -1)
-                        {
-                            // Comma-separated CALLFORM arguments: remove the dynamic function name first.
-                            string functionName = rightValue.Substring(0, cmIndex).Trim();
-                            if (ContainsDynamicFormSyntax(functionName))
-                            {
-                                rightValue = rightValue.Substring(cmIndex + 1).Trim();
-                            }
-                        }
+                        continue;
                     }
 
                     // 如果要合并参数中的联立字符串
@@ -337,25 +327,15 @@ public class ERBParser
                     }
                     else
                     {
-                        // CALLFORM also accepts a formatted function name without arguments.
-                        // Do not feed FORM placeholders into the expression parser as variable names.
-                        if (isFormattedFunctionCall && ContainsDynamicFormSyntax(rightValue))
+                        rightValue = PrepareFormattedFunctionArguments(
+                            lineString,
+                            rightValue,
+                            cmIndex,
+                            lfIndex,
+                            out bool skipFormattedCall);
+                        if (skipFormattedCall)
                         {
-                            if (lfIndex == -1 && cmIndex == -1)
-                            {
-                                // No argument list: the entire right side is a dynamic function name.
-                                continue;
-                            }
-
-                            if (lfIndex == -1 && cmIndex > -1)
-                            {
-                                // Comma-separated CALLFORM arguments: remove the dynamic function name first.
-                                string functionName = rightValue.Substring(0, cmIndex).Trim();
-                                if (ContainsDynamicFormSyntax(functionName))
-                                {
-                                    rightValue = rightValue.Substring(cmIndex + 1).Trim();
-                                }
-                            }
+                            continue;
                         }
 
                         // 没有括号或逗号在括号前的形式，整体解析
@@ -1239,6 +1219,39 @@ public class ERBParser
         }
 
         return backslashCount % 2 != 0;
+    }
+
+    private static string PrepareFormattedFunctionArguments(
+        string lineString,
+        string rightValue,
+        int commaIndex,
+        int leftParenthesisIndex,
+        out bool skipCall)
+    {
+        skipCall = false;
+        if (!IsFormattedFunctionCall(lineString) || !ContainsDynamicFormSyntax(rightValue))
+        {
+            return rightValue;
+        }
+
+        if (leftParenthesisIndex == -1 && commaIndex == -1)
+        {
+            skipCall = true;
+            return rightValue;
+        }
+
+        bool hasCommaSeparatedArguments =
+            commaIndex > -1 && (leftParenthesisIndex == -1 || commaIndex < leftParenthesisIndex);
+        if (hasCommaSeparatedArguments)
+        {
+            string functionName = rightValue.Substring(0, commaIndex).Trim();
+            if (ContainsDynamicFormSyntax(functionName))
+            {
+                return rightValue.Substring(commaIndex + 1).Trim();
+            }
+        }
+
+        return rightValue;
     }
 
     private static bool ContainsDynamicFormSyntax(string functionName)

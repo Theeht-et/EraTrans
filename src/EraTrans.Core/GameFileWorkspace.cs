@@ -169,9 +169,13 @@ public static class GameFileWorkspace
                 Directory.SetLastWriteTimeUtc(
                     destinationPath,
                     Directory.GetLastWriteTimeUtc(sourcePath));
-                Directory.SetAttributes(
+                FileAttributes preservedDirectoryAttributes =
+                    attributes & ~(FileAttributes.Directory | FileAttributes.ReadOnly | FileAttributes.ReparsePoint);
+                File.SetAttributes(
                     destinationPath,
-                    attributes & ~FileAttributes.ReadOnly);
+                    preservedDirectoryAttributes == 0
+                        ? FileAttributes.Normal
+                        : preservedDirectoryAttributes);
             }
             else
             {

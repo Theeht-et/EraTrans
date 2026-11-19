@@ -1178,6 +1178,13 @@ public class ERBParser
         }
 
         string command = GetCommandType(lineString);
+        if (_pendingMenuScopeId is not null &&
+            command != "SELECTCASE" &&
+            !string.IsNullOrWhiteSpace(lineString))
+        {
+            _pendingMenuScopeId = null;
+        }
+
         switch (command)
         {
             case "ENDFUNC":
@@ -1356,7 +1363,7 @@ public class ERBParser
 
         int commandEnd = commandType.Length;
         string remainder = lineString.Length > commandEnd
-            ? lineString[commandEnd..].Trim()
+            ? lineString[commandEnd..].Replace("<Tab>", " ", StringComparison.Ordinal).Trim()
             : "";
         int separator = remainder.IndexOfAny(['(', ',']);
         string target = (separator < 0 ? remainder : remainder[..separator]).Trim();

@@ -100,12 +100,14 @@ public partial class MainWindow : Window
                 options: options));
 
             int updatedContextCount = result.UpdatedContextFiles?.Count ?? 0;
+            int groupingFileCount = result.UpdatedGroupingFiles?.Count ?? 0;
             StatusText.Text =
-                $"字典提取完成：新建 {result.GeneratedFiles.Count} 个 JSON 文件，补充上下文 {updatedContextCount} 个文件，{result.Warnings.Count} 条警告。字典位置：{dictionaryDirectory}";
+                $"字典提取完成：新建 {result.GeneratedFiles.Count} 个 JSON 文件，补充上下文 {updatedContextCount} 个文件，生成/更新 ERB AI 分组文件 {groupingFileCount} 个，{result.Warnings.Count} 条警告。字典位置：{dictionaryDirectory}";
 
             string message =
                 $"新建 JSON 文件：{result.GeneratedFiles.Count}\n" +
                 $"补充上下文文件：{updatedContextCount}\n" +
+                $"生成/更新 ERB AI 分组文件：{groupingFileCount}\n" +
                 $"警告：{result.Warnings.Count}";
             if (result.Warnings.Count > 0)
             {
@@ -149,7 +151,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        var editor = new DictionaryEditorWindow(dictionaryDirectory)
+        var editor = new DictionaryEditorWindow(dictionaryDirectory, _settings)
         {
             Owner = this
         };

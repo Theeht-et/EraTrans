@@ -138,6 +138,29 @@
                         BorderThickness="1"
                         CornerRadius="8">
                     <StackPanel>
+                        <TextBlock Text="AI 翻译方式"
+                                   FontSize="16"
+                                   FontWeight="SemiBold"
+                                   Foreground="#20242A" />
+                        <CheckBox x:Name="EnableErbSemanticGroupingTranslationCheckBox"
+                                  Content="启用 ERB 语义分组翻译"
+                                  ToolTip="默认关闭时，继续使用现有的逐词条上下文和每批 12 条翻译方式。开启后，ERB 词条会依据函数、条件分支和相邻输出片段分组；同组及互斥分支文本只作为参考上下文，AI 仍只能翻译本次指定的词条。需要重新提取字典生成或更新 AI上下文 分组文件。"
+                                  Margin="0,12,0,6"
+                                  Foreground="#39414A" />
+                        <TextBlock Text="此选项只改变 AI 请求的上下文组织方式，不修改原有 JSON 字典格式、key、译文和词条状态。分组文件缺失、过期或校验失败时，该字典会自动退回现有翻译方式。"
+                                   TextWrapping="Wrap"
+                                   FontSize="11"
+                                   Foreground="#68717D" />
+                    </StackPanel>
+                </Border>
+
+                <Border Padding="16"
+                        Margin="0,0,0,12"
+                        Background="White"
+                        BorderBrush="#E3E6EA"
+                        BorderThickness="1"
+                        CornerRadius="8">
+                    <StackPanel>
                         <TextBlock Text="文件与变量修正规则"
                                    FontSize="16"
                                    FontWeight="SemiBold"

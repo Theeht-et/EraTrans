@@ -55,7 +55,7 @@ public static class GameFileWorkspace
         var relativeFiles = new List<string>();
         try
         {
-            CopyDirectoryContents(gameRoot, stagingDirectory, relativeFiles);
+            CopyDirectoryContents(gameRoot, stagingDirectory, stagingDirectory, relativeFiles);
             Directory.Move(stagingDirectory, outputRoot);
 
             return relativeFiles
@@ -128,6 +128,7 @@ public static class GameFileWorkspace
     private static void CopyDirectoryContents(
         string sourceDirectory,
         string destinationDirectory,
+        string workspaceRoot,
         List<string> copiedFiles)
     {
         foreach (string sourcePath in Directory.EnumerateFileSystemEntries(sourceDirectory)
@@ -146,7 +147,7 @@ public static class GameFileWorkspace
             if ((attributes & FileAttributes.Directory) != 0)
             {
                 Directory.CreateDirectory(destinationPath);
-                CopyDirectoryContents(sourcePath, destinationPath, copiedFiles);
+                CopyDirectoryContents(sourcePath, destinationPath, workspaceRoot, copiedFiles);
                 Directory.SetLastWriteTimeUtc(
                     destinationPath,
                     Directory.GetLastWriteTimeUtc(sourcePath));
@@ -159,19 +160,9 @@ public static class GameFileWorkspace
                 File.SetLastWriteTimeUtc(
                     destinationPath,
                     File.GetLastWriteTimeUtc(sourcePath));
-                copiedFiles.Add(Path.GetRelativePath(
-                    Path.GetDirectoryName(destinationPath) is null
-                        ? destinationDirectory
-                        : GetWorkspaceRoot(destinationDirectory, name),
-                    destinationPath));
+                copiedFiles.Add(Path.GetRelativePath(workspaceRoot, destinationPath));
             }
         }
-    }
-
-    private static string GetWorkspaceRoot(string destinationDirectory, string currentName)
-    {
-        // This helper is replaced by relative-path tracking in the overload below.
-        return destinationDirectory;
     }
 
     private static void EnsureDirectoriesAreDisjoint(string first, string second, string message)

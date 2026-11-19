@@ -29,12 +29,11 @@ public sealed class GameFileWorkspaceTests
         Assert.Equal("binary resource", File.ReadAllText(Path.Combine(output, "Graphics", "title.bin")));
         Assert.Equal("hidden", File.ReadAllText(Path.Combine(output, ".hidden-config")));
         Assert.True(Directory.Exists(Path.Combine(output, "EmptyFolder")));
-        Assert.DoesNotContain(
-            FileAttributes.ReadOnly,
-            new[] { File.GetAttributes(Path.Combine(output, "ERB", "main.erb")) });
+        Assert.False(
+            (File.GetAttributes(Path.Combine(output, "ERB", "main.erb")) & FileAttributes.ReadOnly) != 0);
         Assert.True((File.GetAttributes(textFile) & FileAttributes.ReadOnly) != 0);
-        Assert.Equal(textFile, Path.Combine(game.Path, "ERB", "main.erb"));
-        Assert.Equal(binaryFile, Path.Combine(game.Path, "Graphics", "title.bin"));
+        Assert.Equal("original script", File.ReadAllText(textFile));
+        Assert.Equal("binary resource", File.ReadAllText(binaryFile));
     }
 
     [Fact]

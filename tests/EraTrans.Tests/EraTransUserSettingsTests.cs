@@ -1,0 +1,149 @@
+using EraTrans.Core;
+using System.Text;
+using Xunit;
+
+namespace EraTrans.Tests;
+
+public sealed class EraTransUserSettingsTests
+{
+    [Fact]
+    public void CreateDefault_MatchesOriginalParserFirstRunSettings()
+    {
+        EraTransUserSettings settings = EraTransUserSettings.CreateDefault();
+
+        Assert.Equal("utf8-bom", settings.FileEncodingId);
+        Assert.True(settings.ForceFilterVariableNames);
+        Assert.True(settings.AutoOpenFolder);
+        Assert.True(settings.EnableVariableAutoCorrection);
+        Assert.True(settings.HideEnglishText);
+        Assert.False(settings.MergeDuplicateEntries);
+        Assert.False(settings.HideVariableEntries);
+        Assert.True(settings.MergeConcatenatedStrings);
+        Assert.True(settings.WriteContext);
+        Assert.Equal(new[] { ".csv", ".erb", ".erh", ".erd" }, settings.TargetFileExtensions);
+        Assert.Equal(
+            new[]
+            {
+                "Abl", "Base", "CFlag", "CSTR", "Equip", "Ex", "Exp", "Flag",
+                "Global", "Item", "Juel", "Mark", "Nowex", "Palam", "Source",
+                "Stain", "Talent", "TCVAR", "TEquip", "Tflag", "Train", "TSTR", "修正字典"
+            },
+            settings.AutoReplaceReferenceFiles);
+        Assert.Equal(new[] { "☆", "♡", "∀", "←", "→" }, settings.VariableNameCharacters);
+        Assert.Contains("TO", settings.Operators);
+    }
+
+    [Fact]
+    public void Store_SaveAndLoad_RoundTripsAllLegacySettings()
+    {
+        using var temporary = new TemporaryDirectory();
+        var store = new EraTransUserSettingsStore(Path.Combine(temporary.Path, "settings.json"));
+        var settings = EraTransUserSettings.CreateDefault();
+        settings.FileEncodingId = "932";
+        settings.ForceFilterVariableNames = false;
+        settings.AutoOpenFolder = false;
+        settings.EnableVariableAutoCorrection = false;
+        settings.HideEnglishText = false;
+        settings.MergeDuplicateEntries = true;
+        settings.HideVariableEntries = true;
+        settings.MergeConcatenatedStrings = false;
+        settings.WriteContext = false;
+        settings.TargetFileExtensions = [".erb", ".erh"];
+        settings.AutoReplaceReferenceFiles = ["Abl", "Base"];
+        settings.VariableNameCharacters = ["☆", "※"];
+        settings.Operators = ["(", ")", "=", "=="];
+
+        store.Save(settings);
+        EraTransUserSettings loaded = store.Load();
+
+        Assert.Equal(settings.FileEncodingId, loaded.FileEncodingId);
+        Assert.Equal(settings.ForceFilterVariableNames, loaded.ForceFilterVariableNames);
+        Assert.Equal(settings.AutoOpenFolder, loaded.AutoOpenFolder);
+        Assert.Equal(settings.EnableVariableAutoCorrection, loaded.EnableVariableAutoCorrection);
+        Assert.Equal(settings.HideEnglishText, loaded.HideEnglishText);
+        Assert.Equal(settings.MergeDuplicateEntries, loaded.MergeDuplicateEntries);
+        Assert.Equal(settings.HideVariableEntries, loaded.HideVariableEntries);
+        Assert.Equal(settings.MergeConcatenatedStrings, loaded.MergeConcatenatedStrings);
+        Assert.Equal(settings.WriteContext, loaded.WriteContext);
+        Assert.Equal(settings.TargetFileExtensions, loaded.TargetFileExtensions);
+        Assert.Equal(settings.AutoReplaceReferenceFiles, loaded.AutoReplaceReferenceFiles);
+        Assert.Equal(settings.VariableNameCharacters, loaded.VariableNameCharacters);
+        Assert.Equal(settings.Operators, loaded.Operators);
+        Assert.Equal(932, loaded.ToParserOptions().FileEncoding.CodePage);
+    }
+
+    [Fact]
+    public void ToParserOptions_MapsParserBehaviorAndAdvancedLists()
+    {
+        EraTransUserSettings settings = EraTransUserSettings.CreateDefault();
+        settings.FileEncodingId = "utf8";
+        settings.ForceFilterVariableNames = false;
+        settings.HideEnglishText = false;
+        settings.MergeDuplicateEntries = true;
+        settings.HideVariableEntries = true;
+        settings.MergeConcatenatedStrings = false;
+        settings.WriteContext = false;
+        settings.EnableVariableAutoCorrection = false;
+        settings.TargetFileExtensions = [".erb"];
+        settings.AutoReplaceReferenceFiles = ["Base"];
+        settings.VariableNameCharacters = ["※"];
+        settings.Operators = ["(", ")", "=="];
+
+        EraParserOptions options = settings.ToParserOptions();
+
+        Assert.Equal(Encoding.UTF8.CodePage, options.FileEncoding.CodePage);
+        Assert.False(options.ForceFilterVariableNames);
+        Assert.False(options.HideEnglishText);
+        Assert.True(options.MergeDuplicateEntries);
+        Assert.True(options.HideVariableEntries);
+        Assert.False(options.MergeConcatenatedStrings);
+        Assert.False(options.WriteContext);
+        Assert.False(options.EnableVariableAutoCorrection);
+        Assert.Equal(new[] { ".erb" }, options.TargetFileExtensions);
+        Assert.Equal(new[] { "Base" }, options.AutoReplaceReferenceFiles);
+        Assert.Equal(new[] { "※" }, options.VariableNameCharacters);
+        Assert.Equal(new[] { "(", ")", "==" }, options.Operators);
+    }
+
+    [Fact]
+    public void Validate_RejectsInvalidExtensionAndUnsafeReferencePath()
+    {
+        EraTransUserSettings extensionSettings = EraTransUserSettings.CreateDefault();
+        extensionSettings.TargetFileExtensions = ["../*.erb"];
+        Assert.Throws<InvalidDataException>(() => extensionSettings.Validate());
+
+        EraTransUserSettings referenceSettings = EraTransUserSettings.CreateDefault();
+        referenceSettings.AutoReplaceReferenceFiles = ["../Abl"];
+        Assert.Throws<InvalidDataException>(() => referenceSettings.Validate());
+    }
+
+    [Fact]
+    public void Store_LoadInvalidJson_ReportsCorruptedSettingsWithoutReplacingFile()
+    {
+        using var temporary = new TemporaryDirectory();
+        string path = Path.Combine(temporary.Path, "settings.json");
+        const string invalidJson = "{ this is not json";
+        File.WriteAllText(path, invalidJson);
+
+        Assert.Throws<InvalidDataException>(() => new EraTransUserSettingsStore(path).Load());
+        Assert.Equal(invalidJson, File.ReadAllText(path));
+    }
+
+    private sealed class TemporaryDirectory : IDisposable
+    {
+        public string Path { get; } = System.IO.Path.Combine(
+            System.IO.Path.GetTempPath(),
+            "EraTransSettingsTests",
+            Guid.NewGuid().ToString("N"));
+
+        public TemporaryDirectory() => Directory.CreateDirectory(Path);
+
+        public void Dispose()
+        {
+            if (Directory.Exists(Path))
+            {
+                Directory.Delete(Path, recursive: true);
+            }
+        }
+    }
+}

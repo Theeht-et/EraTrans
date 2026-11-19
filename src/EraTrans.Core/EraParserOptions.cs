@@ -43,4 +43,22 @@ public sealed class EraParserOptions
         ".erh",
         ".erd"
     ];
+
+    /// <summary>
+    /// Characters that may be part of ERA variable names in the legacy expression parser.
+    /// </summary>
+    public IReadOnlyList<string> VariableNameCharacters { get; init; } =
+    [
+        "☆", "♡", "∀", "←", "→"
+    ];
+
+    /// <summary>
+    /// Operators recognized by the legacy ERA expression parser.
+    /// </summary>
+    public IReadOnlyList<string> Operators { get; init; } =
+    [
+        "(", ")", "{", "}", "?", "#", "=", "+=", "-=", "*=", "/=",
+        ">", "<", "==", "!=", ">=", "<=", "&&", "||", "&", "|", "!",
+        "+", "-", "*", "/", "%", "++", "--", ",", ":", "TO"
+    ];
 }

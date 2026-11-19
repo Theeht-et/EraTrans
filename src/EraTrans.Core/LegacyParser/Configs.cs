@@ -30,5 +30,10 @@ internal static class Configs
         hideVarOutput = options.HideVariableEntries;
         mergeString = options.MergeConcatenatedStrings;
         writeContext = options.WriteContext;
+
+        ArgumentNullException.ThrowIfNull(options.Operators);
+        ArgumentNullException.ThrowIfNull(options.VariableNameCharacters);
+        operators = options.Operators.ToList();
+        var_operators = options.VariableNameCharacters.ToList();
     }
 }

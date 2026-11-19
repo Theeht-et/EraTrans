@@ -1,17 +1,36 @@
 using EraTrans.Core;
 using Microsoft.Win32;
+using System.Diagnostics;
 using System.IO;
-using System.Text;
 using System.Windows;
 
 namespace EraTrans.App;
 
 public partial class MainWindow : Window
 {
+    private readonly EraTransUserSettingsStore _settingsStore = new();
+    private EraTransUserSettings _settings;
+
     public MainWindow()
     {
-        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
         InitializeComponent();
+
+        try
+        {
+            _settings = _settingsStore.Load();
+        }
+        catch (Exception ex)
+        {
+            // Keep a damaged settings file untouched. Defaults are used in memory until
+            // the user explicitly saves settings from the settings window.
+            _settings = EraTransUserSettings.CreateDefault();
+            MessageBox.Show(
+                this,
+                $"无法读取设置文件，当前会话暂时使用旧版默认设置。原设置文件未被覆盖。\n\n{ex.Message}",
+                "设置读取失败",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
     }
 
     private void BrowseGameDirectory_Click(object sender, RoutedEventArgs e) =>
@@ -34,23 +53,18 @@ public partial class MainWindow : Window
         }
     }
 
-    private Encoding GetSelectedEncoding()
+    private void Settings_Click(object sender, RoutedEventArgs e)
     {
-        if (EncodingComboBox.SelectedItem is not System.Windows.Controls.ComboBoxItem item ||
-            item.Tag is not string selectedEncoding)
+        var window = new ParserSettingsWindow(_settings, _settingsStore)
         {
-            throw new InvalidOperationException("请选择有效的文件编码。");
-        }
-
-        return selectedEncoding switch
-        {
-            "utf8-bom" => new UTF8Encoding(encoderShouldEmitUTF8Identifier: true),
-            "utf8" => new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
-            "932" => Encoding.GetEncoding(932),
-            "936" => Encoding.GetEncoding(936),
-            "950" => Encoding.GetEncoding(950),
-            _ => throw new InvalidOperationException("不支持所选文件编码。")
+            Owner = this
         };
+
+        if (window.ShowDialog() == true)
+        {
+            _settings = _settingsStore.Load();
+            StatusText.Text = "解析与输出设置已保存；下一次提取或应用译文时生效。";
+        }
     }
 
     private async void Extract_Click(object sender, RoutedEventArgs e)
@@ -73,39 +87,44 @@ public partial class MainWindow : Window
 
         ExtractButton.IsEnabled = false;
         ApplyTranslationsButton.IsEnabled = false;
+        SettingsButton.IsEnabled = false;
         StatusText.Text = "正在提取字典……";
 
         try
         {
+            EraParserOptions options = _settings.ToParserOptions();
             var extractor = new DictionaryExtractor();
-            var options = new EraParserOptions
-            {
-                FileEncoding = GetSelectedEncoding()
-            };
-            var result = await Task.Run(() => extractor.Extract(
+            DictionaryExtractionResult result = await Task.Run(() => extractor.Extract(
                 gameDirectory,
                 dictionaryDirectory,
                 options: options));
 
             int updatedContextCount = result.UpdatedContextFiles?.Count ?? 0;
-            StatusText.Text = $"字典提取完成：新建 {result.GeneratedFiles.Count} 个 JSON 文件，补充上下文 {updatedContextCount} 个文件，{result.Warnings.Count} 条警告。字典位置：{dictionaryDirectory}";
-            string message = $"新建 JSON 文件：{result.GeneratedFiles.Count}\n补充上下文文件：{updatedContextCount}\n警告：{result.Warnings.Count}";
+            StatusText.Text =
+                $"字典提取完成：新建 {result.GeneratedFiles.Count} 个 JSON 文件，补充上下文 {updatedContextCount} 个文件，{result.Warnings.Count} 条警告。字典位置：{dictionaryDirectory}";
+
+            string message =
+                $"新建 JSON 文件：{result.GeneratedFiles.Count}\n" +
+                $"补充上下文文件：{updatedContextCount}\n" +
+                $"警告：{result.Warnings.Count}";
             if (result.Warnings.Count > 0)
             {
                 message += "\n\n" + string.Join("\n", result.Warnings.Take(8));
             }
 
             MessageBox.Show(this, message, "提取完成", MessageBoxButton.OK, MessageBoxImage.Information);
+            OpenResultDirectoryIfEnabled(dictionaryDirectory);
         }
         catch (Exception ex)
         {
-            StatusText.Text = "字典提取失败，请检查目录和文件编码。";
+            StatusText.Text = "字典提取失败，请检查目录和设置。";
             MessageBox.Show(this, ex.Message, "提取失败", MessageBoxButton.OK, MessageBoxImage.Error);
         }
         finally
         {
             ExtractButton.IsEnabled = true;
             ApplyTranslationsButton.IsEnabled = true;
+            SettingsButton.IsEnabled = true;
         }
     }
 
@@ -164,17 +183,14 @@ public partial class MainWindow : Window
 
         ExtractButton.IsEnabled = false;
         ApplyTranslationsButton.IsEnabled = false;
+        SettingsButton.IsEnabled = false;
         StatusText.Text = "正在将整个原游戏目录完整复制到输出目录的“游戏副本”，然后应用译文；原游戏目录不会被修改……";
 
         try
         {
             var applier = new TranslationApplier();
-            var options = new EraParserOptions
-            {
-                FileEncoding = GetSelectedEncoding(),
-                EnableVariableAutoCorrection = AutoVariableCorrectionCheckBox.IsChecked == true
-            };
-            var result = await Task.Run(() => applier.Apply(
+            EraParserOptions options = _settings.ToParserOptions();
+            TranslationApplyResult result = await Task.Run(() => applier.Apply(
                 gameDirectory,
                 dictionaryDirectory,
                 workingCopyDirectory,
@@ -195,6 +211,7 @@ public partial class MainWindow : Window
             }
 
             MessageBox.Show(this, message, "副本处理完成", MessageBoxButton.OK, MessageBoxImage.Information);
+            OpenResultDirectoryIfEnabled(workingCopyDirectory);
         }
         catch (Exception ex)
         {
@@ -205,6 +222,33 @@ public partial class MainWindow : Window
         {
             ExtractButton.IsEnabled = true;
             ApplyTranslationsButton.IsEnabled = true;
+            SettingsButton.IsEnabled = true;
+        }
+    }
+
+    private void OpenResultDirectoryIfEnabled(string directory)
+    {
+        if (!_settings.AutoOpenFolder || !Directory.Exists(directory))
+        {
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = directory,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                this,
+                $"处理已完成，但无法自动打开结果目录：\n{directory}\n\n{ex.Message}",
+                "自动打开目录失败",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
         }
     }
 }

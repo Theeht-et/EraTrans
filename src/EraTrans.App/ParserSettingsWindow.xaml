@@ -1,0 +1,269 @@
+<Window x:Class="EraTrans.App.ParserSettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="解析与输出设置"
+        Width="850"
+        Height="860"
+        MinWidth="720"
+        MinHeight="680"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="CanResize"
+        Background="#F5F6F8">
+    <Grid Margin="22">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Margin="0,0,0,16">
+            <TextBlock Text="解析与输出设置"
+                       FontSize="24"
+                       FontWeight="SemiBold"
+                       Foreground="#20242A" />
+            <TextBlock Margin="0,5,0,0"
+                       Text="迁移旧版字典工具的配置选项。设置保存在当前 Windows 用户的 AppData 中，提取和应用译文时都会读取。"
+                       TextWrapping="Wrap"
+                       FontSize="12"
+                       Foreground="#68717D" />
+        </StackPanel>
+
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+                <Border Padding="16"
+                        Margin="0,0,0,12"
+                        Background="White"
+                        BorderBrush="#E3E6EA"
+                        BorderThickness="1"
+                        CornerRadius="8">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Text="基本设置"
+                                   FontSize="16"
+                                   FontWeight="SemiBold"
+                                   Foreground="#20242A"
+                                   Margin="0,0,0,14" />
+
+                        <TextBlock Grid.Row="1"
+                                   Text="读取游戏文件使用的编码"
+                                   VerticalAlignment="Center"
+                                   Foreground="#39414A" />
+                        <ComboBox x:Name="EncodingComboBox"
+                                  Grid.Row="1"
+                                  Grid.Column="1"
+                                  Height="34"
+                                  Margin="8,0,0,10"
+                                  VerticalContentAlignment="Center">
+                            <ComboBoxItem Content="UTF-8（含 BOM）" Tag="utf8-bom" />
+                            <ComboBoxItem Content="UTF-8" Tag="utf8" />
+                            <ComboBoxItem Content="Shift-JIS（日文）" Tag="932" />
+                            <ComboBoxItem Content="GBK（简体中文）" Tag="936" />
+                            <ComboBoxItem Content="Big5（繁体中文）" Tag="950" />
+                        </ComboBox>
+
+                        <CheckBox x:Name="ForceFilterVariableNamesCheckBox"
+                                  Grid.Row="2"
+                                  Content="强力过滤变量名"
+                                  ToolTip="启用旧版强力变量名过滤规则，减少把变量误识别为可翻译文本的情况。"
+                                  Margin="0,2,10,12"
+                                  Foreground="#39414A" />
+                        <CheckBox x:Name="AutoOpenFolderCheckBox"
+                                  Grid.Row="2"
+                                  Grid.Column="1"
+                                  Content="处理完成后自动打开结果目录"
+                                  ToolTip="提取完成后打开字典目录；应用译文完成后打开游戏副本目录。"
+                                  Margin="8,2,0,12"
+                                  Foreground="#39414A" />
+
+                        <CheckBox x:Name="EnableVariableAutoCorrectionCheckBox"
+                                  Grid.Row="3"
+                                  Content="变量自动修正"
+                                  ToolTip="应用译文后，读取参考 CSV 字典，对游戏副本中的 ERB、ERH、ERD 执行旧版全局变量修正。"
+                                  Margin="0,2,10,12"
+                                  Foreground="#39414A" />
+                        <CheckBox x:Name="HideEnglishTextCheckBox"
+                                  Grid.Row="3"
+                                  Grid.Column="1"
+                                  Content="隐藏英文词条"
+                                  ToolTip="按旧版规则过滤英文词条；需要保留但不翻译的英文内容会标记为忽略。"
+                                  Margin="8,2,0,12"
+                                  Foreground="#39414A" />
+
+                        <CheckBox x:Name="MergeDuplicateEntriesCheckBox"
+                                  Grid.Row="4"
+                                  Content="合并同一文件中的相同词条"
+                                  ToolTip="在同一个脚本中合并重复的文本或变量条目。"
+                                  Margin="0,2,10,0"
+                                  Foreground="#39414A" />
+                        <CheckBox x:Name="HideVariableEntriesCheckBox"
+                                  Grid.Row="4"
+                                  Grid.Column="1"
+                                  Content="屏蔽变量词条输出"
+                                  ToolTip="提取时不输出变量类词条，只保留文本词条。"
+                                  Margin="8,2,0,0"
+                                  Foreground="#39414A" />
+                        <CheckBox x:Name="MergeConcatenatedStringsCheckBox"
+                                  Grid.Row="5"
+                                  Content="合并联立字符串"
+                                  ToolTip="按旧版处理方式拆分/合并函数参数中的联立字符串。关闭后使用整体表达式解析方式。"
+                                  Margin="0,12,10,0"
+                                  Foreground="#39414A" />
+                        <CheckBox x:Name="WriteContextCheckBox"
+                                  Grid.Row="5"
+                                  Grid.Column="1"
+                                  Content="提取字典时写入上下文"
+                                  ToolTip="在词条中保存原脚本行或 XML 节点等上下文，供字典编辑和 AI 翻译参考。"
+                                  Margin="8,12,0,0"
+                                  Foreground="#39414A" />
+                    </Grid>
+                </Border>
+
+                <Border Padding="16"
+                        Margin="0,0,0,12"
+                        Background="White"
+                        BorderBrush="#E3E6EA"
+                        BorderThickness="1"
+                        CornerRadius="8">
+                    <StackPanel>
+                        <TextBlock Text="文件与变量修正规则"
+                                   FontSize="16"
+                                   FontWeight="SemiBold"
+                                   Foreground="#20242A" />
+                        <TextBlock Text="每行填写一个项目。扩展名用于应用字典时匹配游戏文件；参考文件填写 CSV 字典文件名，不带 .json。"
+                                   Margin="0,5,0,12"
+                                   TextWrapping="Wrap"
+                                   Foreground="#68717D"
+                                   FontSize="11" />
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="12" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="读取/匹配的游戏文件扩展名"
+                                           Margin="0,0,0,5"
+                                           FontWeight="SemiBold"
+                                           Foreground="#39414A" />
+                                <TextBox x:Name="TargetFileExtensionsTextBox"
+                                         Height="92"
+                                         AcceptsReturn="True"
+                                         TextWrapping="NoWrap"
+                                         VerticalScrollBarVisibility="Auto"
+                                         HorizontalScrollBarVisibility="Auto"
+                                         Padding="8"
+                                         FontFamily="Consolas" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="变量自动修正参考文件"
+                                           Margin="0,0,0,5"
+                                           FontWeight="SemiBold"
+                                           Foreground="#39414A" />
+                                <TextBox x:Name="AutoReplaceReferenceFilesTextBox"
+                                         Height="92"
+                                         AcceptsReturn="True"
+                                         TextWrapping="NoWrap"
+                                         VerticalScrollBarVisibility="Auto"
+                                         HorizontalScrollBarVisibility="Auto"
+                                         Padding="8"
+                                         FontFamily="Consolas" />
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <Border Padding="16"
+                        Margin="0,0,0,12"
+                        Background="White"
+                        BorderBrush="#E3E6EA"
+                        BorderThickness="1"
+                        CornerRadius="8">
+                    <StackPanel>
+                        <TextBlock Text="高级解析规则"
+                                   FontSize="16"
+                                   FontWeight="SemiBold"
+                                   Foreground="#20242A" />
+                        <TextBlock Text="这些列表会直接传给旧版表达式解析逻辑。除非你了解 ERA 表达式规则，否则建议保留默认值。"
+                                   Margin="0,5,0,12"
+                                   TextWrapping="Wrap"
+                                   Foreground="#68717D"
+                                   FontSize="11" />
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="12" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="允许构成变量名的字符（每行一个字符）"
+                                           Margin="0,0,0,5"
+                                           FontWeight="SemiBold"
+                                           Foreground="#39414A" />
+                                <TextBox x:Name="VariableNameCharactersTextBox"
+                                         Height="170"
+                                         AcceptsReturn="True"
+                                         TextWrapping="NoWrap"
+                                         VerticalScrollBarVisibility="Auto"
+                                         HorizontalScrollBarVisibility="Auto"
+                                         Padding="8"
+                                         FontFamily="Consolas" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="需要处理的操作符（每行一个）"
+                                           Margin="0,0,0,5"
+                                           FontWeight="SemiBold"
+                                           Foreground="#39414A" />
+                                <TextBox x:Name="OperatorsTextBox"
+                                         Height="170"
+                                         AcceptsReturn="True"
+                                         TextWrapping="NoWrap"
+                                         VerticalScrollBarVisibility="Auto"
+                                         HorizontalScrollBarVisibility="Auto"
+                                         Padding="8"
+                                         FontFamily="Consolas" />
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+
+        <Grid Grid.Row="2" Margin="0,14,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="修改后点击保存，下一次提取或应用译文时生效。"
+                       VerticalAlignment="Center"
+                       TextWrapping="Wrap"
+                       Foreground="#87909B"
+                       FontSize="11" />
+            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                <Button Content="保存设置"
+                        Width="100"
+                        Height="36"
+                        Margin="0,0,8,0"
+                        Click="Save_Click" />
+                <Button Content="取消"
+                        Width="82"
+                        Height="36"
+                        Click="Cancel_Click" />
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Window>

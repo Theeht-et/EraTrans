@@ -78,12 +78,11 @@ public sealed class AiTranslationServiceTests
 
         Assert.Single(results);
         Assert.Equal(5, results[0].Id);
-        Assert.Contains("\\"targets\\"".Replace("\\\\", "\\"), fake.LastUserPrompt);
+        Assert.Contains("\\"targets\\"", fake.LastUserPrompt);
         Assert.Contains("第一个选项", fake.LastUserPrompt);
         Assert.Contains("第二个分支", fake.LastUserPrompt);
         Assert.Contains("alternative-branch", fake.LastUserPrompt);
         Assert.Contains("互斥", fake.LastSystemPrompt);
-        Assert.DoesNotContain("文本ERB\\MENU00001", results.Select(result => result.Id.ToString()));
     }
 
     [Fact]

@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+
 namespace EraTrans.Core;
 
 public sealed record DictionaryExtractionResult(
@@ -40,8 +42,8 @@ public sealed class DictionaryExtractor
         }
 
         Directory.CreateDirectory(outputRoot);
-        var warnings = new List<string>();
-        var generatedFiles = new List<string>();
+        var warnings = new ConcurrentBag<string>();
+        var generatedFiles = new ConcurrentBag<string>();
 
         lock (LegacyParserRuntime.SyncRoot)
         {
@@ -77,11 +79,12 @@ public sealed class DictionaryExtractor
 
             foreach (var kind in legacyProcessingOrder)
             {
-                foreach (var file in scannedFiles
+                Parallel.ForEach(scannedFiles
                     .Where(candidate => candidate.Kind == kind)
                     .OrderBy(candidate => candidate.RelativePath, StringComparer.OrdinalIgnoreCase)
-                    .ThenBy(candidate => candidate.RelativePath, StringComparer.Ordinal))
-                {
+                    .ThenBy(candidate => candidate.RelativePath, StringComparer.Ordinal),
+                    file =>
+                    {
                     string targetFile = ResolveOutputPath(outputRoot, file.RelativePath);
                     Directory.CreateDirectory(Path.GetDirectoryName(targetFile)!);
                     string? referenceFile = referenceRoot is null
@@ -166,11 +169,15 @@ public sealed class DictionaryExtractor
                             break;
                         }
                     }
-                }
+                    });
             }
         }
 
-        return new DictionaryExtractionResult(generatedFiles, warnings);
+        return new DictionaryExtractionResult(
+            generatedFiles.OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(path => path, StringComparer.Ordinal)
+                .ToArray(),
+            warnings.OrderBy(warning => warning, StringComparer.Ordinal).ToArray());
     }
 
     private static void AddIfCreated(string path, ICollection<string> generatedFiles)

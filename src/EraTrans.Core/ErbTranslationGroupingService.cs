@@ -176,7 +176,7 @@ public sealed class ErbTranslationGroupingService
         {
             sourceFingerprint = ComputeSourceFingerprint(sourceFilePath);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or FileNotFoundException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             warning = $"未更新 ERB AI 分组文件，无法校验源文件：{sourceFilePath} - {ex.Message}";
             return false;
@@ -214,6 +214,7 @@ public sealed class ErbTranslationGroupingService
         ArgumentException.ThrowIfNullOrWhiteSpace(dictionaryDirectory);
         ArgumentException.ThrowIfNullOrWhiteSpace(dictionaryFilePath);
         ArgumentNullException.ThrowIfNull(dictionaryEntries);
+        ArgumentException.ThrowIfNullOrWhiteSpace(gameDirectory);
 
         index = null;
         reason = null;
@@ -239,7 +240,10 @@ public sealed class ErbTranslationGroupingService
 
             if (loaded.Groups is null ||
                 loaded.Entries is null ||
-                loaded.Groups.Any(group => group is null || group.EntryKeys is null) ||
+                loaded.Groups.Any(group =>
+                    group is null ||
+                    string.IsNullOrWhiteSpace(group.Id) ||
+                    group.EntryKeys is null) ||
                 loaded.Entries.Any(entry =>
                     entry is null ||
                     string.IsNullOrWhiteSpace(entry.Key) ||
@@ -273,12 +277,21 @@ public sealed class ErbTranslationGroupingService
             string gameRootWithSeparator = Path.EndsInDirectorySeparator(gameRoot)
                 ? gameRoot
                 : gameRoot + Path.DirectorySeparatorChar;
+            string dictionaryRelativeDirectory = Path.GetDirectoryName(relativeDictionaryPath) ?? "";
+            string sourceRelativeDirectory = Path.GetDirectoryName(
+                NormalizeRelativePath(sourceRelativePath).Replace('/', Path.DirectorySeparatorChar)) ?? "";
             if (!sourceFilePath.StartsWith(gameRootWithSeparator, StringComparison.OrdinalIgnoreCase) ||
                 !Path.GetDirectoryName(sourceFilePath)!.StartsWith(gameRootWithSeparator, StringComparison.OrdinalIgnoreCase) ||
                 !string.Equals(
                     Path.GetFileNameWithoutExtension(sourceFilePath),
                     Path.GetFileNameWithoutExtension(dictionaryFilePath),
-                    StringComparison.OrdinalIgnoreCase))
+                    StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(
+                    sourceRelativeDirectory,
+                    dictionaryRelativeDirectory,
+                    StringComparison.OrdinalIgnoreCase) ||
+                !(Path.GetExtension(sourceFilePath).Equals(".erb", StringComparison.OrdinalIgnoreCase) ||
+                  Path.GetExtension(sourceFilePath).Equals(".erh", StringComparison.OrdinalIgnoreCase)))
             {
                 reason = "分组文件记录的源文件路径与当前字典不匹配。请重新提取字典。";
                 return false;
@@ -289,7 +302,7 @@ public sealed class ErbTranslationGroupingService
             {
                 currentSourceFingerprint = ComputeSourceFingerprint(sourceFilePath);
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or FileNotFoundException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
                 reason = $"无法读取当前 ERB 源文件，分组文件不可使用：{ex.Message}";
                 return false;
@@ -334,13 +347,24 @@ public sealed class ErbTranslationGroupingService
             var currentKeys = currentEntries
                 .Select(entry => entry.Key)
                 .ToHashSet(StringComparer.Ordinal);
+            string[] groupedKeys = loaded.Groups
+                .SelectMany(group => group.EntryKeys)
+                .ToArray();
+            if (groupedKeys.Length != currentKeys.Count ||
+                groupedKeys.Distinct(StringComparer.Ordinal).Count() != groupedKeys.Length ||
+                !currentKeys.SetEquals(groupedKeys))
+            {
+                reason = "分组文件没有完整且唯一地覆盖当前字典词条。请重新提取字典。";
+                return false;
+            }
+
             foreach (ErbTranslationGroup group in loaded.Groups)
             {
                 if (group.EntryKeys.Count == 0 ||
-                    group.EntryKeys.Distinct(StringComparer.Ordinal).Count() != group.EntryKeys.Count ||
-                    group.EntryKeys.Any(key => !currentKeys.Contains(key)))
+                    group.EntryKeys.Any(key => !indexedEntries.TryGetValue(key, out ErbTranslationGroupEntry? entry) ||
+                                               !string.Equals(entry.GroupId, group.Id, StringComparison.Ordinal)))
                 {
-                    reason = "分组文件包含空分组、重复 key 或不属于当前字典的 key。请重新提取字典。";
+                    reason = "分组文件包含空分组或不一致的分组成员映射。请重新提取字典。";
                     return false;
                 }
             }

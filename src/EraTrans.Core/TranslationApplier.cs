@@ -51,6 +51,7 @@ public sealed class TranslationApplier
         var parserOptions = options ?? new EraParserOptions();
         ArgumentNullException.ThrowIfNull(parserOptions.FileEncoding);
         ValidateExtensions(parserOptions.TargetFileExtensions);
+        ValidateAutoReplaceReferenceFiles(parserOptions.AutoReplaceReferenceFiles);
 
         Directory.CreateDirectory(outputRoot);
 
@@ -91,6 +92,21 @@ public sealed class TranslationApplier
             copiedBySource,
             warnings);
 
+        // The legacy autoReplace step runs after normal translation and ERD renaming.
+        // It covers every ERB/ERH/ERD file, so missing files must first be copied into
+        // the workspace; pre-existing workspace files are never modified.
+        if (parserOptions.EnableVariableAutoCorrection)
+        {
+            ApplyVariableAutoCorrection(
+                gameRoot,
+                dictionaryRoot,
+                outputRoot,
+                parserOptions,
+                copiedBySource,
+                modifiedFiles,
+                warnings);
+        }
+
         var renamedPathMap = renamedFiles.ToDictionary(
             item => item.PreviousPath,
             item => item.NewPath,
@@ -103,6 +119,7 @@ public sealed class TranslationApplier
                 .ToArray(),
             modifiedFiles
                 .Select(path => renamedPathMap.TryGetValue(path, out string? renamedPath) ? renamedPath : path)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
                 .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
                 .ToArray(),
             renamedFiles
@@ -348,6 +365,142 @@ public sealed class TranslationApplier
         }
 
         return string.Join(Environment.NewLine, replacedLines);
+    }
+
+    private static void ApplyVariableAutoCorrection(
+        string gameRoot,
+        string dictionaryRoot,
+        string outputRoot,
+        EraParserOptions options,
+        ConcurrentDictionary<string, string> copiedBySource,
+        ConcurrentBag<string> modifiedFiles,
+        ConcurrentBag<string> warnings)
+    {
+        string csvDictionaryRoot = Path.Combine(dictionaryRoot, "CSV");
+        if (!Directory.Exists(csvDictionaryRoot))
+        {
+            warnings.Add("自动变量修正已启用，但字典目录下未找到 CSV 文件夹，已跳过。");
+            return;
+        }
+
+        string[] availableDictionaries = Directory.EnumerateFiles(
+                csvDictionaryRoot,
+                "*.json",
+                SearchOption.TopDirectoryOnly)
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(path => path, StringComparer.Ordinal)
+            .ToArray();
+
+        var selectedDictionaries = new List<string>();
+        foreach (string referenceName in options.AutoReplaceReferenceFiles)
+        {
+            string? match = availableDictionaries.FirstOrDefault(path =>
+                Path.GetFileNameWithoutExtension(path).Equals(
+                    referenceName,
+                    StringComparison.OrdinalIgnoreCase));
+
+            if (match is not null)
+            {
+                selectedDictionaries.Add(match);
+            }
+        }
+
+        if (selectedDictionaries.Count == 0)
+        {
+            warnings.Add("自动变量修正已启用，但未找到配置的参考字典，已跳过。");
+            return;
+        }
+
+        var combinedEntries = new JArray();
+        foreach (string dictionaryPath in selectedDictionaries)
+        {
+            try
+            {
+                var dictionary = JArray.Parse(File.ReadAllText(dictionaryPath));
+                foreach (JToken entry in dictionary)
+                {
+                    combinedEntries.Add(entry.DeepClone());
+                }
+            }
+            catch (Exception ex)
+            {
+                warnings.Add($"自动变量修正参考字典无法解析：{Path.GetFileName(dictionaryPath)} - {ex.Message}");
+            }
+        }
+
+        var replacementPlan = BuildRegexReplacePlan(combinedEntries);
+        if (replacementPlan is null)
+        {
+            return;
+        }
+
+        string[] scriptFiles = Directory.EnumerateFiles(gameRoot, "*", SearchOption.AllDirectories)
+            .Where(path =>
+            {
+                string extension = Path.GetExtension(path);
+                return extension.Equals(".erb", StringComparison.OrdinalIgnoreCase) ||
+                       extension.Equals(".erh", StringComparison.OrdinalIgnoreCase) ||
+                       extension.Equals(".erd", StringComparison.OrdinalIgnoreCase);
+            })
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(path => path, StringComparer.Ordinal)
+            .ToArray();
+
+        Parallel.ForEach(scriptFiles, sourcePath =>
+        {
+            string relativePath = Path.GetRelativePath(gameRoot, sourcePath);
+            string destinationPath;
+
+            if (copiedBySource.TryGetValue(sourcePath, out string? existingCopy))
+            {
+                destinationPath = existingCopy ??
+                    throw new InvalidOperationException("工作副本映射无效。");
+            }
+            else
+            {
+                destinationPath = ResolveWithinRoot(outputRoot, relativePath);
+                try
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(destinationPath)!);
+                    File.Copy(sourcePath, destinationPath, overwrite: false);
+                    copiedBySource[sourcePath] = destinationPath;
+                }
+                catch (Exception ex)
+                {
+                    warnings.Add($"复制自动修正副本失败：{relativePath} - {ex.Message}");
+                    return;
+                }
+            }
+
+            try
+            {
+                string content = File.ReadAllText(destinationPath, options.FileEncoding);
+                string corrected = RegexReplace(content, replacementPlan);
+                File.WriteAllText(destinationPath, corrected, options.FileEncoding);
+                modifiedFiles.Add(destinationPath);
+            }
+            catch (Exception ex)
+            {
+                warnings.Add($"自动变量修正副本失败：{relativePath} - {ex.Message}");
+            }
+        });
+    }
+
+    private static void ValidateAutoReplaceReferenceFiles(IReadOnlyList<string> referenceFiles)
+    {
+        ArgumentNullException.ThrowIfNull(referenceFiles);
+        if (referenceFiles.Any(name =>
+                string.IsNullOrWhiteSpace(name) ||
+                Path.IsPathRooted(name) ||
+                !Path.GetFileName(name).Equals(name, StringComparison.Ordinal) ||
+                name.Contains('/') ||
+                name.IndexOf((char)92) >= 0 ||
+                name.EndsWith(".json", StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new ArgumentException(
+                "Auto-replace reference entries must be simple file names without a path or .json extension.",
+                nameof(referenceFiles));
+        }
     }
 
     private static List<RenamedGameFile> RenameErdCopies(

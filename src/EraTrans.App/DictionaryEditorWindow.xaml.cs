@@ -460,6 +460,18 @@ public partial class DictionaryEditorWindow : Window
         if (_document is null)
             return;
 
+        if (_settings.EnableErbSemanticGroupingTranslation &&
+            _activeGroupingIndex is null &&
+            !string.IsNullOrWhiteSpace(_groupingFallbackReason))
+        {
+            MessageBox.Show(
+                this,
+                _groupingFallbackReason + "\n\n本次将使用现有的 AI 翻译方式，不会使用未经验证的分组关系。",
+                "ERB 语义分组不可用",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+
         using var cancellation = new CancellationTokenSource();
         _translationCancellation = cancellation;
         _isTranslating = true;

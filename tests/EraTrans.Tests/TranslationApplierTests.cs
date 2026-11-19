@@ -55,7 +55,14 @@ public sealed class TranslationApplierTests
         var result = new TranslationApplier().Apply(game, dictionaries, output);
 
         string copy = Path.Combine(output, "resources", "sprites.csv");
-        Assert.Equal("龙图标,32,64\n;SpriteB,comment\n不应替换注释,16,16\n", File.ReadAllText(copy));
+        string expected = string.Join(Environment.NewLine,
+        [
+            "龙图标,32,64",
+            ";SpriteB,comment",
+            "不应替换注释,16,16",
+            ""
+        ]);
+        Assert.Equal(expected, File.ReadAllText(copy));
         Assert.Equal("SpriteA,32,64\n;SpriteB,comment\nSpriteB,16,16\n",
             File.ReadAllText(Path.Combine(game, "resources", "sprites.csv")));
         Assert.Empty(result.Warnings);

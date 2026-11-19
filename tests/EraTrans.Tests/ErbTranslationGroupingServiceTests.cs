@@ -208,6 +208,63 @@ public sealed class ErbTranslationGroupingServiceTests
         Assert.DoesNotContain(batch.Targets, target => target.Original == "第二项");
     }
 
+    [Fact]
+    public void TryWriteOrUpdate_GroupsKnownHtmlDisplayCallsWithAdjacentPrintedText()
+    {
+        using var temporary = new TemporaryDirectory();
+        string dictionaryDirectory = Path.Combine(temporary.Path, "字典");
+        string dictionaryPath = Path.Combine(dictionaryDirectory, "ERB", "html.json");
+        string candidatePath = Path.Combine(temporary.Path, "candidate.json");
+        string gameDirectory = Path.Combine(temporary.Path, "Game");
+        string sourcePath = WriteSource(gameDirectory, "ERB/html.erb", "@HTML_MENU\\nPRINTFORML 第一段\\nCALL HTMLPRINTL, \"第二段\"\\nPRINTFORML 第三段");
+
+        ErbTranslationSourceEntry[] sourceEntries =
+        [
+            Source("文本ERB\\html00000", "第一段", 0, 2, "HTML_MENU", "flow:0", "", "", null),
+            new(
+                "文本ERB\\html00001",
+                "第二段",
+                1,
+                3,
+                "HTML_MENU",
+                "CALL",
+                "flow:0",
+                "",
+                "",
+                "HTMLPRINTL"),
+            Source("文本ERB\\html00002", "第三段", 2, 4, "HTML_MENU", "flow:0", "", "", null)
+        ];
+        WriteDictionary(dictionaryPath, sourceEntries);
+        WriteDictionary(candidatePath, sourceEntries);
+
+        var service = new ErbTranslationGroupingService();
+        Assert.True(service.TryWriteOrUpdate(
+            dictionaryDirectory,
+            dictionaryPath,
+            candidatePath,
+            sourcePath,
+            ErbTranslationGroupingService.ComputeSourceFingerprint(sourcePath),
+            "ERB/html.erb",
+            sourceEntries,
+            [],
+            out _,
+            out string? warning), warning);
+
+        DictionaryEditorDocument document = new DictionaryEditorService().Load(dictionaryPath);
+        Assert.True(service.TryLoad(
+            dictionaryDirectory,
+            dictionaryPath,
+            document.Entries.ToArray(),
+            gameDirectory,
+            out ErbTranslationGroupingIndex? index,
+            out string? reason), reason);
+
+        Assert.Single(index!.Groups);
+        Assert.Equal(
+            new[] { "文本ERB\\html00000", "文本ERB\\html00001", "文本ERB\\html00002" },
+            Assert.Single(index.Groups).EntryKeys);
+    }
+
     private static string WriteSource(string gameDirectory, string relativePath, string content)
     {
         string fullPath = Path.Combine(

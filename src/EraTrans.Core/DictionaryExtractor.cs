@@ -185,6 +185,7 @@ public sealed class DictionaryExtractor
                                             outputRoot,
                                             dictionaryOutputPath,
                                             candidateDictionaryPath,
+                                            file.FullPath,
                                             file.RelativePath,
                                             parser.GetTranslationGroupingEntries(file.RelativePath),
                                             parser.GetTranslationControlMarkers(),

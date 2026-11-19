@@ -17,14 +17,14 @@ A lightweight Windows desktop tool for translating ERA games.
 
 ## Portable configuration
 
-All settings are stored beside `EraTrans.App.exe`, in the `配置/` folder:
+All settings are stored beside `EraTrans.App.exe`, in the `Config/` folder:
 
-- `配置/settings.json` — parser, extraction, and output settings.
-- `配置/ai-providers.json` — AI provider profiles. API keys remain encrypted with Windows DPAPI (CurrentUser), not stored as plaintext.
+- `Config/settings.json` — parser, extraction, and output settings.
+- `Config/ai-providers.json` — AI provider profiles. API keys remain encrypted with Windows DPAPI (CurrentUser), not stored as plaintext.
 
-On first launch after upgrading from an earlier version, existing files in `%AppData%/EraTrans/` are copied into the software folder. The original AppData files are retained as backups; subsequent changes are written only to the portable `配置/` folder.
+On first launch after upgrading from an earlier version, existing files in `%AppData%/EraTrans/` are copied into the software folder. The original AppData files are retained as backups; subsequent changes are written only to the portable `Config/` folder.
 
-The software folder must be writable by the current Windows user. For a portable setup, extract the ZIP into a normal user-writable folder rather than `Program Files`.
+The software folder must be writable by the current Windows user. For a portable setup, extract the downloaded artifact into a normal user-writable folder rather than `Program Files`.
 
 The parser settings window migrates the configurable options from the original ErbParserForTranslate `config.json`: file encoding, strong variable-name filtering, auto-open output folder, automatic variable correction, hiding English entries, merging duplicate entries, hiding variable entries, merging concatenated strings, writing context, target file extensions, variable-correction reference dictionaries, variable-name characters, and expression operators. Defaults match the original tool's first-run configuration. Advanced lists accept one item per line.
 
@@ -38,14 +38,14 @@ AI translation only targets editable, non-variable entries whose stage is 0, who
 
 ## Download a Windows build
 
-Every successful GitHub Actions CI run publishes a self-contained Windows x64 ZIP package named EraTrans-win-x64.
+Each successful GitHub Actions CI run publishes one `EraTrans-win-x64` artifact. Downloading the artifact already gives you a ZIP archive; extract it once to get the application files directly. There is no second ZIP inside.
 
 1. Open the repository's Actions tab.
 2. Open the successful CI run for the commit or pull request you want.
-3. Download EraTrans-win-x64 from the Artifacts section.
-4. Extract the ZIP archive into a writable folder and run EraTrans.App.exe.
+3. Download `EraTrans-win-x64` from the Artifacts section.
+4. Extract the downloaded artifact ZIP once and run `EraTrans.App.exe`.
 
-The package uses .NET single-file publishing and includes the .NET runtime, so a separate .NET installation is not required. The EXE is the only file in the package root. Configuration is grouped under `配置/`, and user documentation is under `说明/`. Keep those folders beside the EXE. CI artifacts are retained for 30 days.
+The package uses .NET single-file publishing and includes the .NET runtime, so a separate .NET installation is not required. The EXE is the only file in the package root. Configuration is grouped under `Config/`, and user documentation is under `Docs/`. Keep those folders beside the EXE. CI artifacts are retained for 30 days.
 
 ## Output directory layout
 

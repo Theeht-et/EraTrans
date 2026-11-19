@@ -82,7 +82,7 @@ public static class AiProviderProfileValidator
 }
 
 /// <summary>
-/// Stores provider settings in the executable's 配置 folder. API keys remain
+/// Stores provider settings in the executable's Config folder. API keys remain
 /// encrypted with Windows DPAPI (CurrentUser). Existing AppData settings are
 /// migrated by decrypting and re-encrypting them for the same Windows user.
 /// </summary>

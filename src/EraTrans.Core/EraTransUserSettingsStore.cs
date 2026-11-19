@@ -4,7 +4,7 @@ using System.Text.Json;
 namespace EraTrans.Core;
 
 /// <summary>
-/// Persists EraTrans application settings beside the executable, in the 配置 folder.
+/// Persists EraTrans application settings beside the executable, in the Config folder.
 /// Existing AppData settings are copied into the portable location on first launch.
 /// </summary>
 public sealed class EraTransUserSettingsStore

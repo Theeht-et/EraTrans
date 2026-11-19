@@ -12,7 +12,7 @@ public sealed class AiProviderSettingsMigrationTests
     {
         using var temporary = new TemporaryDirectory();
         string legacyPath = Path.Combine(temporary.Path, "AppData", "EraTrans", "ai-providers.json");
-        string portablePath = Path.Combine(temporary.Path, "Software", "配置", "ai-providers.json");
+        string portablePath = Path.Combine(temporary.Path, "Software", "Config", "ai-providers.json");
 
         var originalSettings = new AiProviderSettings
         {

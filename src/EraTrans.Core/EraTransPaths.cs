@@ -8,7 +8,7 @@ namespace EraTrans.Core;
 public static class EraTransPaths
 {
     public static string ConfigurationDirectory =>
-        Path.Combine(AppContext.BaseDirectory, "配置");
+        Path.Combine(AppContext.BaseDirectory, "Config");
 
     public static string UserSettingsFilePath =>
         Path.Combine(ConfigurationDirectory, "settings.json");

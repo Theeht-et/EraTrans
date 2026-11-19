@@ -223,10 +223,16 @@ public partial class DictionaryEditorWindow : Window
 
     private void UpdateContextPreview()
     {
-        DictionaryEditorEntry? entry = EntriesDataGrid.SelectedCells
-            .Select(cell => cell.Item)
-            .OfType<DictionaryEditorEntry>()
-            .FirstOrDefault() ?? EntriesDataGrid.CurrentItem as DictionaryEditorEntry;
+        // CurrentCell tracks the entry the user is actively viewing. SelectedCells can
+        // contain cells from a previous multi-selection, so preferring its first item
+        // can leave the preview showing stale or empty context after navigation.
+        DictionaryEditorEntry? entry =
+            EntriesDataGrid.CurrentCell.Item as DictionaryEditorEntry ??
+            EntriesDataGrid.SelectedItem as DictionaryEditorEntry ??
+            EntriesDataGrid.SelectedCells
+                .Select(cell => cell.Item)
+                .OfType<DictionaryEditorEntry>()
+                .FirstOrDefault();
 
         EntryContextTextBox.Text = entry is null
             ? "选择一个词条查看上下文。"

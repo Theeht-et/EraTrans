@@ -47,6 +47,8 @@
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
 
                         <TextBlock Text="基本设置"
@@ -113,17 +115,20 @@
                                   ToolTip="提取时不输出变量类词条，只保留文本词条。"
                                   Margin="8,2,0,0"
                                   Foreground="#39414A" />
+                        <CheckBox x:Name="MergeConcatenatedStringsCheckBox"
+                                  Grid.Row="5"
+                                  Content="合并联立字符串"
+                                  ToolTip="按旧版处理方式拆分/合并函数参数中的联立字符串。关闭后使用整体表达式解析方式。"
+                                  Margin="0,12,10,0"
+                                  Foreground="#39414A" />
+                        <CheckBox x:Name="WriteContextCheckBox"
+                                  Grid.Row="5"
+                                  Grid.Column="1"
+                                  Content="提取字典时写入上下文"
+                                  ToolTip="在词条中保存原脚本行或 XML 节点等上下文，供字典编辑和 AI 翻译参考。"
+                                  Margin="8,12,0,0"
+                                  Foreground="#39414A" />
                     </Grid>
-                    <CheckBox x:Name="MergeConcatenatedStringsCheckBox"
-                              Content="合并联立字符串"
-                              ToolTip="按旧版处理方式拆分/合并函数参数中的联立字符串。关闭后使用整体表达式解析方式。"
-                              Margin="0,14,0,0"
-                              Foreground="#39414A" />
-                    <CheckBox x:Name="WriteContextCheckBox"
-                              Content="提取字典时写入上下文"
-                              ToolTip="在词条中保存原脚本行或 XML 节点等上下文，供字典编辑和 AI 翻译参考。"
-                              Margin="0,10,0,0"
-                              Foreground="#39414A" />
                 </Border>
 
                 <Border Padding="16"

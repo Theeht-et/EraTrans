@@ -334,9 +334,9 @@ public sealed class DictionaryExtractorTests
     [Fact]
     public void Extract_ErbFiles_GeneratesSemanticGroupingSidecarWithoutChangingDictionaryShape()
     {
-        using var temporary = new TemporaryDirectory();
-        string game = Path.Combine(temporary.Path, "Game");
-        string output = Path.Combine(temporary.Path, "Output");
+        string root = CreateTempDirectory();
+        string game = Path.Combine(root, "Game");
+        string output = Path.Combine(root, "Output");
         Write(game, "ERB/menu.erb", string.Join(Environment.NewLine,
         [
             "@MENU",
@@ -372,7 +372,7 @@ public sealed class DictionaryExtractorTests
 
         string sidecar = File.ReadAllText(sidecarPath);
         Assert.Contains("MENU_PROMPT", sidecar, StringComparison.Ordinal);
-        Assert.Contains("CASE 0", sidecar, StringComparison.Ordinal);
+        Assert.Contains("CASE: 0", sidecar, StringComparison.Ordinal);
         Assert.Contains("CASEELSE", sidecar, StringComparison.Ordinal);
         Assert.Contains("文本ERB", sidecar, StringComparison.Ordinal);
     }

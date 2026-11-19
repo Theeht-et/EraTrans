@@ -174,7 +174,7 @@ public class ERBParser
                 bool isFormattedFunctionCall = IsFormattedFunctionCall(lineString);
                 int cmIndex;
                 int lfIndex;
-                if (isFormattedFunctionCall)
+                if (isFormattedFunctionCall || ContainsDynamicFormSyntax(rightValue))
                 {
                     (cmIndex, lfIndex) = FindFormattedCallSeparators(rightValue);
                 }
@@ -186,7 +186,7 @@ public class ERBParser
                 if (lfIndex > -1 && (cmIndex > lfIndex || (isFormattedFunctionCall && cmIndex == -1)))
                 {
                     string functionName = rightValue.Substring(0, lfIndex).Trim();
-                    if (ShouldAddFunctionName(functionName, isFormattedFunctionCall))
+                    if (ShouldAddFunctionName(functionName))
                     {
                         varNameList.Add(functionName, contexts);
                     }
@@ -217,8 +217,7 @@ public class ERBParser
                 }
                 else
                 {
-                    rightValue = PrepareFormattedFunctionArguments(
-                        lineString,
+                    rightValue = PrepareDynamicFunctionArguments(
                         rightValue,
                         cmIndex,
                         lfIndex,
@@ -284,7 +283,7 @@ public class ERBParser
                     bool isFormattedFunctionCall = IsFormattedFunctionCall(lineString);
                     int cmIndex;
                     int lfIndex;
-                    if (isFormattedFunctionCall)
+                    if (isFormattedFunctionCall || ContainsDynamicFormSyntax(rightValue))
                     {
                         (cmIndex, lfIndex) = FindFormattedCallSeparators(rightValue);
                     }
@@ -296,7 +295,7 @@ public class ERBParser
                     if (lfIndex > -1 && (cmIndex > lfIndex || (isFormattedFunctionCall && cmIndex == -1)))
                     {
                         string functionName = rightValue.Substring(0, lfIndex).Trim();
-                        if (ShouldAddFunctionName(functionName, isFormattedFunctionCall))
+                        if (ShouldAddFunctionName(functionName))
                         {
                             varNameList.Add(functionName, contexts);
                         }
@@ -327,8 +326,7 @@ public class ERBParser
                     }
                     else
                     {
-                        rightValue = PrepareFormattedFunctionArguments(
-                            lineString,
+                        rightValue = PrepareDynamicFunctionArguments(
                             rightValue,
                             cmIndex,
                             lfIndex,
@@ -1221,21 +1219,21 @@ public class ERBParser
         return backslashCount % 2 != 0;
     }
 
-    private static string PrepareFormattedFunctionArguments(
-        string lineString,
+    private static string PrepareDynamicFunctionArguments(
         string rightValue,
         int commaIndex,
         int leftParenthesisIndex,
         out bool skipCall)
     {
         skipCall = false;
-        if (!IsFormattedFunctionCall(lineString) || !ContainsDynamicFormSyntax(rightValue))
+        if (!ContainsDynamicFormSyntax(rightValue))
         {
             return rightValue;
         }
 
         if (leftParenthesisIndex == -1 && commaIndex == -1)
         {
+            // There is no argument delimiter, so the entire token is a dynamic function name.
             skipCall = true;
             return rightValue;
         }
@@ -1260,15 +1258,10 @@ public class ERBParser
                functionName.Contains("\\@", StringComparison.Ordinal);
     }
 
-    private static bool ShouldAddFunctionName(string functionName, bool isFormattedFunctionCall)
+    private static bool ShouldAddFunctionName(string functionName)
     {
         string normalizedName = functionName.Trim();
-        if (normalizedName.Length == 0)
-        {
-            return false;
-        }
-
-        if (isFormattedFunctionCall && ContainsDynamicFormSyntax(normalizedName))
+        if (normalizedName.Length == 0 || ContainsDynamicFormSyntax(normalizedName))
         {
             return false;
         }

@@ -53,10 +53,21 @@ public sealed class TranslationApplier
         ValidateExtensions(parserOptions.TargetFileExtensions);
         ValidateAutoReplaceReferenceFiles(parserOptions.AutoReplaceReferenceFiles);
 
-        Directory.CreateDirectory(outputRoot);
+        // Create a complete game workspace before applying any edits. The workspace
+        // creator refuses an existing destination so repeated runs cannot overwrite user
+        // changes or apply translations on top of an earlier translated copy.
+        IReadOnlyList<string> copiedDestinationFiles =
+            GameFileWorkspace.CopyDirectoryForModification(gameRoot, outputRoot);
 
         var warnings = new ConcurrentBag<string>();
         var copiedBySource = new ConcurrentDictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (string destinationPath in copiedDestinationFiles)
+        {
+            string relativePath = Path.GetRelativePath(outputRoot, destinationPath);
+            string sourcePath = ResolveWithinRoot(gameRoot, relativePath);
+            copiedBySource[sourcePath] = destinationPath;
+        }
+
         var modifiedFiles = new ConcurrentBag<string>();
         var operations = BuildOperations(gameRoot, dictionaryRoot, outputRoot, parserOptions, warnings);
 
@@ -64,12 +75,11 @@ public sealed class TranslationApplier
         {
             try
             {
-                Directory.CreateDirectory(Path.GetDirectoryName(operation.DestinationPath)!);
-
-                // Never overwrite an existing workspace file. A fresh output directory is
-                // required for a clean re-apply, so earlier user edits cannot be discarded.
-                File.Copy(operation.SourcePath, operation.DestinationPath, overwrite: false);
-                copiedBySource[operation.SourcePath] = operation.DestinationPath;
+                if (!copiedBySource.ContainsKey(operation.SourcePath) ||
+                    !File.Exists(operation.DestinationPath))
+                {
+                    throw new IOException("完整游戏副本中缺少待处理文件。");
+                }
 
                 string content = File.ReadAllText(operation.DestinationPath, parserOptions.FileEncoding);
                 string translated = operation.IsResourceCsv
@@ -93,8 +103,8 @@ public sealed class TranslationApplier
             warnings);
 
         // The legacy autoReplace step runs after normal translation and ERD renaming.
-        // It covers every ERB/ERH/ERD file, so missing files must first be copied into
-        // the workspace; pre-existing workspace files are never modified.
+        // Every original game file is already present in the complete workspace, so this
+        // pass only edits its corresponding copy.
         if (parserOptions.EnableVariableAutoCorrection)
         {
             ApplyVariableAutoCorrection(

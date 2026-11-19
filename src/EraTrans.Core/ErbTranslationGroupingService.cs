@@ -122,7 +122,8 @@ public sealed class ErbTranslationGroupingService
             candidateEntries = ReadTextDictionaryEntries(candidateDictionaryPath);
             currentEntries = ReadTextDictionaryEntries(dictionaryFilePath);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
+        catch (Exception ex) when (
+            ex is IOException or UnauthorizedAccessException or InvalidDataException or Newtonsoft.Json.JsonException)
         {
             warning = $"未更新 ERB AI 分组文件，无法安全读取字典：{dictionaryFilePath} - {ex.Message}";
             return false;
@@ -366,7 +367,19 @@ public sealed class ErbTranslationGroupingService
             foreach (AiTranslationSemanticContextGroup contextGroup in unit.SemanticContextGroups)
             {
                 string contextKey = contextGroup.GroupId + "|" + contextGroup.Relationship;
-                currentContexts.TryAdd(contextKey, contextGroup);
+                if (currentContexts.TryGetValue(contextKey, out AiTranslationSemanticContextGroup? existing))
+                {
+                    AiTranslationContextEntry[] mergedEntries = existing.Entries
+                        .Concat(contextGroup.Entries)
+                        .GroupBy(entry => entry.Key, StringComparer.Ordinal)
+                        .Select(group => group.First())
+                        .ToArray();
+                    currentContexts[contextKey] = existing with { Entries = mergedEntries };
+                }
+                else
+                {
+                    currentContexts.Add(contextKey, contextGroup);
+                }
             }
             currentCharacters += unitCharacters;
         }

@@ -86,7 +86,6 @@ public partial class ParserSettingsWindow : Window
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
             DialogResult = true;
-            Close();
         }
         catch (Exception ex)
         {
@@ -102,6 +101,5 @@ public partial class ParserSettingsWindow : Window
     private void Cancel_Click(object sender, RoutedEventArgs e)
     {
         DialogResult = false;
-        Close();
     }
 }

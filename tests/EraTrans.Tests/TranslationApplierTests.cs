@@ -38,6 +38,40 @@ public sealed class TranslationApplierTests
     }
 
     [Fact]
+    public void Apply_CopiesEveryGameFileAndEmptyDirectoryBeforeApplyingTranslations()
+    {
+        string root = CreateTempDirectory();
+        string game = Path.Combine(root, "Game");
+        string dictionaries = Path.Combine(root, "Dictionaries");
+        string output = Path.Combine(root, "WorkingCopy");
+
+        Write(game, "ERB/script.erb", "PRINTFORM 原文");
+        Write(game, "Graphics/title.bin", "binary game resource");
+        Write(game, "Unparsed/readme.txt", "must also be copied");
+        Directory.CreateDirectory(Path.Combine(game, "EmptyFolder"));
+        WriteJson(dictionaries, "ERB/script.json",
+        [
+            Entry("原文", "译文", 1)
+        ]);
+
+        byte[] originalBinary = File.ReadAllBytes(Path.Combine(game, "Graphics", "title.bin"));
+        var result = new TranslationApplier().Apply(
+            game,
+            dictionaries,
+            output,
+            new EraParserOptions { EnableVariableAutoCorrection = false });
+
+        Assert.Equal("PRINTFORM 译文", File.ReadAllText(Path.Combine(output, "ERB", "script.erb")));
+        Assert.Equal(originalBinary, File.ReadAllBytes(Path.Combine(output, "Graphics", "title.bin")));
+        Assert.Equal("must also be copied", File.ReadAllText(Path.Combine(output, "Unparsed", "readme.txt")));
+        Assert.True(Directory.Exists(Path.Combine(output, "EmptyFolder")));
+        Assert.Equal(3, result.CopiedFiles.Count);
+        Assert.Equal("PRINTFORM 原文", File.ReadAllText(Path.Combine(game, "ERB", "script.erb")));
+        Assert.Equal(originalBinary, File.ReadAllBytes(Path.Combine(game, "Graphics", "title.bin")));
+        Assert.Empty(result.Warnings);
+    }
+
+    [Fact]
     public void Apply_UsesResourceCsvFirstColumnReplacement()
     {
         string root = CreateTempDirectory();
@@ -98,7 +132,8 @@ public sealed class TranslationApplierTests
         Assert.Equal("<root>新标题</root>", File.ReadAllText(Path.Combine(output, "XML", "ui.xml")));
         Assert.Equal("ID,新名称\n", File.ReadAllText(Path.Combine(output, "ERB", "creature_cn.erd")));
         Assert.False(File.Exists(Path.Combine(output, "ERB", "creature.erd")));
-        Assert.False(File.Exists(Path.Combine(output, "ERB", "other.erd")));
+        Assert.True(File.Exists(Path.Combine(output, "ERB", "other.erd")));
+        Assert.Equal("ID,不应复制\n", File.ReadAllText(Path.Combine(output, "ERB", "other.erd")));
         Assert.True(File.Exists(Path.Combine(game, "ERB", "creature.erd")));
         Assert.True(File.Exists(Path.Combine(game, "ERB", "other.erd")));
         Assert.Single(result.RenamedFiles);
@@ -170,7 +205,7 @@ public sealed class TranslationApplierTests
     }
 
     [Fact]
-    public void Apply_AutoCorrectionCanBeDisabled_AndDoesNotCopyUntranslatedScripts()
+    public void Apply_AutoCorrectionCanBeDisabled_AndStillCopiesTheCompleteGame()
     {
         string root = CreateTempDirectory();
         string game = Path.Combine(root, "Game");
@@ -191,9 +226,14 @@ public sealed class TranslationApplierTests
             new EraParserOptions { EnableVariableAutoCorrection = false });
 
         Assert.True(File.Exists(Path.Combine(output, "CSV", "Abl.csv")));
-        Assert.False(File.Exists(Path.Combine(output, "ERB", "untouched.erb")));
-        Assert.Equal("PRINTFORM 参考原文\n", File.ReadAllText(Path.Combine(game, "ERB", "untouched.erb")));
-        Assert.DoesNotContain(result.CopiedFiles, path => path.EndsWith("untouched.erb", StringComparison.OrdinalIgnoreCase));
+        Assert.True(File.Exists(Path.Combine(output, "ERB", "untouched.erb")));
+        Assert.Equal(
+            "PRINTFORM 参考原文\n",
+            File.ReadAllText(Path.Combine(output, "ERB", "untouched.erb")));
+        Assert.Equal(
+            "PRINTFORM 参考原文\n",
+            File.ReadAllText(Path.Combine(game, "ERB", "untouched.erb")));
+        Assert.Contains(result.CopiedFiles, path => path.EndsWith("untouched.erb", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -213,15 +253,18 @@ public sealed class TranslationApplierTests
             Entry("参考原文", "自动修正文本", 1)
         ]);
 
-        var result = new TranslationApplier().Apply(
-            game,
-            dictionaries,
-            output,
-            new EraParserOptions { EnableVariableAutoCorrection = true });
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            new TranslationApplier().Apply(
+                game,
+                dictionaries,
+                output,
+                new EraParserOptions { EnableVariableAutoCorrection = true }));
 
+        Assert.Contains("已存在", exception.Message, StringComparison.Ordinal);
         Assert.Equal("用户已有副本内容", File.ReadAllText(Path.Combine(output, "ERB", "untouched.erb")));
-        Assert.DoesNotContain(Path.Combine(output, "ERB", "untouched.erb"), result.ModifiedFiles);
-        Assert.Contains(result.Warnings, warning => warning.Contains("复制自动修正副本失败", StringComparison.Ordinal));
+        Assert.Equal(
+            "PRINTFORM 参考原文\n",
+            File.ReadAllText(Path.Combine(game, "ERB", "untouched.erb")));
     }
 
     [Fact]
@@ -252,12 +295,12 @@ public sealed class TranslationApplierTests
             Entry("原文", "译文", 1)
         ]);
 
-        var result = new TranslationApplier().Apply(game, dictionaries, output);
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            new TranslationApplier().Apply(game, dictionaries, output));
 
+        Assert.Contains("已存在", exception.Message, StringComparison.Ordinal);
         Assert.Equal("用户已有内容", File.ReadAllText(Path.Combine(output, "ERB", "script.erb")));
         Assert.Equal("PRINTFORM 原文", File.ReadAllText(Path.Combine(game, "ERB", "script.erb")));
-        Assert.Empty(result.ModifiedFiles);
-        Assert.Contains(result.Warnings, warning => warning.Contains("处理副本失败", StringComparison.Ordinal));
     }
 
     [Fact]

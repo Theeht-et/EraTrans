@@ -101,7 +101,12 @@ public sealed class DictionaryExtractorTests
             "CALLFORM 日本語単引数関数(ARG:0)",
             "CALLFORM ASCII_FUNCTION(ARG:0, \"静态英文函数参数文本\")",
             "TRYCALLFORM KOJO_{NO:TARGET}_{SELECTCOM}(ARG:0, \"TRYCALLFORM参数文本\")",
-            "CALL 日本語CALL(ARG:0, \"普通CALL参数文本\")"
+            "TRYCCALLFORM KOJO_{NO:TARGET}_{SELECTCOM}(ARG:0, \"TRYCCALLFORM参数文本\")",
+            "CALL 日本語CALL(ARG:0, \"普通CALL参数文本\")",
+            "CALL X_{index}(ARG:0, \"普通CALL动态函数参数文本\")",
+            "CALL X_{index}(ARG:0)",
+            "CALL X_{index}, GETNUM(ARG:0), \"普通CALL逗号参数文本\"",
+            "CALL X_{index}"
         }));
 
         new DictionaryExtractor().Extract(game, output);
@@ -129,6 +134,9 @@ public sealed class DictionaryExtractorTests
         Assert.Contains(originals, original => original.Contains("逗号分隔动态名称参数文本", StringComparison.Ordinal));
         Assert.Contains(originals, original => original.Contains("条件表达式动态名称参数文本", StringComparison.Ordinal));
         Assert.Contains(originals, original => original.Contains("TRYCALLFORM参数文本", StringComparison.Ordinal));
+        Assert.Contains(originals, original => original.Contains("TRYCCALLFORM参数文本", StringComparison.Ordinal));
+        Assert.Contains(originals, original => original.Contains("普通CALL动态函数参数文本", StringComparison.Ordinal));
+        Assert.Contains(originals, original => original.Contains("普通CALL逗号参数文本", StringComparison.Ordinal));
         Assert.Contains(originals, original => original.Contains("静态日文函数参数文本", StringComparison.Ordinal));
         Assert.Contains(originals, original => original.Contains("普通CALL参数文本", StringComparison.Ordinal));
     }

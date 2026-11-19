@@ -91,7 +91,7 @@ public sealed class DictionaryExtractorTests
             "CALLFORM KOJO_{NO:TARGET}_{SELECTCOM}(ARG:0, \"花括号动态名称参数文本\")",
             "CALLFORM %HOGES%(ARG:0, \"百分号动态名称参数文本\")",
             "CALLFORM KOJO_{NO,3}_{SELECTCOM}(ARG:0)",
-            "CALLFORM KOJO_{NO,3}_{SELECTCOM}, ARG:0, \"逗号分隔动态名称参数文本\"",
+            "CALLFORM KOJO_{NO,3}_{SELECTCOM}, GETNUM(ARG:0), \"逗号分隔动态名称参数文本\"",
             "CALLFORM \\@NO == 1 ? 関数甲 : 関数乙\\@(ARG:0, \"条件表达式动态名称参数文本\")",
             "CALLFORM KOJO_{NO:TARGET}_{SELECTCOM}",
             "CALLFORM %HOGES%",
@@ -121,7 +121,8 @@ public sealed class DictionaryExtractorTests
             original.Contains("関数甲", StringComparison.Ordinal) ||
             original.Contains("関数乙", StringComparison.Ordinal) ||
             original.Contains("SELECTCOM", StringComparison.Ordinal) ||
-            original.Contains("TARGET", StringComparison.Ordinal));
+            original.Contains("TARGET", StringComparison.Ordinal) ||
+            original == "NO");
 
         Assert.Contains(originals, original => original.Contains("花括号动态名称参数文本", StringComparison.Ordinal));
         Assert.Contains(originals, original => original.Contains("百分号动态名称参数文本", StringComparison.Ordinal));

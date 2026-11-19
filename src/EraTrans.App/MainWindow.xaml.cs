@@ -152,18 +152,10 @@ public partial class MainWindow : Window
         }
 
         string gameDirectory = GameDirectoryTextBox.Text.Trim();
-        if (string.IsNullOrWhiteSpace(gameDirectory))
-        {
-            MessageBox.Show(
-                this,
-                "请选择原游戏目录，才能校验 ERB 语义分组文件。",
-                "游戏目录无效",
-                MessageBoxButton.OK,
-                MessageBoxImage.Warning);
-            return;
-        }
-
-        var editor = new DictionaryEditorWindow(dictionaryDirectory, gameDirectory, _settings)
+        var editor = new DictionaryEditorWindow(
+            dictionaryDirectory,
+            gameDirectory,
+            _settings)
         {
             Owner = this
         };

@@ -162,6 +162,17 @@ public sealed class DictionaryExtractor
                             }
                             case GameFileKind.Erb:
                             {
+                                string? sourceFingerprintBeforeParse = null;
+                                try
+                                {
+                                    sourceFingerprintBeforeParse =
+                                        ErbTranslationGroupingService.ComputeSourceFingerprint(file.FullPath);
+                                }
+                                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                                {
+                                    warnings.Add($"无法校验 ERB 源文件，跳过其 AI 分组文件：{file.RelativePath} - {ex.Message}");
+                                }
+
                                 var parser = new ERBParser();
                                 parser.ParseFile(file.FullPath);
                                 if (hasReference)
@@ -178,19 +189,41 @@ public sealed class DictionaryExtractor
 
                                 // The legacy dictionary remains unchanged. Its text keys are
                                 // linked to structural ERB metadata in a separate sidecar.
-                                if (File.Exists(candidateDictionaryPath))
+                                if (File.Exists(candidateDictionaryPath) &&
+                                    sourceFingerprintBeforeParse is not null)
                                 {
                                     var groupingService = new ErbTranslationGroupingService();
-                                    if (groupingService.TryWriteOrUpdate(
-                                            outputRoot,
-                                            dictionaryOutputPath,
-                                            candidateDictionaryPath,
-                                            file.FullPath,
-                                            file.RelativePath,
-                                            parser.GetTranslationGroupingEntries(file.RelativePath),
-                                            parser.GetTranslationControlMarkers(),
-                                            out string sidecarPath,
-                                            out string? groupingWarning))
+                                    string? sourceFingerprintAfterParse = null;
+                                    try
+                                    {
+                                        sourceFingerprintAfterParse =
+                                            ErbTranslationGroupingService.ComputeSourceFingerprint(file.FullPath);
+                                    }
+                                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                                    {
+                                        warnings.Add($"解析完成后无法再次校验 ERB 源文件，跳过其 AI 分组文件：{file.RelativePath} - {ex.Message}");
+                                    }
+
+                                    if (sourceFingerprintAfterParse is not null &&
+                                        !string.Equals(
+                                            sourceFingerprintBeforeParse,
+                                            sourceFingerprintAfterParse,
+                                            StringComparison.Ordinal))
+                                    {
+                                        warnings.Add($"解析期间 ERB 源文件或其同名 ERH 文件发生变化，跳过 AI 分组文件：{file.RelativePath}");
+                                    }
+                                    else if (sourceFingerprintAfterParse is not null &&
+                                             groupingService.TryWriteOrUpdate(
+                                                 outputRoot,
+                                                 dictionaryOutputPath,
+                                                 candidateDictionaryPath,
+                                                 file.FullPath,
+                                                 sourceFingerprintBeforeParse,
+                                                 file.RelativePath,
+                                                 parser.GetTranslationGroupingEntries(file.RelativePath),
+                                                 parser.GetTranslationControlMarkers(),
+                                                 out string sidecarPath,
+                                                 out string? groupingWarning))
                                     {
                                         updatedGroupingFiles.Add(sidecarPath);
                                     }

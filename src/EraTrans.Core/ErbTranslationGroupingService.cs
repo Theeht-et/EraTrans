@@ -99,6 +99,7 @@ public sealed class ErbTranslationGroupingService
         string dictionaryFilePath,
         string candidateDictionaryPath,
         string sourceFilePath,
+        string expectedSourceFingerprint,
         string sourceRelativePath,
         IReadOnlyList<ErbTranslationSourceEntry> sourceEntries,
         IReadOnlyList<ErbTranslationControlMarker> controlMarkers,
@@ -173,10 +174,10 @@ public sealed class ErbTranslationGroupingService
 
         string dictionaryRoot = Path.GetFullPath(dictionaryDirectory);
         string dictionaryRelativePath = GetSafeRelativePath(dictionaryRoot, dictionaryFilePath);
-        string sourceFingerprint;
+        string currentSourceFingerprint;
         try
         {
-            sourceFingerprint = ComputeSourceFingerprint(sourceFilePath);
+            currentSourceFingerprint = ComputeSourceFingerprint(sourceFilePath);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -184,10 +185,16 @@ public sealed class ErbTranslationGroupingService
             return false;
         }
 
+        if (!string.Equals(currentSourceFingerprint, expectedSourceFingerprint, StringComparison.Ordinal))
+        {
+            warning = $"解析期间 ERB 源文件或其同名 ERH 文件发生变化，已跳过分组文件更新：{sourceFilePath}";
+            return false;
+        }
+
         var index = new ErbTranslationGroupingIndex(
             SchemaVersion,
             NormalizeRelativePath(sourceRelativePath),
-            sourceFingerprint,
+            expectedSourceFingerprint,
             NormalizeRelativePath(dictionaryRelativePath),
             ComputeFingerprint(currentEntries),
             groupBuild.Groups,
@@ -848,7 +855,7 @@ public sealed class ErbTranslationGroupingService
             string.Equals(pair.First.Key, pair.Second.Key, StringComparison.Ordinal) &&
             string.Equals(pair.First.Original, pair.Second.Original, StringComparison.Ordinal));
 
-    private static string ComputeSourceFingerprint(string sourceFilePath)
+    public static string ComputeSourceFingerprint(string sourceFilePath)
     {
         string fullPath = Path.GetFullPath(sourceFilePath);
         if (!File.Exists(fullPath))

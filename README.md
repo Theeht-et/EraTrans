@@ -55,7 +55,7 @@ The package uses .NET single-file publishing and includes the .NET runtime, so a
 Choose one original game directory and one output directory in the app. EraTrans creates and uses the following folders inside the output directory:
 
 - `字典/` — extracted JSON dictionaries and user-edited translations. The existing JSON dictionary structure and keys are unchanged.
-- `AI上下文/` — separate ERB semantic-group metadata files, used only when semantic-group translation is enabled.
+- `AI上下文/` — separate ERB semantic-group metadata files generated during extraction and read only when semantic-group translation is enabled.
 - `游戏副本/` — a complete copy of the original game directory, including unrelated assets and empty folders. Existing copies are never overwritten.
 
 To rebuild a clean translated copy after changing translations, preserve any files you want to keep and remove or move the existing `游戏副本/` folder before applying translations again. The original game directory remains untouched.

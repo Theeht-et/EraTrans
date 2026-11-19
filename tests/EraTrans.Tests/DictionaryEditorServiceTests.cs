@@ -15,11 +15,11 @@ public sealed class DictionaryEditorServiceTests
             """
             [
               {
-                "key": "文本ERB\\\\OPENING00001",
+                "key": "文本ERB\\OPENING00001",
                 "original": "原始文本",
                 "translation": "",
                 "stage": 0,
-                "context": "第一行\\n第二行",
+                "context": "第一行\n第二行",
                 "custom": {
                   "keep": true,
                   "items": [1, "two"]
@@ -31,7 +31,7 @@ public sealed class DictionaryEditorServiceTests
         var document = new DictionaryEditorService().Load(path);
         var entry = Assert.Single(document.Entries);
 
-        Assert.Equal("文本ERB\\\\OPENING00001", entry.Key);
+        Assert.Equal("文本ERB\\OPENING00001", entry.Key);
         Assert.Equal("原始文本", entry.Original);
         Assert.Equal("第一行\n第二行", entry.Context);
         Assert.True(entry.IsEditable);
@@ -44,7 +44,7 @@ public sealed class DictionaryEditorServiceTests
         document.Save();
 
         JObject saved = Assert.IsType<JObject>(Assert.Single(JArray.Parse(File.ReadAllText(path))));
-        Assert.Equal("文本ERB\\\\OPENING00001", (string?)saved["key"]);
+        Assert.Equal("文本ERB\\OPENING00001", (string?)saved["key"]);
         Assert.Equal("原始文本", (string?)saved["original"]);
         Assert.Equal("翻译结果", (string?)saved["translation"]);
         Assert.Equal(1, (int?)saved["stage"]);

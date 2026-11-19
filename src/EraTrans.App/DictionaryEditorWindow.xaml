@@ -79,6 +79,7 @@
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
@@ -110,8 +111,45 @@
                                  TextChanged="EntrySearchTextBox_TextChanged" />
                     </Grid>
 
+                    <DockPanel Grid.Row="1" Margin="0,0,0,10">
+                        <TextBlock x:Name="AiProviderStatusTextBlock"
+                                   DockPanel.Dock="Right"
+                                   VerticalAlignment="Center"
+                                   Foreground="#68717D"
+                                   FontSize="11"
+                                   Text="AI 翻译未配置" />
+                        <StackPanel Orientation="Horizontal">
+                            <Button x:Name="AiSettingsButton"
+                                    Content="AI 服务设置"
+                                    Width="110"
+                                    Height="32"
+                                    Margin="0,0,8,0"
+                                    Click="AiSettingsButton_Click" />
+                            <Button x:Name="TranslateSelectedButton"
+                                    Content="翻译选中"
+                                    Width="100"
+                                    Height="32"
+                                    Margin="0,0,8,0"
+                                    IsEnabled="False"
+                                    Click="TranslateSelectedButton_Click" />
+                            <Button x:Name="TranslatePendingButton"
+                                    Content="批量翻译未翻译项"
+                                    Width="150"
+                                    Height="32"
+                                    Margin="0,0,8,0"
+                                    IsEnabled="False"
+                                    Click="TranslatePendingButton_Click" />
+                            <Button x:Name="CancelTranslationButton"
+                                    Content="取消翻译"
+                                    Width="90"
+                                    Height="32"
+                                    IsEnabled="False"
+                                    Click="CancelTranslationButton_Click" />
+                        </StackPanel>
+                    </DockPanel>
+
                     <DataGrid x:Name="EntriesDataGrid"
-                              Grid.Row="1"
+                              Grid.Row="2"
                               AutoGenerateColumns="False"
                               CanUserAddRows="False"
                               CanUserDeleteRows="False"
@@ -185,7 +223,7 @@
                         </DataGrid.Columns>
                     </DataGrid>
 
-                    <Grid Grid.Row="2" Margin="0,12,0,0">
+                    <Grid Grid.Row="3" Margin="0,12,0,0">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
@@ -217,7 +255,7 @@
 
         <TextBlock Grid.Row="2"
                    Margin="0,12,0,0"
-                   Text="保存前会检查文件是否被其他程序修改；检测到外部更改时会取消保存，防止覆盖。"
+                   Text="AI 结果仅回填当前编辑器，不会自动保存；变量、已有译文和已忽略词条均会跳过。保存前仍会检查文件是否被外部修改。"
                    Foreground="#87909B"
                    FontSize="11" />
     </Grid>

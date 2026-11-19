@@ -197,6 +197,25 @@ public sealed class DictionaryEditorEntry : INotifyPropertyChanged
         _ => $"自定义（{_stage}）"
     };
 
+    public bool TryApplyAiTranslation(
+        string expectedKey,
+        string expectedOriginal,
+        string translation)
+    {
+        if (!IsEditable ||
+            Stage != 0 ||
+            !string.IsNullOrWhiteSpace(Translation) ||
+            !string.Equals(Key, expectedKey, StringComparison.Ordinal) ||
+            !string.Equals(Original, expectedOriginal, StringComparison.Ordinal) ||
+            string.IsNullOrWhiteSpace(translation))
+        {
+            return false;
+        }
+
+        Translation = translation;
+        return true;
+    }
+
     private void EnsureEditable()
     {
         if (!IsEditable)

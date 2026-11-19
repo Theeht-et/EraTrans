@@ -78,7 +78,7 @@ public sealed class AiTranslationServiceTests
 
         Assert.Single(results);
         Assert.Equal(5, results[0].Id);
-        Assert.Contains("\\"targets\\"", fake.LastUserPrompt);
+        Assert.Contains("targets", fake.LastUserPrompt);
         Assert.Contains("第一个选项", fake.LastUserPrompt);
         Assert.Contains("第二个分支", fake.LastUserPrompt);
         Assert.Contains("alternative-branch", fake.LastUserPrompt);

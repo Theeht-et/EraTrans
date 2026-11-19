@@ -17,6 +17,12 @@ public sealed class FullGameWorkspaceCopyTests
         File.SetAttributes(
             hiddenFile,
             File.GetAttributes(hiddenFile) | FileAttributes.Hidden | FileAttributes.System);
+        string hiddenDirectory = Path.Combine(game.Path, ".hidden-folder");
+        Directory.CreateDirectory(hiddenDirectory);
+        File.SetAttributes(
+            hiddenDirectory,
+            File.GetAttributes(hiddenDirectory) | FileAttributes.Hidden | FileAttributes.System);
+        game.CreateFile(".hidden-folder/asset.bin", "hidden directory asset");
         Directory.CreateDirectory(Path.Combine(game.Path, "EmptyFolder"));
 
         File.SetAttributes(
@@ -27,7 +33,7 @@ public sealed class FullGameWorkspaceCopyTests
         IReadOnlyList<string> copiedFiles =
             GameFileWorkspace.CopyDirectoryForModification(game.Path, output);
 
-        Assert.Equal(3, copiedFiles.Count);
+        Assert.Equal(4, copiedFiles.Count);
         Assert.Equal("original script", File.ReadAllText(Path.Combine(output, "ERB", "main.erb")));
         Assert.Equal("binary resource", File.ReadAllText(Path.Combine(output, "Graphics", "title.bin")));
         string copiedHiddenFile = Path.Combine(output, ".hidden-config");
@@ -35,6 +41,12 @@ public sealed class FullGameWorkspaceCopyTests
         FileAttributes copiedHiddenAttributes = File.GetAttributes(copiedHiddenFile);
         Assert.True((copiedHiddenAttributes & FileAttributes.Hidden) != 0);
         Assert.True((copiedHiddenAttributes & FileAttributes.System) != 0);
+        string copiedHiddenDirectory = Path.Combine(output, ".hidden-folder");
+        Assert.True(Directory.Exists(copiedHiddenDirectory));
+        FileAttributes copiedHiddenDirectoryAttributes = File.GetAttributes(copiedHiddenDirectory);
+        Assert.True((copiedHiddenDirectoryAttributes & FileAttributes.Hidden) != 0);
+        Assert.True((copiedHiddenDirectoryAttributes & FileAttributes.System) != 0);
+        Assert.Equal("hidden directory asset", File.ReadAllText(Path.Combine(copiedHiddenDirectory, "asset.bin")));
         Assert.True(Directory.Exists(Path.Combine(output, "EmptyFolder")));
         Assert.False(
             (File.GetAttributes(Path.Combine(output, "ERB", "main.erb")) & FileAttributes.ReadOnly) != 0);

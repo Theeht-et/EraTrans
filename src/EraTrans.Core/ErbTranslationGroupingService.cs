@@ -222,6 +222,18 @@ public sealed class ErbTranslationGroupingService
                 return false;
             }
 
+            if (loaded.Groups is null ||
+                loaded.Entries is null ||
+                loaded.Groups.Any(group => group is null || group.EntryKeys is null) ||
+                loaded.Entries.Any(entry =>
+                    entry is null ||
+                    string.IsNullOrWhiteSpace(entry.Key) ||
+                    string.IsNullOrWhiteSpace(entry.GroupId)))
+            {
+                reason = "分组文件缺少必要的分组或词条映射数据。请重新提取字典。";
+                return false;
+            }
+
             string dictionaryRoot = Path.GetFullPath(dictionaryDirectory);
             string relativeDictionaryPath = NormalizeRelativePath(
                 GetSafeRelativePath(dictionaryRoot, dictionaryFilePath));
@@ -250,20 +262,37 @@ public sealed class ErbTranslationGroupingService
             var indexedEntries = loaded.Entries.ToDictionary(
                 entry => entry.Key,
                 StringComparer.Ordinal);
+            var indexedGroups = loaded.Groups.ToDictionary(
+                group => group.Id,
+                StringComparer.Ordinal);
             if (indexedEntries.Count != loaded.Entries.Count ||
+                indexedGroups.Count != loaded.Groups.Count ||
                 indexedEntries.Count != currentEntries.Length)
             {
-                reason = "分组文件中的词条映射不完整或存在重复 key。请重新提取字典。";
+                reason = "分组文件中的词条或分组映射不完整，或存在重复标识。请重新提取字典。";
                 return false;
+            }
+
+            var currentKeys = currentEntries
+                .Select(entry => entry.Key)
+                .ToHashSet(StringComparer.Ordinal);
+            foreach (ErbTranslationGroup group in loaded.Groups)
+            {
+                if (group.EntryKeys.Count == 0 ||
+                    group.EntryKeys.Distinct(StringComparer.Ordinal).Count() != group.EntryKeys.Count ||
+                    group.EntryKeys.Any(key => !currentKeys.Contains(key)))
+                {
+                    reason = "分组文件包含空分组、重复 key 或不属于当前字典的 key。请重新提取字典。";
+                    return false;
+                }
             }
 
             foreach ((string key, string original) in currentEntries)
             {
                 if (!indexedEntries.TryGetValue(key, out ErbTranslationGroupEntry? entry) ||
                     !string.Equals(entry.Original, original, StringComparison.Ordinal) ||
-                    !loaded.Groups.Any(group =>
-                        string.Equals(group.Id, entry.GroupId, StringComparison.Ordinal) &&
-                        group.EntryKeys.Contains(key, StringComparer.Ordinal)))
+                    !indexedGroups.TryGetValue(entry.GroupId, out ErbTranslationGroup? group) ||
+                    !group.EntryKeys.Contains(key, StringComparer.Ordinal))
                 {
                     reason = "分组文件与当前字典的词条关联不一致。请重新提取字典。";
                     return false;

@@ -78,7 +78,7 @@ public sealed class DictionaryExtractorTests
         new DictionaryExtractor().Extract(game, output, reference);
 
         var entries = JArray.Parse(File.ReadAllText(Path.Combine(output, "CSV", "items.json")));
-        Assert.Equal("变量CSV/items00000", (string?)entries[0]?["key"]);
+        Assert.Equal("变量" + Path.ChangeExtension(Path.Combine("CSV", "items.csv"), "") + "00000", (string?)entries[0]?["key"]);
         Assert.Equal("原文项目", (string?)entries[0]?["original"]);
         Assert.Equal("参考译文", (string?)entries[0]?["translation"]);
         Assert.Equal(1, (int?)entries[0]?["stage"]);

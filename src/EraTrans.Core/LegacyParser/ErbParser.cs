@@ -174,7 +174,7 @@ public class ERBParser
                 bool isFormattedFunctionCall = IsFormattedFunctionCall(lineString);
                 int cmIndex;
                 int lfIndex;
-                if (isFormattedFunctionCall || ContainsDynamicFormSyntax(rightValue))
+                if (isFormattedFunctionCall || ContainsDynamicSyntaxBeforeFirstCallSeparator(rightValue))
                 {
                     (cmIndex, lfIndex) = FindFormattedCallSeparators(rightValue);
                 }
@@ -286,7 +286,7 @@ public class ERBParser
                     bool isFormattedFunctionCall = IsFormattedFunctionCall(lineString);
                     int cmIndex;
                     int lfIndex;
-                    if (isFormattedFunctionCall || ContainsDynamicFormSyntax(rightValue))
+                    if (isFormattedFunctionCall || ContainsDynamicSyntaxBeforeFirstCallSeparator(rightValue))
                     {
                         (cmIndex, lfIndex) = FindFormattedCallSeparators(rightValue);
                     }
@@ -296,9 +296,9 @@ public class ERBParser
                         lfIndex = rightValue.IndexOf("(");
                     }
                     bool dynamicFunctionName = lfIndex > -1 &&
-                    ContainsDynamicFormSyntax(rightValue.Substring(0, lfIndex));
-                if (lfIndex > -1 &&
-                    (cmIndex > lfIndex || ((isFormattedFunctionCall || dynamicFunctionName) && cmIndex == -1)))
+                        ContainsDynamicFormSyntax(rightValue.Substring(0, lfIndex));
+                    if (lfIndex > -1 &&
+                        (cmIndex > lfIndex || ((isFormattedFunctionCall || dynamicFunctionName) && cmIndex == -1)))
                     {
                         string functionName = rightValue.Substring(0, lfIndex).Trim();
                         if (ShouldAddFunctionName(functionName))
@@ -1136,6 +1136,22 @@ public class ERBParser
                lineString.StartsWith("TRYCCALLFORM", StringComparison.Ordinal);
     }
 
+    private static bool ContainsDynamicSyntaxBeforeFirstCallSeparator(string rightValue)
+    {
+        int commaIndex = rightValue.IndexOf(',');
+        int leftParenthesisIndex = rightValue.IndexOf('(');
+        int separatorIndex = commaIndex == -1
+            ? leftParenthesisIndex
+            : leftParenthesisIndex == -1
+                ? commaIndex
+                : Math.Min(commaIndex, leftParenthesisIndex);
+
+        string functionNameCandidate = separatorIndex == -1
+            ? rightValue
+            : rightValue[..separatorIndex];
+        return ContainsDynamicFormSyntax(functionNameCandidate);
+    }
+
     private static (int commaIndex, int leftParenthesisIndex) FindFormattedCallSeparators(string expression)
     {
         int commaIndex = -1;
@@ -1143,10 +1159,22 @@ public class ERBParser
         int braceDepth = 0;
         bool insidePercentExpression = false;
         bool insideConditionalExpression = false;
+        bool insideString = false;
 
         for (int i = 0; i < expression.Length; i++)
         {
             char current = expression[i];
+
+            if (current == '"' && !IsEscapedFormMarker(expression, i))
+            {
+                insideString = !insideString;
+                continue;
+            }
+
+            if (insideString)
+            {
+                continue;
+            }
 
             if (insidePercentExpression)
             {

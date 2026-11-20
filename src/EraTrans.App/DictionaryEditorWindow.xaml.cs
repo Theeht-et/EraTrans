@@ -20,7 +20,8 @@ public partial class DictionaryEditorWindow : Window
     private readonly AiProviderSettingsStore _providerStore = new();
     private ErbTranslationGroupingIndex? _activeGroupingIndex;
     private string? _groupingFallbackReason;
-    private readonly AiTranslationService _translationService = new();
+    private readonly AiTranslationLogStore _translationLogStore = new();
+    private readonly AiTranslationService _translationService;
     private readonly Dictionary<string, TreeViewItem> _fileTreeItems = new(StringComparer.OrdinalIgnoreCase);
     private DictionaryEditorDocument? _document;
     private DictionaryEditorFile? _currentFile;
@@ -43,6 +44,7 @@ public partial class DictionaryEditorWindow : Window
         _settings = settings;
 
         InitializeComponent();
+        _translationService = new AiTranslationService(logStore: _translationLogStore);
         DictionaryDirectoryTextBlock.Text = _dictionaryDirectory;
         UpdateProviderStatus();
     }
@@ -483,6 +485,12 @@ public partial class DictionaryEditorWindow : Window
             UpdateProviderStatus();
             StatusTextBlock.Text = "AI 服务商配置已保存。";
         }
+    }
+
+    private void AiLogsButton_Click(object sender, RoutedEventArgs e)
+    {
+        var window = new AiTranslationLogWindow(_translationLogStore) { Owner = this };
+        window.ShowDialog();
     }
 
     private void TranslateSelectedButton_Click(object sender, RoutedEventArgs e)

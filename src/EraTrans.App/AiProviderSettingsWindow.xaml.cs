@@ -297,7 +297,7 @@ public partial class AiProviderSettingsWindow : Window
             FetchModelsButton.IsEnabled = false;
             StatusTextBlock.Text = "正在测试 Chat Completions API……";
 
-            await new AiTranslationService().TestConnectionAsync(_currentProfile);
+            await new AiTranslationService(logStore: new AiTranslationLogStore()).TestConnectionAsync(_currentProfile);
 
             StatusTextBlock.Text = "连接成功，所选模型已返回响应。";
         }

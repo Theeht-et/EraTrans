@@ -14,4 +14,7 @@ public static class EraTransPaths
     public static string AiProviderSettingsFilePath =>
         Path.Combine(ConfigurationDirectory, "ai-providers.json");
 
+    public static string AiTranslationLogDirectoryPath =>
+        Path.Combine(ConfigurationDirectory, "ai-translation-logs");
+
 }

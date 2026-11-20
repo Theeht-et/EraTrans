@@ -327,9 +327,10 @@ public sealed class AiModelDiscoveryService
                         "max_context_length", "max_context_window", "inputTokenLimit", "input_token_limit")
                     ?? ReadNestedInt(row, "top_provider", "context_length")
                     ?? ReadNestedInt(row, "limit", "context"),
+                // top_provider.context_length is the model's total context window,
+                // not a provider-specific maximum input token count.
                 InputLimit =
-                    ReadFirstInt32(row, "max_input_tokens", "input_limit", "inputTokenLimit", "input_token_limit")
-                    ?? ReadNestedInt(row, "top_provider", "context_length"),
+                    ReadFirstInt32(row, "max_input_tokens", "input_limit", "inputTokenLimit", "input_token_limit"),
                 OutputLimit =
                     ReadFirstInt32(row, "max_output_tokens", "output_limit", "max_tokens",
                         "max_completion_tokens", "outputTokenLimit", "output_token_limit")

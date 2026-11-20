@@ -165,7 +165,16 @@ public partial class DictionaryEditorWindow : Window
             _activeGroupingIndex = null;
             _groupingFallbackReason = null;
 
-            if (file.RelativePath.StartsWith("ERB" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            string outputRoot = Directory.GetParent(_dictionaryDirectory)?.FullName ?? _dictionaryDirectory;
+            string sidecarPath = Path.Combine(
+                outputRoot,
+                "AI上下文",
+                Path.ChangeExtension(file.RelativePath, ".groups.json"));
+            bool shouldLoadGrouping =
+                file.RelativePath.StartsWith("ERB" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
+                File.Exists(sidecarPath);
+
+            if (shouldLoadGrouping)
             {
                 if (_groupingService.TryLoad(
                         _dictionaryDirectory,

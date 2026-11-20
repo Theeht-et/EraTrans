@@ -106,6 +106,19 @@ public partial class DictionaryEditorWindow : Window
         LoadDictionary(selectedFile);
     }
 
+    private static TextBlock CreateTreeHeader(string text, string toolTip)
+    {
+        return new TextBlock
+        {
+            Text = text,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            TextWrapping = TextWrapping.NoWrap,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Center,
+            ToolTip = toolTip
+        };
+    }
+
     private void BuildDictionaryTree(IReadOnlyList<DictionaryEditorFile> files)
     {
         DictionaryFilesTreeView.Items.Clear();
@@ -138,7 +151,7 @@ public partial class DictionaryEditorWindow : Window
                 {
                     folderNode = new TreeViewItem
                     {
-                        Header = segments[index],
+                        Header = CreateTreeHeader(segments[index], currentFolder),
                         IsExpanded = false,
                         FontWeight = FontWeights.SemiBold
                     };
@@ -161,7 +174,11 @@ public partial class DictionaryEditorWindow : Window
             string parentFolder = segments.Length > 1
                 ? Path.Combine(segments[..^1])
                 : string.Empty;
-            var fileNode = new TreeViewItem { Header = segments[^1], Tag = file };
+            var fileNode = new TreeViewItem
+            {
+                Header = CreateTreeHeader(segments[^1], file.RelativePath),
+                Tag = file
+            };
             folderChildren[parentFolder].Add(fileNode);
             _fileTreeItems[file.FullPath] = fileNode;
         }

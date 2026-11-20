@@ -411,6 +411,26 @@ public sealed class AiModelDiscoveryServiceTests
         Assert.Equal(262144, cached.ContextLimit);
         Assert.Equal(true, cached.ReasoningSupport);
         Assert.Equal(0, secondRequestCount);
+
+        File.SetLastWriteTimeUtc(cachePath, DateTime.UtcNow.AddDays(-2));
+        var thirdUri = new Uri("https://models.dev/api.json?test=moonshot-host-alias-expired-cache");
+        int thirdRequestCount = 0;
+        using var thirdHandler = new StubHandler(_ =>
+        {
+            thirdRequestCount++;
+            return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable);
+        });
+        using var thirdClient = new HttpClient(thirdHandler);
+        var thirdService = new AiModelCatalogEnrichmentService(
+            thirdClient,
+            catalogUri: thirdUri,
+            catalogCacheFilePath: cachePath);
+
+        IReadOnlyList<AiProviderModel> expiredFallback = await thirdService.EnrichAsync(
+            new AiProviderProfile { BaseUrl = "https://api.moonshot.cn/v1" },
+            [discovered]);
+        Assert.Equal(1, thirdRequestCount);
+        Assert.Equal(262144, Assert.Single(expiredFallback).ContextLimit);
     }
 
     [Fact]

@@ -13,8 +13,12 @@ public sealed class DictionaryExtractorTests
         string root = CreateTempDirectory();
         string game = Path.Combine(root, "Game");
         string output = Path.Combine(root, "Output");
-        Write(game, "ERB/sample.erb",
-            "@SAMPLE\\nCALL 日本語関数(ARG:0)\\nPRINTFORML 可翻译文本");
+        Write(game, "ERB/sample.erb", string.Join(Environment.NewLine,
+        [
+            "@SAMPLE",
+            "CALL 日本語関数(ARG:0)",
+            "PRINTFORML 可翻译文本"
+        ]));
 
         new DictionaryExtractor().Extract(game, output);
 

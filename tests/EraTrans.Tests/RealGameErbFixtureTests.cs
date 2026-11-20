@@ -66,6 +66,16 @@ public sealed class RealGameErbFixtureTests
 
             Assert.NotNull(index);
             loadedGroupCount += index!.Groups.Count;
+            var dictionaryJson = JArray.Parse(File.ReadAllText(dictionaryPath));
+            Assert.All(dictionaryJson, entry =>
+            {
+                Assert.NotNull(entry["key"]);
+                Assert.NotNull(entry["original"]);
+                Assert.NotNull(entry["translation"]);
+                Assert.NotNull(entry["stage"]);
+                Assert.NotNull(entry["context"]);
+                Assert.Equal(5, ((JObject)entry!).Properties().Count());
+            });
             foreach (DictionaryEditorEntry entry in document.Entries)
             {
                 if (entry.Key.StartsWith("文本", StringComparison.Ordinal))

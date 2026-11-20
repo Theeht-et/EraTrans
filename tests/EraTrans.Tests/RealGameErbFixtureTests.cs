@@ -162,8 +162,9 @@ public sealed class RealGameErbFixtureTests
         const string storyPath = "ERB/シナリオ/サブイベント/サブイベント_商業区建設解禁.ERB";
         DictionaryEditorDocument storyDocument = documentsBySource[storyPath];
         ErbTranslationGroupingIndex storyIndex = indexesBySource[storyPath];
-        DictionaryEditorEntry storyTarget = Assert.Single(storyDocument.Entries.Where(entry =>
-            entry.Original.Contains("居住区が出来て", StringComparison.Ordinal)));
+        DictionaryEditorEntry storyTarget = Assert.Single(
+            storyDocument.Entries,
+            entry => entry.Original.Contains("居住区が出来て", StringComparison.Ordinal));
         ErbTranslationBatch storyBatch = Assert.Single(groupingService.BuildTranslationBatches(
             [storyTarget],
             storyDocument.Entries.ToArray(),

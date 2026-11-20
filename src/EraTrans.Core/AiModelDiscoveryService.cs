@@ -127,7 +127,11 @@ public sealed class AiProviderModel
             if (!string.IsNullOrWhiteSpace(Status) &&
                 !Status.Equals("active", StringComparison.OrdinalIgnoreCase))
             {
-                parts.Add(Status);
+                parts.Add(Status.Equals("deprecated", StringComparison.OrdinalIgnoreCase)
+                    ? "已弃用"
+                    : Status.Equals("preview", StringComparison.OrdinalIgnoreCase)
+                        ? "预览"
+                        : Status);
             }
 
             return string.Join(" · ", parts);
@@ -352,6 +356,12 @@ public sealed class AiModelDiscoveryService
     private static bool LooksLikeEmbeddingModel(string id)
     {
         string value = id.ToLowerInvariant();
+        int slash = value.LastIndexOf('/');
+        if (slash >= 0)
+        {
+            value = value[(slash + 1)..];
+        }
+
         return value.Contains("embedding", StringComparison.Ordinal) ||
                value.Contains("embed-", StringComparison.Ordinal) ||
                value.StartsWith("bge-", StringComparison.Ordinal) ||

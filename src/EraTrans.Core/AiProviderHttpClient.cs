@@ -110,8 +110,11 @@ public sealed class OpenAiCompatibleChatCompletionClient : IAiChatCompletionClie
         {
             result = string.Concat(content.EnumerateArray()
                 .Where(part => part.ValueKind == JsonValueKind.Object &&
-                               TryGetProperty(part, "text", out _))
-                .Select(part => part.GetProperty("text").GetString() ?? ""));
+                               TryGetProperty(part, "text", out JsonElement text) &&
+                               text.ValueKind == JsonValueKind.String)
+                .Select(part => TryGetProperty(part, "text", out JsonElement text)
+                    ? text.GetString() ?? ""
+                    : ""));
         }
         else
         {
@@ -133,7 +136,8 @@ public sealed class OpenAiCompatibleChatCompletionClient : IAiChatCompletionClie
                 if (error.ValueKind == JsonValueKind.String)
                     return error.GetString();
                 if (error.ValueKind == JsonValueKind.Object &&
-                    TryGetProperty(error, "message", out JsonElement message))
+                    TryGetProperty(error, "message", out JsonElement message) &&
+                    message.ValueKind == JsonValueKind.String)
                     return message.GetString();
             }
         }

@@ -15,6 +15,7 @@ public partial class AiProviderSettingsWindow : Window
     private readonly ObservableCollection<AiProviderProfile> _providers = [];
     private AiProviderProfile? _currentProfile;
     private bool _loadingProfile;
+    private bool _refreshingProviderList;
     private bool _loadFailed;
     private bool _isTesting;
     private bool _isFetchingModels;
@@ -54,7 +55,7 @@ public partial class AiProviderSettingsWindow : Window
 
     private void ProviderListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (_loadingProfile || _isTesting || _isFetchingModels)
+        if (_loadingProfile || _refreshingProviderList || _isTesting || _isFetchingModels)
             return;
         SaveFieldsToCurrentProfile();
         LoadSelectedProfile();
@@ -77,8 +78,8 @@ public partial class AiProviderSettingsWindow : Window
             ? "模型列表尚未获取，可直接填写模型 ID。"
             : $"已缓存 {cachedCount} 个模型。点击“获取模型”刷新并选择。";
         StatusTextBlock.Text = "";
-        _loadingProfile = false;
         UpdateActiveProviderStatus();
+        _loadingProfile = false;
         SetEditorEnabled(hasProfile);
     }
 
@@ -121,7 +122,16 @@ public partial class AiProviderSettingsWindow : Window
 
     private void UpdateActiveProviderStatus()
     {
-        ProviderListBox.Items.Refresh();
+        _refreshingProviderList = true;
+        try
+        {
+            ProviderListBox.Items.Refresh();
+        }
+        finally
+        {
+            _refreshingProviderList = false;
+        }
+
         AiProviderProfile? active = _providers.FirstOrDefault(provider =>
             provider.IsReadyForTranslation &&
             string.Equals(provider.Id, _activeProviderId, StringComparison.Ordinal));
@@ -267,7 +277,6 @@ public partial class AiProviderSettingsWindow : Window
             _activeProviderId = profile.Id;
         }
 
-        ProviderListBox.Items.Refresh();
         UpdateActiveProviderStatus();
 
         if (_currentProfile?.Id == profile.Id)

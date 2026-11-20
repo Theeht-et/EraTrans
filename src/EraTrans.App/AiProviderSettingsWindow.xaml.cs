@@ -202,6 +202,13 @@ public partial class AiProviderSettingsWindow : Window
         _currentProfile.Model = ModelTextBox.Text.Trim();
         _currentProfile.ApiKey = ApiKeyPasswordBox.Password;
 
+        if (string.Equals(_activeProviderId, _currentProfile.Id, StringComparison.Ordinal) &&
+            !_currentProfile.IsReadyForTranslation)
+        {
+            _activeProviderId = _providers.FirstOrDefault(provider =>
+                provider.Id != _currentProfile.Id && provider.IsReadyForTranslation)?.Id;
+        }
+
         // AiProviderProfile is intentionally a simple persistence model (not an
         // INotifyPropertyChanged view model), so refresh the left-hand summary.
         UpdateActiveProviderStatus();

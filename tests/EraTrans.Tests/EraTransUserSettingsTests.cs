@@ -22,6 +22,7 @@ public sealed class EraTransUserSettingsTests
     {
         EraTransUserSettings settings = EraTransUserSettings.CreateDefault();
 
+        Assert.Equal(EraTransUserSettings.CurrentSettingsVersion, settings.SettingsVersion);
         Assert.Equal("utf8-bom", settings.FileEncodingId);
         Assert.True(settings.ForceFilterVariableNames);
         Assert.True(settings.AutoOpenFolder);
@@ -98,6 +99,28 @@ public sealed class EraTransUserSettingsTests
 
         Assert.False(settings.EnableErbSemanticGroupingTranslation);
         Assert.True(settings.HideVariableEntries);
+    }
+
+    [Fact]
+    public void Store_UpgradesUnversionedSettingsToHideVariableEntries_AndKeepsLaterUserChoice()
+    {
+        using var temporary = new TemporaryDirectory();
+        string path = Path.Combine(temporary.Path, "settings.json");
+        File.WriteAllText(path,
+            """{ "FileEncodingId": "utf8", "HideVariableEntries": false }""");
+        var store = new EraTransUserSettingsStore(path);
+
+        EraTransUserSettings upgraded = store.Load();
+
+        Assert.True(upgraded.HideVariableEntries);
+        Assert.Equal(EraTransUserSettings.CurrentSettingsVersion, upgraded.SettingsVersion);
+
+        upgraded.HideVariableEntries = false;
+        store.Save(upgraded);
+
+        EraTransUserSettings reloaded = store.Load();
+        Assert.False(reloaded.HideVariableEntries);
+        Assert.Equal(EraTransUserSettings.CurrentSettingsVersion, reloaded.SettingsVersion);
     }
 
     [Fact]

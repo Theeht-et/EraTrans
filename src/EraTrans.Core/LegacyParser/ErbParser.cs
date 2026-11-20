@@ -27,7 +27,6 @@ public class ERBParser
     private int _nextControlScopeId;
     private int _controlFlowSegment;
     private string? _pendingMenuScopeId;
-    private string? _pendingMenuDispatchCommand;
     private int _pendingMenuDispatchLinesRemaining;
     private int _nextHtmlOutputRegionId;
     private int? _activeHtmlAccumulatorStartIndex;
@@ -109,7 +108,6 @@ public class ERBParser
         _nextControlScopeId = 0;
         _controlFlowSegment = 0;
         _pendingMenuScopeId = null;
-        _pendingMenuDispatchCommand = null;
         _nextHtmlOutputRegionId = 0;
         _activeHtmlAccumulatorStartIndex = null;
         _lastHtmlAccumulatorStartIndex = -1;
@@ -1211,7 +1209,6 @@ public class ERBParser
             _controlFrames.Clear();
             _controlFlowSegment = 0;
             _pendingMenuScopeId = null;
-            _pendingMenuDispatchCommand = null;
             _pendingMenuDispatchLinesRemaining = 0;
             _activeHtmlAccumulatorStartIndex = null;
             return;
@@ -1229,7 +1226,6 @@ public class ERBParser
             if (_pendingMenuDispatchLinesRemaining <= 0)
             {
                 _pendingMenuScopeId = null;
-                _pendingMenuDispatchCommand = null;
             }
         }
 
@@ -1239,7 +1235,6 @@ public class ERBParser
                 _controlFrames.Clear();
                 _controlFlowSegment++;
                 _pendingMenuScopeId = null;
-                _pendingMenuDispatchCommand = null;
                 _pendingMenuDispatchLinesRemaining = 0;
                 _activeHtmlAccumulatorStartIndex = null;
                 _currentFunctionName = "(global)";
@@ -1306,13 +1301,12 @@ public class ERBParser
     private void PushControl(string type, string branch)
     {
         bool isMenuDispatch = _pendingMenuScopeId is not null &&
-            type is "IF" or "SELECTCASE";
+            (type is "IF" or "SELECTCASE");
         string id;
         if (isMenuDispatch)
         {
             id = _pendingMenuScopeId!;
             _pendingMenuScopeId = null;
-            _pendingMenuDispatchCommand = null;
             _pendingMenuDispatchLinesRemaining = 0;
         }
         else
@@ -1327,7 +1321,6 @@ public class ERBParser
     {
         string menuScopeId = "menu_" + (++_nextControlScopeId).ToString("D4");
         _pendingMenuScopeId = menuScopeId;
-        _pendingMenuDispatchCommand = "AUTO";
         _pendingMenuDispatchLinesRemaining = 8;
         _controlMarkers.Add(new ErbTranslationControlMarker(
             parsedLine,

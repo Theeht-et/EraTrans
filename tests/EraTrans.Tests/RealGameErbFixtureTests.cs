@@ -96,7 +96,7 @@ public sealed class RealGameErbFixtureTests
             IReadOnlyList<ErbTranslationBatch> batches = groupingService.BuildTranslationBatches(
                 pendingTargets,
                 document.Entries.ToArray(),
-                index);
+                index!);
             Assert.NotEmpty(batches);
             translatedBatchCount += batches.Count;
 

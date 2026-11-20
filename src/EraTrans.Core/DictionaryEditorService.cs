@@ -63,8 +63,7 @@ public sealed class DictionaryEditorService
             entries = JArray.Parse(json, new JsonLoadSettings
             {
                 DuplicatePropertyNameHandling = DuplicatePropertyNameHandling.Error,
-                CommentHandling = CommentHandling.Ignore,
-                LineInfoHandling = LineInfoHandling.Load
+                CommentHandling = CommentHandling.Ignore
             });
         }
         catch (JsonException ex)
@@ -92,12 +91,13 @@ public sealed class DictionaryEditorService
 /// </summary>
 public sealed class DictionaryEditorEntry : INotifyPropertyChanged
 {
-    private static readonly DictionaryStageOption[] StandardStageOptions =
-    [
-        new(-1, "忽略（-1）"),
-        new(0, "未翻译（0）"),
-        new(1, "已翻译（1）")
-    ];
+    private static readonly IReadOnlyList<DictionaryStageOption> StandardStageOptions =
+        Array.AsReadOnly(
+        [
+            new DictionaryStageOption(-1, "忽略（-1）"),
+            new DictionaryStageOption(0, "未翻译（0）"),
+            new DictionaryStageOption(1, "已翻译（1）")
+        ]);
 
     private readonly JObject _source;
     private readonly Action _markDocumentDirty;
@@ -135,12 +135,11 @@ public sealed class DictionaryEditorEntry : INotifyPropertyChanged
         IsVariable = Key.StartsWith("变量", StringComparison.Ordinal);
         IsEditable = !IsVariable;
 
-        var options = StandardStageOptions.ToList();
-        if (options.All(option => option.Value != _stage))
-        {
-            options.Add(new DictionaryStageOption(_stage, $"自定义（{_stage}）"));
-        }
-        StageOptions = options;
+        StageOptions = StandardStageOptions.Any(option => option.Value == _stage)
+            ? StandardStageOptions
+            : StandardStageOptions
+                .Append(new DictionaryStageOption(_stage, $"自定义（{_stage}）"))
+                .ToArray();
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -351,14 +350,18 @@ public sealed class DictionaryEditorDocument : INotifyPropertyChanged
 
     private void Entry_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        OnPropertyChanged(nameof(SummaryText));
+        // Translation edits do not affect the summary counters. Recount only when
+        // the translation stage itself changes.
+        if (e.PropertyName == nameof(DictionaryEditorEntry.Stage))
+        {
+            OnPropertyChanged(nameof(SummaryText));
+        }
     }
 
     private void MarkDirty()
     {
         if (_isDirty)
         {
-            OnPropertyChanged(nameof(SummaryText));
             return;
         }
 

@@ -1,0 +1,30 @@
+; EraTrans fixture: curated source excerpt, not a complete upstream file.
+; Source: eraNAS / ERB/TRANSLATION/OMOGATARI/Factions/FactionStuff.ERB
+; Upstream commit: 5b48a05fc10dc461d580fc39db1b4029a04ee3a3
+; Excerpt retained for parser coverage; see the fixture README and LICENSE.
+    #DIM DYNAMIC nCurrentChara
+    VARSET FES_ENEMIES
+    VARSET FactionRaidRankSpawn
+    FES_FILTERS '= @"faction = {nFaction}、"
+    $LOOP
+    FES_COUNT = DT_SELECT("FactionUnits", LIST_IN_STRING(FES_FILTERS,," and"," and"), "", FES_ENEMIES)
+    SIF !FES_COUNT
+    IF !FES_COUNT || raidPoints <= 0
+        raidPoints = 0
+        RETURN
+    ENDIF
+    nEnemy = RAND(0,FES_COUNT)
+    FES_RANK = DT_CELL_GET("FactionUnits", FES_ENEMIES:nEnemy, "rank", 1)
+    SIF !FES_RANK
+        FES_RANK = 2
+        FES_RANK = RAND(1,4)
+    IF FactionUnits:nFaction:FES_RANK - (FactionRaidRankSpawn:FES_RANK+1) < 0
+        IF INRANGE(FES_RANK,1,3)
+            FES_FILTERS += @"rank <> 0、"
+            FES_FILTERS += @"rank <> {FES_RANK}、"
+        ELSE
+            FES_FILTERS += @"rank <> {FES_RANK}、"
+        ENDIF
+        GOTO LOOP
+    ELSE
+        FactionRaidRankSpawn:FES_RANK ++

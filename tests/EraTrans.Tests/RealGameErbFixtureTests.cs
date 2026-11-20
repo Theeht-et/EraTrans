@@ -209,6 +209,47 @@ public sealed class RealGameErbFixtureTests
         Assert.Contains(confessionAlternatives.SelectMany(group => group.Entries), entry =>
             entry.Original.Contains("少し考えさせて欲しいと返す", StringComparison.Ordinal));
 
+        // Verify the final serialized request, not only the in-memory batch:
+        // the two menu choices and the IF/ELSE outcomes must reach the AI as
+        // read-only semanticContext while only the selected choice is a target.
+        var capturingClient = new CapturingChatClient("""[{ "id": 1, "translation": "测试译文" }]""");
+        var aiService = new AiTranslationService(capturingClient);
+        await aiService.TranslateWithSemanticContextAsync(
+            new AiProviderProfile
+            {
+                Name = "Fixture test",
+                BaseUrl = "https://example.com/v1",
+                Model = "fixture-test",
+                ApiKey = "fixture-test-key"
+            },
+            [new AiTranslationRequest(1, choiceTarget.Key, choiceTarget.Original, choiceTarget.Context)],
+            choiceBatch.SemanticContextGroups);
+
+        using (System.Text.Json.JsonDocument sentRequest =
+               System.Text.Json.JsonDocument.Parse(capturingClient.LastUserPrompt))
+        {
+            System.Text.Json.JsonElement root = sentRequest.RootElement;
+            System.Text.Json.JsonElement sentTarget = Assert.Single(root.GetProperty("targets").EnumerateArray());
+            Assert.Equal(choiceTarget.Original, sentTarget.GetProperty("original").GetString());
+            Assert.Equal(1, sentTarget.GetProperty("id").GetInt32());
+
+            System.Text.Json.JsonElement[] sentContexts = root.GetProperty("semanticContext")
+                .EnumerateArray()
+                .ToArray();
+            Assert.Contains(sentContexts, context =>
+                context.GetProperty("type").GetString() == "same-group" &&
+                context.GetProperty("texts").EnumerateArray().Any(text =>
+                    text.GetString()!.Contains("少し考えさせて欲しいと言う", StringComparison.Ordinal)));
+            Assert.Contains(sentContexts, context =>
+                context.GetProperty("type").GetString() == "alternative-branch" &&
+                context.GetProperty("texts").EnumerateArray().Any(text =>
+                    text.GetString()!.Contains("笑顔を浮かべて喜んだ", StringComparison.Ordinal)));
+            Assert.DoesNotContain(sentContexts.SelectMany(context =>
+                    context.GetProperty("texts").EnumerateArray())
+                .Select(text => text.GetString()),
+                text => string.Equals(text, choiceTarget.Original, StringComparison.Ordinal));
+        }
+
         // INPUT menu: the prompt and every visible option on the screen are one menu.
         const string movementPath = "ERB/コマンド/COMF400_移動.ERB";
         DictionaryEditorDocument movementDocument = documentsBySource[movementPath];
@@ -287,6 +328,21 @@ public sealed class RealGameErbFixtureTests
 
     private static string NormalizePath(string path) =>
         path.Replace('\\', '/');
+
+    private sealed class CapturingChatClient(string response) : IAiChatCompletionClient
+    {
+        public string LastUserPrompt { get; private set; } = "";
+
+        public Task<string> CompleteAsync(
+            AiProviderProfile profile,
+            string systemPrompt,
+            string userPrompt,
+            CancellationToken cancellationToken)
+        {
+            LastUserPrompt = userPrompt;
+            return Task.FromResult(response);
+        }
+    }
 
     private sealed class TemporaryDirectory : IDisposable
     {

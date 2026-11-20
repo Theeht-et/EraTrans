@@ -4,10 +4,14 @@ namespace EraTrans.Core;
 
 /// <summary>
 /// User-configurable application and legacy parser settings.
-/// The property defaults mirror the original ErbParserForTranslate first-run config.
+/// Defaults retain the legacy parser behavior except for variable-entry output, which is now suppressed by default.
 /// </summary>
 public sealed class EraTransUserSettings
 {
+    public const int CurrentSettingsVersion = 2;
+
+    public int? SettingsVersion { get; set; }
+
     public string FileEncodingId { get; set; } = "utf8-bom";
     public bool ForceFilterVariableNames { get; set; } = true;
     public bool AutoOpenFolder { get; set; } = true;
@@ -45,7 +49,10 @@ public sealed class EraTransUserSettings
         "+", "-", "*", "/", "%", "++", "--", ",", ":", "TO"
     ];
 
-    public static EraTransUserSettings CreateDefault() => new();
+    public static EraTransUserSettings CreateDefault() => new()
+    {
+        SettingsVersion = CurrentSettingsVersion
+    };
 
     public Encoding CreateFileEncoding()
     {

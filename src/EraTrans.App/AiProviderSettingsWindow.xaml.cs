@@ -88,7 +88,7 @@ public partial class AiProviderSettingsWindow : Window
         bool idle = requestIdle && !_loadFailed;
         CancelWindowButton.IsEnabled = requestIdle;
         ProviderListBox.IsEnabled = idle;
-        ProviderNameTextBox.IsEnabled = hasProfile && idle;
+        ProviderNameTextBox.IsEnabled = hasProfile && idle && _currentProfile?.IsBuiltIn != true;
         BaseUrlTextBox.IsEnabled = hasProfile && idle;
         ApiKeyPasswordBox.IsEnabled = hasProfile && idle;
         ModelTextBox.IsEnabled = hasProfile && idle;

@@ -249,7 +249,9 @@ public sealed class AiModelDiscoveryService
 
         string baseUrl = AiProviderProfileValidator.NormalizeBaseUrl(profile.BaseUrl);
         Uri endpoint;
-        using var request = new HttpRequestMessage(HttpMethod.Get);
+        using var request = new HttpRequestMessage(
+            HttpMethod.Get,
+            new Uri($"{baseUrl.TrimEnd('/')}/models", UriKind.Absolute));
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
         switch (profile.Protocol)

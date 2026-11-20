@@ -28,6 +28,7 @@ public class ERBParser
     private int _controlFlowSegment;
     private string? _pendingMenuScopeId;
     private string? _pendingMenuDispatchCommand;
+    private int _pendingMenuDispatchLinesRemaining;
     private int _nextHtmlOutputRegionId;
     private int? _activeHtmlAccumulatorStartIndex;
     private int _lastHtmlAccumulatorStartIndex = -1;
@@ -1211,17 +1212,25 @@ public class ERBParser
             _controlFlowSegment = 0;
             _pendingMenuScopeId = null;
             _pendingMenuDispatchCommand = null;
+            _pendingMenuDispatchLinesRemaining = 0;
             _activeHtmlAccumulatorStartIndex = null;
             return;
         }
 
         string command = GetCommandType(lineString);
         if (_pendingMenuScopeId is not null &&
-            command != _pendingMenuDispatchCommand &&
-            !string.IsNullOrWhiteSpace(lineString))
+            !string.IsNullOrWhiteSpace(lineString) &&
+            command is not ("IF" or "SELECTCASE"))
         {
-            _pendingMenuScopeId = null;
-            _pendingMenuDispatchCommand = null;
+            // BINPUT may be followed by ENDIF and a result assignment before
+            // the actual IF/SELECTCASE dispatch. Keep the pending scope only
+            // across this short hand-off window.
+            _pendingMenuDispatchLinesRemaining--;
+            if (_pendingMenuDispatchLinesRemaining <= 0)
+            {
+                _pendingMenuScopeId = null;
+                _pendingMenuDispatchCommand = null;
+            }
         }
 
         switch (command)
@@ -1231,6 +1240,7 @@ public class ERBParser
                 _controlFlowSegment++;
                 _pendingMenuScopeId = null;
                 _pendingMenuDispatchCommand = null;
+                _pendingMenuDispatchLinesRemaining = 0;
                 _activeHtmlAccumulatorStartIndex = null;
                 _currentFunctionName = "(global)";
                 return;
@@ -1296,13 +1306,14 @@ public class ERBParser
     private void PushControl(string type, string branch)
     {
         bool isMenuDispatch = _pendingMenuScopeId is not null &&
-            string.Equals(type, _pendingMenuDispatchCommand, StringComparison.Ordinal);
+            type is "IF" or "SELECTCASE";
         string id;
         if (isMenuDispatch)
         {
             id = _pendingMenuScopeId!;
             _pendingMenuScopeId = null;
             _pendingMenuDispatchCommand = null;
+            _pendingMenuDispatchLinesRemaining = 0;
         }
         else
         {
@@ -1316,7 +1327,8 @@ public class ERBParser
     {
         string menuScopeId = "menu_" + (++_nextControlScopeId).ToString("D4");
         _pendingMenuScopeId = menuScopeId;
-        _pendingMenuDispatchCommand = command == "BINPUT" ? "IF" : "SELECTCASE";
+        _pendingMenuDispatchCommand = "AUTO";
+        _pendingMenuDispatchLinesRemaining = 8;
         _controlMarkers.Add(new ErbTranslationControlMarker(
             parsedLine,
             _currentFunctionName,

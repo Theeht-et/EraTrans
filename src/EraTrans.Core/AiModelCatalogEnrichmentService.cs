@@ -9,7 +9,7 @@ namespace EraTrans.Core;
 /// </summary>
 public sealed class AiModelCatalogEnrichmentService
 {
-    private const string CatalogUrl = "https://models.dev/api.json";
+    private const string CatalogUrl = "https://models.dev/api.json?type=all";
     private static readonly HttpClient SharedHttpClient = new()
     {
         Timeout = TimeSpan.FromSeconds(8)
@@ -195,16 +195,29 @@ public sealed class AiModelCatalogEnrichmentService
                     Name = ReadString(row, "name") ?? id,
                     Family = ReadString(row, "family"),
                     Status = ReadString(row, "status"),
-                    SupportsTools = ReadBoolean(row, "tool"),
-                    SupportsReasoning = ReadBoolean(row, "rsn"),
-                    SupportsStructuredOutput = ReadBoolean(row, "so"),
+                    SupportsTools = ReadBoolean(row, "tool_call") || ReadBoolean(row, "tool"),
+                    SupportsReasoning = ReadBoolean(row, "reasoning") || ReadBoolean(row, "rsn"),
+                    SupportsStructuredOutput = ReadBoolean(row, "structured_output") || ReadBoolean(row, "so"),
+                    SupportsAttachments = ReadBoolean(row, "attachment"),
+                    SupportsTemperature = ReadBoolean(row, "temperature"),
+                    OpenWeights = ReadBoolean(row, "open_weights"),
+                    Knowledge = ReadString(row, "knowledge"),
+                    ReleaseDate = ReadString(row, "release_date"),
+                    LastUpdated = ReadString(row, "last_updated"),
                     IsEmbedding = id.Contains("embedding", StringComparison.OrdinalIgnoreCase) ||
                                   id.Contains("embed-", StringComparison.OrdinalIgnoreCase),
-                    InputModalities = ReadStringArray(row, "in"),
-                    OutputModalities = ReadStringArray(row, "out"),
+                    InputModalities = ReadNestedStringArray(row, "modalities", "input", "in"),
+                    OutputModalities = ReadNestedStringArray(row, "modalities", "output", "out"),
                     ContextLimit = ReadNestedInt(row, "limit", "context"),
                     InputLimit = ReadNestedInt(row, "limit", "input"),
-                    OutputLimit = ReadNestedInt(row, "limit", "output")
+                    OutputLimit = ReadNestedInt(row, "limit", "output"),
+                    InputCostPerMillion = ReadNestedDouble(row, "cost", "input"),
+                    OutputCostPerMillion = ReadNestedDouble(row, "cost", "output"),
+                    ReasoningCostPerMillion = ReadNestedDouble(row, "cost", "reasoning"),
+                    CacheReadCostPerMillion = ReadNestedDouble(row, "cost", "cache_read"),
+                    CacheWriteCostPerMillion = ReadNestedDouble(row, "cost", "cache_write"),
+                    InputAudioCostPerMillion = ReadNestedDouble(row, "cost", "input_audio"),
+                    OutputAudioCostPerMillion = ReadNestedDouble(row, "cost", "output_audio")
                 };
             }
 
@@ -288,11 +301,24 @@ public sealed class AiModelCatalogEnrichmentService
             SupportsTools = metadata.SupportsTools,
             SupportsReasoning = metadata.SupportsReasoning,
             SupportsStructuredOutput = metadata.SupportsStructuredOutput,
+            SupportsAttachments = metadata.SupportsAttachments,
+            SupportsTemperature = metadata.SupportsTemperature,
+            OpenWeights = metadata.OpenWeights,
+            Knowledge = metadata.Knowledge,
+            ReleaseDate = metadata.ReleaseDate,
+            LastUpdated = metadata.LastUpdated,
             InputModalities = inputModalities,
             OutputModalities = outputModalities,
             ContextLimit = metadata.ContextLimit,
             InputLimit = metadata.InputLimit,
-            OutputLimit = metadata.OutputLimit
+            OutputLimit = metadata.OutputLimit,
+            InputCostPerMillion = metadata.InputCostPerMillion,
+            OutputCostPerMillion = metadata.OutputCostPerMillion,
+            ReasoningCostPerMillion = metadata.ReasoningCostPerMillion,
+            CacheReadCostPerMillion = metadata.CacheReadCostPerMillion,
+            CacheWriteCostPerMillion = metadata.CacheWriteCostPerMillion,
+            InputAudioCostPerMillion = metadata.InputAudioCostPerMillion,
+            OutputAudioCostPerMillion = metadata.OutputAudioCostPerMillion
         };
     }
 
@@ -342,6 +368,35 @@ public sealed class AiModelCatalogEnrichmentService
             .ToList();
     }
 
+    private static List<string> ReadNestedStringArray(
+        JsonElement element,
+        string objectName,
+        string propertyName,
+        string legacyPropertyName)
+    {
+        if (TryGetProperty(element, objectName, out JsonElement nested) &&
+            nested.ValueKind == JsonValueKind.Object)
+        {
+            return ReadStringArray(nested, propertyName);
+        }
+
+        return ReadStringArray(element, legacyPropertyName);
+    }
+
+    private static double? ReadNestedDouble(JsonElement element, string objectName, string propertyName)
+    {
+        if (!TryGetProperty(element, objectName, out JsonElement nested) ||
+            nested.ValueKind != JsonValueKind.Object ||
+            !TryGetProperty(nested, propertyName, out JsonElement value) ||
+            value.ValueKind != JsonValueKind.Number ||
+            !value.TryGetDouble(out double result))
+        {
+            return null;
+        }
+
+        return result;
+    }
+
     private static int? ReadNestedInt(JsonElement element, string objectName, string propertyName)
     {
         if (!TryGetProperty(element, objectName, out JsonElement nested) ||
@@ -381,11 +436,24 @@ public sealed class AiModelCatalogEnrichmentService
         public bool SupportsTools { get; init; }
         public bool SupportsReasoning { get; init; }
         public bool SupportsStructuredOutput { get; init; }
+        public bool SupportsAttachments { get; init; }
+        public bool SupportsTemperature { get; init; }
+        public bool OpenWeights { get; init; }
+        public string? Knowledge { get; init; }
+        public string? ReleaseDate { get; init; }
+        public string? LastUpdated { get; init; }
         public bool IsEmbedding { get; init; }
         public List<string> InputModalities { get; init; } = [];
         public List<string> OutputModalities { get; init; } = [];
         public int? ContextLimit { get; init; }
         public int? InputLimit { get; init; }
         public int? OutputLimit { get; init; }
+        public double? InputCostPerMillion { get; init; }
+        public double? OutputCostPerMillion { get; init; }
+        public double? ReasoningCostPerMillion { get; init; }
+        public double? CacheReadCostPerMillion { get; init; }
+        public double? CacheWriteCostPerMillion { get; init; }
+        public double? InputAudioCostPerMillion { get; init; }
+        public double? OutputAudioCostPerMillion { get; init; }
     }
 }

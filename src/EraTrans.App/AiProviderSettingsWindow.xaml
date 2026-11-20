@@ -176,7 +176,8 @@
                     <StackPanel Grid.Row="2" Margin="0,0,0,14">
                         <TextBlock Text="服务商名称" Margin="0,0,0,6" FontSize="12" Foreground="#39414A"/>
                         <TextBox x:Name="ProviderNameTextBox" Height="36" Padding="10,0"
-                                 VerticalContentAlignment="Center"/>
+                                 VerticalContentAlignment="Center"
+                                 ToolTip="内置服务商名称固定；自定义服务商可以自行命名。"/>
                     </StackPanel>
                     <StackPanel Grid.Row="3" Margin="0,0,0,14">
                         <TextBlock Text="API Base URL" Margin="0,0,0,6" FontSize="12" Foreground="#39414A"/>

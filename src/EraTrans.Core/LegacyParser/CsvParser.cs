@@ -20,7 +20,7 @@ public class CSVParser
         var lines = File.ReadAllLines(filePath, Configs.fileEncoding);
         foreach (var line in lines)
         {
-            IEnumerable<string> values = Tools.GetCSVValue(line);
+            IEnumerable<string>? values = Tools.GetCSVValue(line);
             if (values is null)
             {
                 continue;

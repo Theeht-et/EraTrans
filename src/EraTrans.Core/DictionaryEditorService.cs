@@ -92,12 +92,12 @@ public sealed class DictionaryEditorService
 public sealed class DictionaryEditorEntry : INotifyPropertyChanged
 {
     private static readonly IReadOnlyList<DictionaryStageOption> StandardStageOptions =
-        Array.AsReadOnly(
-        [
+        Array.AsReadOnly(new[]
+        {
             new DictionaryStageOption(-1, "忽略（-1）"),
             new DictionaryStageOption(0, "未翻译（0）"),
             new DictionaryStageOption(1, "已翻译（1）")
-        ]);
+        });
 
     private readonly JObject _source;
     private readonly Action _markDocumentDirty;

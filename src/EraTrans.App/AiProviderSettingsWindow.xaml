@@ -98,10 +98,13 @@
                                                    Foreground="#29313A" TextTrimming="CharacterEllipsis"/>
                                         <TextBlock Text="{Binding Model}" Margin="0,3,0,0" FontSize="10"
                                                    Foreground="#68717D" TextTrimming="CharacterEllipsis"/>
-                                        <TextBlock x:Name="EnabledStatusTextBlock" Text="已启用"
-                                                   Margin="0,4,0,0" FontSize="10" Foreground="#26834A"/>
+                                        <TextBlock x:Name="EnabledStatusTextBlock" Text="已启用 · 配置完整"
+                                                   Margin="0,4,0,0" FontSize="10" Foreground="#26834A"
+                                                   Visibility="Collapsed"/>
+                                        <TextBlock x:Name="PendingStatusTextBlock" Text="已启用 · 待配置"
+                                                   Margin="0,4,0,0" FontSize="10" Foreground="#A66B18"/>
                                         <TextBlock x:Name="DisabledStatusTextBlock" Text="已禁用"
-                                                   Margin="0,4,0,0" FontSize="10" Foreground="#A66B18"
+                                                   Margin="0,4,0,0" FontSize="10" Foreground="#87909B"
                                                    Visibility="Collapsed"/>
                                     </StackPanel>
                                     <Button Grid.Column="1" Tag="{Binding}" Margin="8,0,0,0"
@@ -122,8 +125,17 @@
                                     </Button>
                                 </Grid>
                                 <DataTemplate.Triggers>
+                                    <MultiDataTrigger>
+                                        <MultiDataTrigger.Conditions>
+                                            <Condition Binding="{Binding IsEnabled}" Value="True"/>
+                                            <Condition Binding="{Binding IsReadyForTranslation}" Value="True"/>
+                                        </MultiDataTrigger.Conditions>
+                                        <Setter TargetName="EnabledStatusTextBlock" Property="Visibility" Value="Visible"/>
+                                        <Setter TargetName="PendingStatusTextBlock" Property="Visibility" Value="Collapsed"/>
+                                    </MultiDataTrigger>
                                     <DataTrigger Binding="{Binding IsEnabled}" Value="False">
                                         <Setter TargetName="EnabledStatusTextBlock" Property="Visibility" Value="Collapsed"/>
+                                        <Setter TargetName="PendingStatusTextBlock" Property="Visibility" Value="Collapsed"/>
                                         <Setter TargetName="DisabledStatusTextBlock" Property="Visibility" Value="Visible"/>
                                     </DataTrigger>
                                 </DataTemplate.Triggers>

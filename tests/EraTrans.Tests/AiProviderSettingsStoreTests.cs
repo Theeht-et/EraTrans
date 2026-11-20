@@ -5,7 +5,7 @@ using Xunit;
 namespace EraTrans.Tests;
 
 [SupportedOSPlatform("windows")]
-public sealed class AiProviderSettingsStoreTests
+public sealed class AiProviderSettingsPortablePersistenceTests
 {
     [Fact]
     public void Store_SaveAndLoad_RoundTripsProviderSettingsAndEncryptsApiKey()

@@ -26,7 +26,7 @@ public partial class MainWindow : Window
             _settings = EraTransUserSettings.CreateDefault();
             MessageBox.Show(
                 this,
-                $"无法读取设置文件，当前会话暂时使用旧版默认设置。原设置文件未被覆盖。\n\n{ex.Message}",
+                $"无法读取设置文件，当前会话暂时使用默认设置。原设置文件未被覆盖。\n\n{ex.Message}",
                 "设置读取失败",
                 MessageBoxButton.OK,
                 MessageBoxImage.Warning);

@@ -167,11 +167,24 @@ public sealed class AiProviderSettingsStore
                                 SupportsTools = model.SupportsTools,
                                 SupportsReasoning = model.SupportsReasoning,
                                 SupportsStructuredOutput = model.SupportsStructuredOutput,
-                                InputModalities = [.. model.InputModalities],
-                                OutputModalities = [.. model.OutputModalities],
+                                SupportsAttachments = model.SupportsAttachments,
+                                SupportsTemperature = model.SupportsTemperature,
+                                OpenWeights = model.OpenWeights,
+                                Knowledge = model.Knowledge,
+                                ReleaseDate = model.ReleaseDate,
+                                LastUpdated = model.LastUpdated,
+                                InputModalities = [.. (model.InputModalities ?? [])],
+                                OutputModalities = [.. (model.OutputModalities ?? [])],
                                 ContextLimit = model.ContextLimit,
                                 InputLimit = model.InputLimit,
-                                OutputLimit = model.OutputLimit
+                                OutputLimit = model.OutputLimit,
+                                InputCostPerMillion = model.InputCostPerMillion,
+                                OutputCostPerMillion = model.OutputCostPerMillion,
+                                ReasoningCostPerMillion = model.ReasoningCostPerMillion,
+                                CacheReadCostPerMillion = model.CacheReadCostPerMillion,
+                                CacheWriteCostPerMillion = model.CacheWriteCostPerMillion,
+                                InputAudioCostPerMillion = model.InputAudioCostPerMillion,
+                                OutputAudioCostPerMillion = model.OutputAudioCostPerMillion
                             })
                             .ToList()
                     });
@@ -243,11 +256,24 @@ public sealed class AiProviderSettingsStore
                             SupportsTools = model.SupportsTools,
                             SupportsReasoning = model.SupportsReasoning,
                             SupportsStructuredOutput = model.SupportsStructuredOutput,
-                            InputModalities = [.. model.InputModalities],
-                            OutputModalities = [.. model.OutputModalities],
+                            SupportsAttachments = model.SupportsAttachments,
+                            SupportsTemperature = model.SupportsTemperature,
+                            OpenWeights = model.OpenWeights,
+                            Knowledge = model.Knowledge,
+                            ReleaseDate = model.ReleaseDate,
+                            LastUpdated = model.LastUpdated,
+                            InputModalities = [.. (model.InputModalities ?? [])],
+                            OutputModalities = [.. (model.OutputModalities ?? [])],
                             ContextLimit = model.ContextLimit,
                             InputLimit = model.InputLimit,
-                            OutputLimit = model.OutputLimit
+                            OutputLimit = model.OutputLimit,
+                            InputCostPerMillion = model.InputCostPerMillion,
+                            OutputCostPerMillion = model.OutputCostPerMillion,
+                            ReasoningCostPerMillion = model.ReasoningCostPerMillion,
+                            CacheReadCostPerMillion = model.CacheReadCostPerMillion,
+                            CacheWriteCostPerMillion = model.CacheWriteCostPerMillion,
+                            InputAudioCostPerMillion = model.InputAudioCostPerMillion,
+                            OutputAudioCostPerMillion = model.OutputAudioCostPerMillion
                         })
                         .ToList()
                 };
@@ -322,10 +348,23 @@ public sealed class AiProviderSettingsStore
         public bool SupportsTools { get; set; }
         public bool SupportsReasoning { get; set; }
         public bool SupportsStructuredOutput { get; set; }
-        public List<string> InputModalities { get; set; } = [];
-        public List<string> OutputModalities { get; set; } = [];
+        public bool SupportsAttachments { get; set; }
+        public bool SupportsTemperature { get; set; }
+        public bool OpenWeights { get; set; }
+        public string? Knowledge { get; set; }
+        public string? ReleaseDate { get; set; }
+        public string? LastUpdated { get; set; }
+        public List<string>? InputModalities { get; set; } = [];
+        public List<string>? OutputModalities { get; set; } = [];
         public int? ContextLimit { get; set; }
         public int? InputLimit { get; set; }
         public int? OutputLimit { get; set; }
+        public double? InputCostPerMillion { get; set; }
+        public double? OutputCostPerMillion { get; set; }
+        public double? ReasoningCostPerMillion { get; set; }
+        public double? CacheReadCostPerMillion { get; set; }
+        public double? CacheWriteCostPerMillion { get; set; }
+        public double? InputAudioCostPerMillion { get; set; }
+        public double? OutputAudioCostPerMillion { get; set; }
     }
 }

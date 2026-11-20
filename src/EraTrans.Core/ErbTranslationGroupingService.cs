@@ -654,7 +654,10 @@ public sealed class ErbTranslationGroupingService
             }
         }
 
-        return new ErbTranslationBatch(targets.ToArray(), contexts);
+        int[] targetIds = targets.Select(target => target.Index).Distinct().Order().ToArray();
+        return new ErbTranslationBatch(
+            targets.ToArray(),
+            contexts.Select(context => context with { TargetIds = targetIds }).ToArray());
     }
 
     private static IReadOnlyList<AiTranslationContextEntry> SelectSameGroupContext(
@@ -722,21 +725,34 @@ public sealed class ErbTranslationGroupingService
         IReadOnlyList<DictionaryEditorEntry> targets)
     {
         var targetKeys = targets.Select(entry => entry.Key).ToHashSet(StringComparer.Ordinal);
+        var targetIds = targets.Select(entry => entry.Index).ToHashSet();
         var merged = new Dictionary<string, AiTranslationSemanticContextGroup>(StringComparer.Ordinal);
         foreach (AiTranslationSemanticContextGroup group in existing.Concat(incoming))
         {
             string key = group.GroupId + "|" + group.Relationship;
+            merged.TryGetValue(key, out AiTranslationSemanticContextGroup? previous);
             IEnumerable<AiTranslationContextEntry> entries =
-                (merged.TryGetValue(key, out AiTranslationSemanticContextGroup? previous)
-                    ? previous.Entries.Concat(group.Entries)
-                    : group.Entries)
+                (previous is not null ? previous.Entries.Concat(group.Entries) : group.Entries)
                 .Where(entry => !targetKeys.Contains(entry.Key))
                 .GroupBy(entry => entry.Key, StringComparer.Ordinal)
                 .Select(items => items.First());
-            merged[key] = group with { Entries = entries.ToArray() };
+            int[] scopedTargetIds = (previous is not null
+                    ? previous.TargetIds.Concat(group.TargetIds)
+                    : group.TargetIds)
+                .Where(targetIds.Contains)
+                .Distinct()
+                .Order()
+                .ToArray();
+            merged[key] = group with
+            {
+                Entries = entries.ToArray(),
+                TargetIds = scopedTargetIds
+            };
         }
 
-        return merged.Values.Where(group => group.Entries.Count > 0).ToArray();
+        return merged.Values
+            .Where(group => group.Entries.Count > 0 && group.TargetIds.Count > 0)
+            .ToArray();
     }
 
     private static int EstimateCharacters(
@@ -799,8 +815,53 @@ public sealed class ErbTranslationGroupingService
             current.Add(entry);
         }
         Flush();
+        MergeHtmlAccumulatorGroups(sourceEntries, groups, groupsByEntryKey);
 
         return (groups, groupsByEntryKey);
+    }
+
+    private static void MergeHtmlAccumulatorGroups(
+        IReadOnlyList<ErbTranslationSourceEntry> sourceEntries,
+        List<ErbTranslationGroup> groups,
+        Dictionary<string, ErbTranslationGroup> groupsByEntryKey)
+    {
+        var sourceByKey = sourceEntries.ToDictionary(entry => entry.Key, StringComparer.Ordinal);
+        var mergeCandidates = groups
+            .Where(group => group.Type == "html")
+            .GroupBy(group => (group.FunctionId, group.BranchPath, group.ControlScopeId, group.BranchLabel))
+            .Where(group => group.Count() > 1)
+            .ToArray();
+
+        foreach (var candidate in mergeCandidates)
+        {
+            ErbTranslationGroup[] fragments = candidate
+                .OrderBy(group => group.FirstSequence)
+                .ToArray();
+            string[] keys = fragments
+                .SelectMany(group => group.EntryKeys)
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(key => sourceByKey[key].Sequence)
+                .ToArray();
+            ErbTranslationGroup first = fragments[0];
+            var merged = first with
+            {
+                FirstSequence = sourceByKey[keys[0]].Sequence,
+                LastSequence = sourceByKey[keys[^1]].Sequence,
+                EntryKeys = keys
+            };
+
+            int insertAt = groups.IndexOf(first);
+            var fragmentIds = fragments.Select(group => group.Id).ToHashSet(StringComparer.Ordinal);
+            groups.RemoveAll(group => fragmentIds.Contains(group.Id));
+            groups.Insert(Math.Min(insertAt, groups.Count), merged);
+
+            foreach (string key in keys)
+            {
+                groupsByEntryKey[key] = merged;
+            }
+        }
+
+        groups.Sort((left, right) => left.FirstSequence.CompareTo(right.FirstSequence));
     }
 
     private static bool CanJoinGroup(
@@ -826,6 +887,14 @@ public sealed class ErbTranslationGroupingService
             !string.Equals(previous.OutputType, current.OutputType, StringComparison.Ordinal))
         {
             return false;
+        }
+
+        if (previous.OutputType == "HTML_ACCUMULATOR" &&
+            current.OutputType == "HTML_ACCUMULATOR")
+        {
+            // Entries accumulated into one LOCALS buffer are one rendered HTML
+            // surface even when loops and conditional blocks separate their source lines.
+            return true;
         }
 
         int lineGap = current.ParsedLine - previous.ParsedLine;
@@ -860,7 +929,7 @@ public sealed class ErbTranslationGroupingService
     private static bool IsVisibleTextOutput(ErbTranslationSourceEntry entry)
     {
         if (entry.OutputType.StartsWith("PRINT", StringComparison.Ordinal) ||
-            entry.OutputType is "HTML_PRINT" or "DATA" or "REUSELASTLINE" or "PUTFORM")
+            entry.OutputType is "HTML_PRINT" or "HTML_ACCUMULATOR" or "DATA" or "REUSELASTLINE" or "PUTFORM")
         {
             return true;
         }
@@ -885,9 +954,17 @@ public sealed class ErbTranslationGroupingService
         IReadOnlyList<ErbTranslationSourceEntry> entries,
         IReadOnlyList<ErbTranslationControlMarker> markers)
     {
+        if (entries.All(entry => entry.OutputType == "HTML_ACCUMULATOR"))
+        {
+            return "html";
+        }
+
         if (entries.Any(entry =>
+                entry.BranchLabel == "MENU_PROMPT" ||
                 entry.OutputType.StartsWith("PRINTBUTTON", StringComparison.Ordinal) ||
-                IsMenuCall(entry.CallTarget)))
+                IsMenuCall(entry.CallTarget) ||
+                (entry.ControlScopeId.StartsWith("menu_", StringComparison.Ordinal) &&
+                 !string.IsNullOrWhiteSpace(entry.BranchLabel))))
         {
             return "menu";
         }
@@ -895,13 +972,18 @@ public sealed class ErbTranslationGroupingService
         ErbTranslationSourceEntry first = entries[0];
         ErbTranslationSourceEntry last = entries[^1];
         if (markers.Any(marker =>
-                (marker.Command is "INPUT" or "INPUTS") &&
+                (marker.Command is "INPUT" or "INPUTS" or "BINPUT") &&
                 string.Equals(marker.FunctionId, first.FunctionId, StringComparison.Ordinal) &&
                 string.Equals(marker.BranchPath, first.BranchPath, StringComparison.Ordinal) &&
                 marker.ParsedLine >= first.ParsedLine &&
                 marker.ParsedLine <= last.ParsedLine + 8))
         {
             return "menu";
+        }
+
+        if (entries.All(entry => entry.OutputType == "HTML_ACCUMULATOR"))
+        {
+            return "html";
         }
 
         if (entries.All(entry => IsConditionOutput(entry.OutputType)))

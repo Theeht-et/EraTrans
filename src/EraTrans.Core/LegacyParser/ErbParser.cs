@@ -27,12 +27,20 @@ public class ERBParser
     private int _nextControlScopeId;
     private int _controlFlowSegment;
     private string? _pendingMenuScopeId;
+    private int _pendingMenuDispatchLinesRemaining;
+    private int _nextHtmlOutputRegionId;
+    private int? _activeHtmlAccumulatorStartIndex;
+    private int _lastHtmlAccumulatorStartIndex = -1;
+    private int _lastHtmlAccumulatorEndIndex = -1;
+    private int _lastHtmlAccumulatorEndLine;
+    private string? _lastHtmlAccumulatorBranchPath;
 
-    private sealed class ErbControlFrame(string id, string type, string branch)
+    private sealed class ErbControlFrame(string id, string type, string branch, bool isMenuDispatch)
     {
         public string Id { get; } = id;
         public string Type { get; } = type;
         public string Branch { get; set; } = branch;
+        public bool IsMenuDispatch { get; } = isMenuDispatch;
     }
 
     public class StringList
@@ -95,6 +103,18 @@ public class ERBParser
             return;
         }
 
+        _controlFrames.Clear();
+        _controlMarkers.Clear();
+        _nextControlScopeId = 0;
+        _controlFlowSegment = 0;
+        _pendingMenuScopeId = null;
+        _nextHtmlOutputRegionId = 0;
+        _activeHtmlAccumulatorStartIndex = null;
+        _lastHtmlAccumulatorStartIndex = -1;
+        _lastHtmlAccumulatorEndIndex = -1;
+        _lastHtmlAccumulatorEndLine = 0;
+        _lastHtmlAccumulatorBranchPath = null;
+
         for (int i = 0; i < lineList.Count; i++)
         {
             string line = lineList[i];
@@ -135,7 +155,17 @@ public class ERBParser
 
             UpdateStructureBeforeLine(lineString);
             string commandType = GetCommandType(lineString);
-            if (commandType is "INPUT" or "INPUTS")
+
+            if (IsHtmlAccumulatorReset(lineString))
+            {
+                _activeHtmlAccumulatorStartIndex = textList.lines.Count;
+            }
+            if (IsHtmlAccumulatorSink(lineString))
+            {
+                CompleteHtmlAccumulator(i + 1);
+            }
+
+            if (commandType is "INPUT" or "INPUTS" or "BINPUT")
             {
                 BeginMenuScope(i + 1, commandType);
             }
@@ -1150,13 +1180,18 @@ public class ERBParser
     private ErbTranslationSourceMetadata CreateSourceMetadata(int parsedLine, string lineString)
     {
         string commandType = GetCommandType(lineString);
+        ErbControlFrame? menuDispatch = _controlFrames.LastOrDefault(frame => frame.IsMenuDispatch);
+        ErbControlFrame? currentFrame = _controlFrames.LastOrDefault();
+
         return new ErbTranslationSourceMetadata(
             parsedLine,
             _currentFunctionName,
             commandType,
             BuildBranchPath(),
-            _controlFrames.Count == 0 ? "" : _controlFrames[^1].Id,
-            _controlFrames.Count == 0 ? "" : _controlFrames[^1].Branch,
+            menuDispatch?.Id ?? currentFrame?.Id ?? "",
+            // Use the outer menu dispatch branch as the alternative-choice identity.
+            // Nested IF/SELECTCASE branches remain distinguished by BranchPath.
+            menuDispatch?.Branch ?? currentFrame?.Branch ?? "",
             GetCallTarget(lineString, commandType));
     }
 
@@ -1174,15 +1209,24 @@ public class ERBParser
             _controlFrames.Clear();
             _controlFlowSegment = 0;
             _pendingMenuScopeId = null;
+            _pendingMenuDispatchLinesRemaining = 0;
+            _activeHtmlAccumulatorStartIndex = null;
             return;
         }
 
         string command = GetCommandType(lineString);
         if (_pendingMenuScopeId is not null &&
-            command != "SELECTCASE" &&
-            !string.IsNullOrWhiteSpace(lineString))
+            !string.IsNullOrWhiteSpace(lineString) &&
+            command is not ("IF" or "SELECTCASE"))
         {
-            _pendingMenuScopeId = null;
+            // BINPUT may be followed by ENDIF and a result assignment before
+            // the actual IF/SELECTCASE dispatch. Keep the pending scope only
+            // across this short hand-off window.
+            _pendingMenuDispatchLinesRemaining--;
+            if (_pendingMenuDispatchLinesRemaining <= 0)
+            {
+                _pendingMenuScopeId = null;
+            }
         }
 
         switch (command)
@@ -1191,6 +1235,8 @@ public class ERBParser
                 _controlFrames.Clear();
                 _controlFlowSegment++;
                 _pendingMenuScopeId = null;
+                _pendingMenuDispatchLinesRemaining = 0;
+                _activeHtmlAccumulatorStartIndex = null;
                 _currentFunctionName = "(global)";
                 return;
             case "ENDIF":
@@ -1254,24 +1300,28 @@ public class ERBParser
 
     private void PushControl(string type, string branch)
     {
+        bool isMenuDispatch = _pendingMenuScopeId is not null &&
+            (type is "IF" or "SELECTCASE");
         string id;
-        if (type == "SELECTCASE" && _pendingMenuScopeId is not null)
+        if (isMenuDispatch)
         {
-            id = _pendingMenuScopeId;
+            id = _pendingMenuScopeId!;
             _pendingMenuScopeId = null;
+            _pendingMenuDispatchLinesRemaining = 0;
         }
         else
         {
             id = type.ToLowerInvariant() + "_" + (++_nextControlScopeId).ToString("D4");
         }
 
-        _controlFrames.Add(new ErbControlFrame(id, type, branch));
+        _controlFrames.Add(new ErbControlFrame(id, type, branch, isMenuDispatch));
     }
 
     private void BeginMenuScope(int parsedLine, string command)
     {
         string menuScopeId = "menu_" + (++_nextControlScopeId).ToString("D4");
         _pendingMenuScopeId = menuScopeId;
+        _pendingMenuDispatchLinesRemaining = 8;
         _controlMarkers.Add(new ErbTranslationControlMarker(
             parsedLine,
             _currentFunctionName,
@@ -1302,6 +1352,118 @@ public class ERBParser
                 };
             }
         }
+
+        // BINPUT menus commonly consume a previously rendered HTML screen. The
+        // screen may be more than eight source lines above the input statement,
+        // so attach the immediately preceding LOCALS -> HTML_PRINT region as the
+        // menu prompt when it belongs to this function and is still nearby.
+        if (command == "BINPUT" &&
+            _lastHtmlAccumulatorStartIndex >= 0 &&
+            _lastHtmlAccumulatorEndIndex >= _lastHtmlAccumulatorStartIndex &&
+            parsedLine - _lastHtmlAccumulatorEndLine is >= 0 and <= 24 &&
+            _lastHtmlAccumulatorBranchPath is not null)
+        {
+            for (int index = _lastHtmlAccumulatorStartIndex;
+                 index <= _lastHtmlAccumulatorEndIndex && index < textList.sourceMetadata.Count;
+                 index++)
+            {
+                ErbTranslationSourceMetadata metadata = textList.sourceMetadata[index];
+                if (metadata.OutputType == "HTML_ACCUMULATOR" &&
+                    string.Equals(metadata.FunctionId, _currentFunctionName, StringComparison.Ordinal) &&
+                    string.Equals(metadata.BranchPath, _lastHtmlAccumulatorBranchPath, StringComparison.Ordinal))
+                {
+                    textList.sourceMetadata[index] = metadata with
+                    {
+                        ControlScopeId = menuScopeId,
+                        BranchLabel = "MENU_PROMPT"
+                    };
+                }
+            }
+        }
+    }
+
+    private static bool IsHtmlAccumulatorReset(string lineString) =>
+        lineString.StartsWith("LOCALS =", StringComparison.Ordinal) ||
+        lineString.StartsWith("LOCALS=", StringComparison.Ordinal);
+
+    private static bool IsHtmlAccumulatorSink(string lineString) =>
+        (lineString.StartsWith("HTML_PRINT", StringComparison.Ordinal) &&
+         Regex.IsMatch(lineString, @"^HTML_PRINT\s+LOCALS(?:\s|,|$)")) ||
+        lineString.Contains("= %LOCALS%", StringComparison.Ordinal);
+
+    private void CompleteHtmlAccumulator(int parsedLine)
+    {
+        if (_activeHtmlAccumulatorStartIndex is not int startIndex)
+        {
+            return;
+        }
+
+        int endIndex = textList.sourceMetadata.Count - 1;
+        if (endIndex < startIndex)
+        {
+            _activeHtmlAccumulatorStartIndex = null;
+            return;
+        }
+
+        string regionPath = $"html:{_currentFunctionName}:{++_nextHtmlOutputRegionId:D4}";
+        for (int index = startIndex; index <= endIndex; index++)
+        {
+            ErbTranslationSourceMetadata metadata = textList.sourceMetadata[index];
+            if (string.Equals(metadata.FunctionId, _currentFunctionName, StringComparison.Ordinal) &&
+                IsLocalsAccumulatorEntry(metadata.ParsedLine))
+            {
+                textList.sourceMetadata[index] = metadata with
+                {
+                    OutputType = "HTML_ACCUMULATOR",
+                    BranchPath = regionPath,
+                    ControlScopeId = "",
+                    BranchLabel = "HTML_OUTPUT",
+                    CallTarget = "HTML_PRINT"
+                };
+            }
+        }
+
+        _lastHtmlAccumulatorStartIndex = startIndex;
+        _lastHtmlAccumulatorEndIndex = endIndex;
+        _lastHtmlAccumulatorEndLine = parsedLine;
+        _lastHtmlAccumulatorBranchPath = regionPath;
+        _activeHtmlAccumulatorStartIndex = null;
+    }
+
+    private bool IsLocalsAccumulatorEntry(int parsedLine)
+    {
+        if (parsedLine <= 0 || parsedLine > lineList.Count)
+        {
+            return false;
+        }
+
+        string sourceLine = lineList[parsedLine - 1].Trim();
+        int equalsIndex = sourceLine.IndexOf('=');
+        if (equalsIndex < 0 || sourceLine.Contains("==", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        string leftValue = sourceLine[..equalsIndex]
+            .Trim()
+            .TrimEnd('+', '-', '*', '/', '&', '|')
+            .Trim();
+        string rightValue = sourceLine[(equalsIndex + 1)..].TrimStart();
+        bool isAppend = sourceLine.Contains("+=", StringComparison.Ordinal);
+
+        // Only literal fragments appended to the output buffer (including
+        // indexed LOCALS fragments interpolated into it) belong to the rendered
+        // HTML surface. Numeric/formula assignments such as LOCALS:2 = %...%
+        // remain separate and must not crowd out useful translation context.
+        if (isAppend)
+        {
+            return (leftValue.Equals("LOCALS", StringComparison.Ordinal) ||
+                    leftValue.StartsWith("LOCALS:", StringComparison.Ordinal)) &&
+                   rightValue.Contains('"');
+        }
+
+        return leftValue.Equals("LOCALS", StringComparison.Ordinal) &&
+               (rightValue.StartsWith("<", StringComparison.Ordinal) || rightValue.Contains('"'));
     }
 
     private void PopNearestControl(string type)

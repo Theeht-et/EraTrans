@@ -19,7 +19,10 @@ public sealed record AiTranslationSemanticContextGroup(
     string FunctionId,
     string BranchPath,
     string Relationship,
-    IReadOnlyList<AiTranslationContextEntry> Entries);
+    IReadOnlyList<AiTranslationContextEntry> Entries)
+{
+    public IReadOnlyList<int> TargetIds { get; init; } = [];
+}
 
 public interface IAiChatCompletionClient
 {
@@ -91,7 +94,7 @@ public sealed class AiTranslationService
         保留原文中的变量占位符、控制代码、转义序列、格式标记、数值和专有标识。
         entryContexts 中的 targetIds 指明对应上下文适用于哪些目标；没有对应项时不要自行补充上下文。
         同一请求中的 targets 应作为一个整体阅读和翻译；如果它们属于连续对白或同一段文本，应保持人物称呼、代词、语气、术语和前后句表达一致，不要把每条译文当作互不相关的孤立句子。
-        semanticContext 是只读参考，不是翻译目标。same-group 表示同一文本片段，menu-prompt 表示菜单提示，alternative-branch 表示互斥的条件分支，只能作为场景参考，不能当成连续发生的对白。groupType 用于补充说明参考文本的类别。
+        semanticContext 是只读参考，不是翻译目标。每个上下文项的 targetIds 明确限定它适用的目标 id；只能用于这些目标，绝不能扩展到同一请求中的其他目标。same-group 表示同一文本片段，menu-prompt 表示菜单提示，alternative-branch 表示互斥的条件分支，只能作为场景参考，不能当成连续发生的对白。groupType 用于补充说明参考文本的类别。
         只能翻译 targets 中的词条，只返回 targets 对应的 id。
         只返回 JSON 数组，每项必须包含原样的整数 id 和字符串 translation。
         不要添加 Markdown 代码围栏、解释、前言或数组之外的内容。不能遗漏或重复任何 id。
@@ -192,9 +195,21 @@ public sealed class AiTranslationService
             payload["entryContexts"] = entryContexts;
         }
 
+        var requestIds = requests.Select(request => request.Id).ToHashSet();
+        foreach (AiTranslationSemanticContextGroup group in semanticContextGroups)
+        {
+            if (group.TargetIds.Count == 0 || group.TargetIds.Any(id => !requestIds.Contains(id)))
+            {
+                throw new ArgumentException(
+                    "语义上下文必须明确关联到当前请求中的至少一个目标 id。",
+                    nameof(semanticContextGroups));
+            }
+        }
+
         var semanticContexts = semanticContextGroups
             .Select(group => new
             {
+                targetIds = group.TargetIds.Distinct().Order().ToArray(),
                 type = group.Relationship,
                 groupType = group.GroupType,
                 texts = group.Entries
@@ -202,7 +217,7 @@ public sealed class AiTranslationService
                     .Select(entry => entry.Original)
                     .ToArray()
             })
-            .Where(group => group.texts.Length > 0)
+            .Where(group => group.targetIds.Length > 0 && group.texts.Length > 0)
             .ToArray();
 
         if (semanticContexts.Length > 0)

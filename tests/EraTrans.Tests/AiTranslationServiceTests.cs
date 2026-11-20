@@ -69,14 +69,14 @@ public sealed class AiTranslationServiceTests
                 [
                     new AiTranslationContextEntry("文本ERB\\MENU00001", "第一个选项"),
                     new AiTranslationContextEntry("文本ERB\\MENU00003", "第一个选项")
-                ]),
+                ]) { TargetIds = [5] },
             new(
                 "opaque_group_000003",
                 "branch",
                 "INTERNAL_FUNCTION_NAME",
                 "menu_0001:SELECTCASE:CASE 1",
                 "alternative-branch",
-                [new AiTranslationContextEntry("文本ERB\\MENU00002", "第二个分支")])
+                [new AiTranslationContextEntry("文本ERB\\MENU00002", "第二个分支")]) { TargetIds = [5] }
         ];
 
         IReadOnlyList<AiTranslationResult> results =
@@ -105,11 +105,15 @@ public sealed class AiTranslationServiceTests
         JsonElement[] semanticContexts = root.GetProperty("semanticContext")
             .EnumerateArray().ToArray();
         Assert.Equal(2, semanticContexts.Length);
+        Assert.Equal(new[] { 5 }, semanticContexts[0].GetProperty("targetIds").EnumerateArray()
+            .Select(id => id.GetInt32()));
         Assert.Equal("same-group", semanticContexts[0].GetProperty("type").GetString());
         Assert.Equal("menu", semanticContexts[0].GetProperty("groupType").GetString());
         Assert.Equal(new[] { "第一个选项", "第一个选项" },
             semanticContexts[0].GetProperty("texts").EnumerateArray()
                 .Select(text => text.GetString()));
+        Assert.Equal(new[] { 5 }, semanticContexts[1].GetProperty("targetIds").EnumerateArray()
+            .Select(id => id.GetInt32()));
         Assert.Equal("alternative-branch", semanticContexts[1].GetProperty("type").GetString());
         Assert.Equal("branch", semanticContexts[1].GetProperty("groupType").GetString());
         Assert.Equal(new[] { "第二个分支" },
@@ -122,6 +126,82 @@ public sealed class AiTranslationServiceTests
         Assert.DoesNotContain("menu_0001", fake.LastUserPrompt);
         Assert.Contains("targetIds", fake.LastSystemPrompt);
         Assert.Contains("互斥", fake.LastSystemPrompt);
+    }
+
+
+
+    [Fact]
+    public async Task TranslateWithSemanticContextAsync_KeepsDifferentTargetScopesSeparateInOneRequest()
+    {
+        var fake = new FakeChatClient(
+            """
+            [
+              { "id": 5, "translation": "甲译文" },
+              { "id": 6, "translation": "乙译文" }
+            ]
+            """);
+        var service = new AiTranslationService(fake);
+        AiTranslationRequest[] requests =
+        [
+            new(5, "文本5", "甲目标", ""),
+            new(6, "文本6", "乙目标", "")
+        ];
+        AiTranslationSemanticContextGroup[] contexts =
+        [
+            new(
+                "group_a",
+                "dialogue",
+                "FUNCTION_A",
+                "IF:0",
+                "same-group",
+                [new AiTranslationContextEntry("文本A", "甲上下文")]) { TargetIds = [5] },
+            new(
+                "group_b",
+                "dialogue",
+                "FUNCTION_B",
+                "IF:1",
+                "alternative-branch",
+                [new AiTranslationContextEntry("文本B", "乙上下文")]) { TargetIds = [6] }
+        ];
+
+        await service.TranslateWithSemanticContextAsync(CreateProfile(), requests, contexts);
+
+        using JsonDocument document = JsonDocument.Parse(fake.LastUserPrompt);
+        JsonElement[] semanticContexts = document.RootElement.GetProperty("semanticContext")
+            .EnumerateArray().ToArray();
+        Assert.Equal(2, semanticContexts.Length);
+        Assert.Equal(new[] { 5 }, semanticContexts[0].GetProperty("targetIds").EnumerateArray()
+            .Select(id => id.GetInt32()));
+        Assert.Equal("甲上下文", semanticContexts[0].GetProperty("texts")[0].GetString());
+        Assert.Equal(new[] { 6 }, semanticContexts[1].GetProperty("targetIds").EnumerateArray()
+            .Select(id => id.GetInt32()));
+        Assert.Equal("乙上下文", semanticContexts[1].GetProperty("texts")[0].GetString());
+    }
+
+    [Fact]
+    public async Task TranslateWithSemanticContextAsync_RejectsContextScopedToAnotherBatch()
+    {
+        var fake = new FakeChatClient(
+            """[{ "id": 5, "translation": "目标译文" }]""");
+        var service = new AiTranslationService(fake);
+        AiTranslationSemanticContextGroup[] context =
+        [
+            new(
+                "group_1",
+                "dialogue",
+                "FUNCTION_A",
+                "",
+                "same-group",
+                [new AiTranslationContextEntry("文本1", "旁支上下文")]) { TargetIds = [99] }
+        ];
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            service.TranslateWithSemanticContextAsync(
+                CreateProfile(),
+                [new AiTranslationRequest(5, "文本5", "目标文本", "")],
+                context));
+
+        Assert.False(fake.WasCalled);
     }
 
     [Fact]

@@ -169,7 +169,8 @@ public sealed class RealGameErbFixtureTests
             storyDocument.Entries.ToArray(),
             storyIndex));
         AiTranslationSemanticContextGroup storyContext = Assert.Single(
-            storyBatch.SemanticContextGroups.Where(group => group.Relationship == "same-group"));
+            storyBatch.SemanticContextGroups,
+            group => group.Relationship == "same-group");
         Assert.Contains(storyContext.Entries, entry =>
             entry.Original.Contains("様々な職業", StringComparison.Ordinal));
 
@@ -178,8 +179,10 @@ public sealed class RealGameErbFixtureTests
         const string confessionPath = "ERB/一日開始時処理/起床時告白処理.ERB";
         DictionaryEditorDocument confessionDocument = documentsBySource[confessionPath];
         ErbTranslationGroupingIndex confessionIndex = indexesBySource[confessionPath];
-        DictionaryEditorEntry choiceTarget = Assert.Single(confessionDocument.Entries.Where(entry =>
-            entry.Original.Contains("想いに応える", StringComparison.Ordinal)));
+        // This complete file contains both confession and proposal menus. The first
+        // occurrence is the confession menu, whose prompt and alternate choice follow it.
+        DictionaryEditorEntry choiceTarget = confessionDocument.Entries.First(entry =>
+            entry.Original.Contains("想いに応える", StringComparison.Ordinal));
         Assert.Contains(confessionIndex.Groups, group =>
             group.Type == "menu" && group.EntryKeys.Contains(choiceTarget.Key, StringComparer.Ordinal));
 
@@ -188,7 +191,8 @@ public sealed class RealGameErbFixtureTests
             confessionDocument.Entries.ToArray(),
             confessionIndex));
         AiTranslationSemanticContextGroup choiceContext = Assert.Single(
-            choiceBatch.SemanticContextGroups.Where(group => group.Relationship == "same-group"));
+            choiceBatch.SemanticContextGroups,
+            group => group.Relationship == "same-group");
         Assert.Contains(choiceContext.Entries, entry =>
             entry.Original.Contains("少し考えさせて欲しいと言う", StringComparison.Ordinal));
         Assert.Contains(choiceContext.Entries, entry =>

@@ -23,11 +23,9 @@ All settings are stored beside `EraTrans.App.exe`, in the `Config/` folder:
 - `Config/settings.json` — parser, extraction, output, and AI translation mode settings.
 - `Config/ai-providers.json` — AI provider profiles. API keys remain encrypted with Windows DPAPI (CurrentUser), not stored as plaintext.
 
-On first launch after upgrading from an earlier version, existing files in `%AppData%/EraTrans/` are copied into the software folder. The original AppData files are retained as backups; subsequent changes are written only to the portable `Config/` folder.
-
 The software folder must be writable by the current Windows user. For a portable setup, extract the downloaded artifact into a normal user-writable folder rather than `Program Files`.
 
-The parser settings window migrates the configurable options from the original ErbParserForTranslate `config.json`: file encoding, strong variable-name filtering, auto-open output folder, automatic variable correction, hiding English entries, merging duplicate entries, hiding variable entries, merging concatenated strings, writing context, target file extensions, variable-correction reference dictionaries, variable-name characters, and expression operators. Defaults retain the legacy behavior except variable dictionary entries are now hidden by default. Older unversioned settings are upgraded once to this default; an explicit choice to show variables is preserved after settings are saved. Advanced lists accept one item per line.
+The parser settings window provides options for file encoding, variable-name filtering, automatic variable correction, hiding English entries, merging duplicate entries, hiding variable entries, merging concatenated strings, writing context, target file extensions, reference dictionaries, variable-name characters, and expression operators. Variable dictionary entries are hidden by default; this can be changed in settings. Advanced lists accept one item per line.
 
 ## AI provider configuration
 
@@ -66,7 +64,7 @@ Choose one original game directory and one unified output directory in the app. 
 - `AI上下文/` — separate ERB semantic-group metadata files generated during extraction and read only when semantic-group translation is enabled.
 - `游戏副本/` — a complete copy of the original game directory, including unrelated assets and empty folders. Existing copies are never overwritten.
 
-The main window previews these paths after both directories are selected. If an older unclassified `字典/`, `AI上下文/`, or `游戏副本/` exists directly under the unified output directory, EraTrans asks before moving it into the current game's folder. Only confirm the move when those old folders belong exclusively to the selected game; otherwise keep them in place and start a separate game folder. The original game directory remains untouched.
+The main window previews these paths after both directories are selected. The original game directory remains untouched.
 
 To rebuild a clean translated copy after changing translations, preserve any files you want to keep and remove or move the current game's `游戏副本/` folder before applying translations again.
 

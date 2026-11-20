@@ -108,7 +108,8 @@ public sealed class RealGameErbFixtureTests
             Assert.NotEmpty(textEntries);
             Assert.Equal(textEntries.Length, index!.Entries.Count);
 
-            string expectedText = ExpectedJapaneseText.Single(pair => string.Equals(\n                NormalizePath(pair.Key), sourceRelativePath, StringComparison.Ordinal)).Value;
+            string expectedText = ExpectedJapaneseText.Single(pair =>
+                string.Equals(NormalizePath(pair.Key), sourceRelativePath, StringComparison.Ordinal)).Value;
             Assert.Contains(textEntries, entry =>
                 entry.Original.Contains(expectedText, StringComparison.Ordinal));
 

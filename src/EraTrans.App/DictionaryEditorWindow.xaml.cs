@@ -112,6 +112,13 @@ public partial class DictionaryEditorWindow : Window
         _fileTreeItems.Clear();
 
         var folders = new Dictionary<string, TreeViewItem>(StringComparer.OrdinalIgnoreCase);
+        var folderChildren = new Dictionary<string, ItemCollection>(StringComparer.OrdinalIgnoreCase)
+        {
+            [string.Empty] = DictionaryFilesTreeView.Items
+        };
+
+        // Create every folder first. This guarantees folders appear before files at
+        // every level, regardless of the relative names in the extracted dictionary.
         foreach (DictionaryEditorFile file in files)
         {
             string relativePath = file.RelativePath
@@ -120,7 +127,6 @@ public partial class DictionaryEditorWindow : Window
                 Path.DirectorySeparatorChar,
                 StringSplitOptions.RemoveEmptyEntries);
 
-            ItemCollection children = DictionaryFilesTreeView.Items;
             string currentFolder = string.Empty;
             for (int index = 0; index < segments.Length - 1; index++)
             {
@@ -133,18 +139,30 @@ public partial class DictionaryEditorWindow : Window
                     folderNode = new TreeViewItem
                     {
                         Header = segments[index],
-                        IsExpanded = true,
+                        IsExpanded = false,
                         FontWeight = FontWeights.SemiBold
                     };
-                    children.Add(folderNode);
+                    folderChildren[currentFolder] = folderNode.Items;
+                    folderChildren[Path.GetDirectoryName(currentFolder) ?? string.Empty]
+                        .Add(folderNode);
                     folders.Add(currentFolder, folderNode);
                 }
-
-                children = folderNode.Items;
             }
+        }
 
+        // Add files only after the complete folder hierarchy has been created.
+        foreach (DictionaryEditorFile file in files)
+        {
+            string relativePath = file.RelativePath
+                .Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
+            string[] segments = relativePath.Split(
+                Path.DirectorySeparatorChar,
+                StringSplitOptions.RemoveEmptyEntries);
+            string parentFolder = segments.Length > 1
+                ? Path.Combine(segments[..^1])
+                : string.Empty;
             var fileNode = new TreeViewItem { Header = segments[^1], Tag = file };
-            children.Add(fileNode);
+            folderChildren[parentFolder].Add(fileNode);
             _fileTreeItems[file.FullPath] = fileNode;
         }
     }

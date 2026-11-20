@@ -28,6 +28,7 @@ public sealed class AiProviderProfile
     [JsonIgnore]
     public bool IsReadyForTranslation =>
         IsEnabled &&
+        Protocol == AiProviderProtocol.OpenAiCompatible &&
         !RequiresEndpointReview &&
         !string.IsNullOrWhiteSpace(BaseUrl) &&
         !string.IsNullOrWhiteSpace(Model) &&
@@ -263,7 +264,8 @@ public sealed class AiProviderSettingsStore
                         Protocol = AiProviderProtocol.OpenAiCompatible,
                         IsEnabled = item.IsEnabled,
                         IsBuiltIn = item.IsBuiltIn,
-                        RequiresEndpointReview = item.Protocol != (int)AiProviderProtocol.OpenAiCompatible,
+                        RequiresEndpointReview = item.RequiresEndpointReview ||
+                            item.Protocol != (int)AiProviderProtocol.OpenAiCompatible,
                         AvailableModels = (item.Models ?? [])
                             .Where(model => model is not null && !string.IsNullOrWhiteSpace(model.Id))
                             .Select(model => new AiProviderModel
@@ -374,9 +376,10 @@ public sealed class AiProviderSettingsStore
                     Protocol = (int)AiProviderProtocol.OpenAiCompatible,
                     IsEnabled = profile.IsEnabled,
                     IsBuiltIn = profile.IsBuiltIn,
+                    RequiresEndpointReview = profile.RequiresEndpointReview,
                     ProtectedApiKey = protectedKey.Length == 0 ? "" : Convert.ToBase64String(protectedKey),
                     Models = (profile.AvailableModels ?? [])
-                        .Where(model => !string.IsNullOrWhiteSpace(model.Id))
+                        .Where(model => model is not null && !string.IsNullOrWhiteSpace(model.Id))
                         .Select(model => new StoredModel
                         {
                             Id = model.Id,
@@ -469,6 +472,7 @@ public sealed class AiProviderSettingsStore
         public int Protocol { get; set; } = (int)AiProviderProtocol.OpenAiCompatible;
         public bool IsEnabled { get; set; } = true;
         public bool IsBuiltIn { get; set; }
+        public bool RequiresEndpointReview { get; set; }
         public string ProtectedApiKey { get; set; } = "";
         public List<StoredModel>? Models { get; set; } = [];
     }

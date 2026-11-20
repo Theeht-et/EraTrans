@@ -498,6 +498,32 @@ public sealed class AiModelDiscoveryServiceTests
         Assert.Equal(false, explicitFalse.ReasoningSupport);
     }
 
+    [Fact]
+    public void ParseModelsResponse_DoesNotConfuseInputLimitWithTotalContextWindow()
+    {
+        const string json = """
+            {
+              "data": [
+                { "id": "input-limited", "inputTokenLimit": 12000 },
+                {
+                  "id": "context-and-input-limited",
+                  "context_length": 65536,
+                  "max_input_tokens": 60000
+                }
+              ]
+            }
+            """;
+
+        IReadOnlyList<AiProviderModel> models = AiModelDiscoveryService.ParseModelsResponse(json);
+        AiProviderModel inputOnly = Assert.Single(models, model => model.Id == "input-limited");
+        Assert.Null(inputOnly.ContextLimit);
+        Assert.Equal(12000, inputOnly.InputLimit);
+
+        AiProviderModel both = Assert.Single(models, model => model.Id == "context-and-input-limited");
+        Assert.Equal(65536, both.ContextLimit);
+        Assert.Equal(60000, both.InputLimit);
+    }
+
     private sealed class StubHandler(
         Func<HttpRequestMessage, HttpResponseMessage> responseFactory) : HttpMessageHandler
     {

@@ -5,7 +5,6 @@ namespace EraTrans.Core;
 
 /// <summary>
 /// Persists EraTrans application settings beside the executable, in the Config folder.
-/// Existing AppData settings are copied into the portable location on first launch.
 /// </summary>
 public sealed class EraTransUserSettingsStore
 {
@@ -16,37 +15,17 @@ public sealed class EraTransUserSettingsStore
     };
 
     private readonly string _filePath;
-    private readonly string? _legacyFilePath;
 
-    public EraTransUserSettingsStore(string? filePath = null, string? legacyFilePath = null)
+    public EraTransUserSettingsStore(string? filePath = null)
     {
-        bool useDefaultPaths = filePath is null;
         _filePath = filePath ?? EraTransPaths.UserSettingsFilePath;
-        _legacyFilePath = legacyFilePath ??
-            (useDefaultPaths ? EraTransPaths.LegacyUserSettingsFilePath : null);
     }
 
     public EraTransUserSettings Load()
     {
-        if (File.Exists(_filePath))
-        {
-            return LoadFrom(_filePath);
-        }
-
-        if (_legacyFilePath is not null &&
-            !Path.GetFullPath(_legacyFilePath).Equals(
-                Path.GetFullPath(_filePath),
-                StringComparison.OrdinalIgnoreCase) &&
-            File.Exists(_legacyFilePath))
-        {
-            // Save a new copy next to the executable. Keep the AppData source untouched
-            // as a recoverable backup in case the user needs to roll back.
-            EraTransUserSettings legacySettings = LoadFrom(_legacyFilePath);
-            Save(legacySettings);
-            return legacySettings;
-        }
-
-        return EraTransUserSettings.CreateDefault();
+        return File.Exists(_filePath)
+            ? LoadFrom(_filePath)
+            : EraTransUserSettings.CreateDefault();
     }
 
     private static EraTransUserSettings LoadFrom(string path)
@@ -57,15 +36,6 @@ public sealed class EraTransUserSettingsStore
             EraTransUserSettings settings = JsonSerializer.Deserialize<EraTransUserSettings>(
                 json,
                 JsonOptions) ?? throw new InvalidDataException("设置文件为空或格式无效。");
-            // Before SettingsVersion existed, HideVariableEntries defaulted to false.
-            // Upgrade once to the new first-run default; subsequent explicit user
-            // choices are preserved by the versioned setting.
-            if (settings.SettingsVersion.GetValueOrDefault() < EraTransUserSettings.CurrentSettingsVersion)
-            {
-                settings.HideVariableEntries = true;
-                settings.SettingsVersion = EraTransUserSettings.CurrentSettingsVersion;
-            }
-
             settings.Validate();
             return settings;
         }
@@ -80,7 +50,6 @@ public sealed class EraTransUserSettingsStore
     public void Save(EraTransUserSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
-        settings.SettingsVersion ??= EraTransUserSettings.CurrentSettingsVersion;
         settings.Validate();
 
         string directory = Path.GetDirectoryName(_filePath)

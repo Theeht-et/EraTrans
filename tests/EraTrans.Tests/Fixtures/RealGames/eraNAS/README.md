@@ -6,6 +6,7 @@ This folder contains curated excerpts, not complete game files. They are used as
 
 - Game: eraNAS, a substantial eraToho The World overhaul.
 - Upstream project: https://gitgud.io/mrpopsalot/pops-tw
+- Discovery note: eraNAS is listed under GitGud's separate `era-games` topic; it is not a child project of the `era-games-zh` group. It was selected because its source revisions and LGPL-3.0-or-later licensing can be verified.
 - Upstream license: GNU Lesser General Public License v3.0 or later (LGPL-3.0-or-later). The upstream project tree records the relicensing of eraNAS and its original dialogue under LGPL 3 or later. A copy of the license is included as LICENSE.
 - Upstream license file: https://gitgud.io/mrpopsalot/pops-tw/-/blob/dev/omogatari-kai/LICENSE
 - Upstream README: https://gitgud.io/mrpopsalot/pops-tw/-/blob/dev/omogatari-kai/README.MD

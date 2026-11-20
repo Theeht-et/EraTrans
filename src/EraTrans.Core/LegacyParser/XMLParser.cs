@@ -69,7 +69,7 @@ public class XMLParser
             ExtractElementText(defname.Element("description"), terms);
             ExtractElementText(defname.Element("unlockhint"), terms);
 
-            XElement tooltip = defname.Element("tooltip");
+            XElement? tooltip = defname.Element("tooltip");
             ExtractAttributeValue(tooltip, "color", terms);
             if (tooltip != null && !string.IsNullOrWhiteSpace(tooltip.Value))
             {
@@ -91,7 +91,7 @@ public class XMLParser
         }
         foreach (XElement triggeredskill in doc.Descendants("triggeredskill"))
          {
-            XElement skillname = triggeredskill.Element("skillname");
+            XElement? skillname = triggeredskill.Element("skillname");
             if (skillname != null && !string.IsNullOrWhiteSpace(skillname.Value))
             {
                 terms.Add(skillname.Value);
@@ -99,7 +99,7 @@ public class XMLParser
         }
         foreach (XElement randomCharaTalent in doc.Descendants("randomCharaTalentES"))
          {
-            XElement modifier = randomCharaTalent.Element("modifier");
+            XElement? modifier = randomCharaTalent.Element("modifier");
             ExtractAttributeValue(modifier, "eval", terms);
         }
     }
@@ -131,7 +131,7 @@ public class XMLParser
             ExtractAttributeValue(command, "HO_Act", terms);
 
             // 处理对话内容
-            XElement contents = command.Element("contents");
+            XElement? contents = command.Element("contents");
             if (contents != null && !string.IsNullOrWhiteSpace(contents.Value))
             {
                 //ProcessContentLines(contents.Value, terms);
@@ -156,13 +156,13 @@ public class XMLParser
         {
              ExtractAttributeValue(title, "titlename", terms);
 
-            XElement unlockHint = title.Element("unlockHint");
+            XElement? unlockHint = title.Element("unlockHint");
             if (unlockHint != null && !string.IsNullOrWhiteSpace(unlockHint.Value))
             {
                 terms.Add(unlockHint.Value);
             }
 
-            XElement titleDescription = title.Element("titleDescription");
+            XElement? titleDescription = title.Element("titleDescription");
             if (titleDescription != null && !string.IsNullOrWhiteSpace(titleDescription.Value))
             {
                 terms.Add(titleDescription.Value);
@@ -183,7 +183,7 @@ public class XMLParser
         {
              ExtractAttributeValue(titleBonus, "name", terms);
 
-            XElement description = titleBonus.Element("description");
+            XElement? description = titleBonus.Element("description");
             if (description != null && !string.IsNullOrWhiteSpace(description.Value))
             {
                 terms.Add(description.Value);
@@ -191,7 +191,7 @@ public class XMLParser
         }
         foreach (XElement modifier in doc.Descendants("modifier"))
         {
-            XElement modifyCondition = modifier.Element("modifyCondition");
+            XElement? modifyCondition = modifier.Element("modifyCondition");
             if (modifyCondition != null && !string.IsNullOrWhiteSpace(modifyCondition.Value))
             {
                 terms.Add(modifyCondition.Value);
@@ -222,7 +222,7 @@ public class XMLParser
         }
     }
 
-    static void ExtractElementText(XElement element, List<string> collection)
+    static void ExtractElementText(XElement? element, List<string> collection)
     {
         if (element?.Value != null && !string.IsNullOrWhiteSpace(element.Value))
         {
@@ -230,9 +230,9 @@ public class XMLParser
         }
     }
 
-    static void ExtractAttributeValue(XElement element, string attributeName, List<string> collection)
+    static void ExtractAttributeValue(XElement? element, string attributeName, List<string> collection)
     {
-        XAttribute attr = element?.Attribute(attributeName);
+        XAttribute? attr = element?.Attribute(attributeName);
         if (attr?.Value != null && !string.IsNullOrWhiteSpace(attr.Value))
         {
             collection.Add(attr.Value.Trim());

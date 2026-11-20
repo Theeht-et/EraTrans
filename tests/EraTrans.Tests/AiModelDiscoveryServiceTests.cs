@@ -52,7 +52,7 @@ public sealed class AiModelDiscoveryServiceTests
             models,
             model => model.Id == "anthropic/claude-sonnet-4");
         Assert.Equal("Claude Sonnet 4", claude.DisplayName);
-        Assert.Equal("anthropic", claude.GroupName);
+        Assert.Equal("Claude · Sonnet", claude.GroupName);
 
         AiProviderModel embedding = Assert.Single(
             models,

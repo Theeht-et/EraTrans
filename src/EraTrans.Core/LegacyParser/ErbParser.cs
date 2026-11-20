@@ -193,7 +193,7 @@ public class ERBParser
                         .Select(arg => arg.Trim());
                     // enumer.FirstOrDefault()是函数名，也可能需要翻译，但需要去除前面的@
                     // 其它成员是参数名
-                    varNameList.Add(enumer.FirstOrDefault().TrimStart('@'), contexts);
+                    varNameList.Add(enumer.First().TrimStart('@'), contexts);
                     foreach (var token in enumer.Skip(1))
                     {
                         string[] parts = token.Split('=');
@@ -488,7 +488,7 @@ public class ERBParser
 
                     var leftEnumer = leftValue.Split(' ')
                         .Where(arg => !string.IsNullOrWhiteSpace(arg.Replace("<Tab>", "")));
-                    varNameList.Add(leftEnumer.LastOrDefault(), contexts);
+                    varNameList.Add(leftEnumer.Last(), contexts);
 
                     // 类型推导，如果是数值型，那么右值不用翻译，continue掉
                     bool isIntegerValue = leftEnumer.FirstOrDefault() == "#DIM";
@@ -826,7 +826,10 @@ public class ERBParser
                 {
                     if (Configs.mergeString)
                     {
-                        var (left, right) = Tools.GetSlashStringCouple(lineString, '=');
+                        // 此分支仅在上方确认存在复合赋值运算符后进入，因此 '=' 必然存在。
+                        int assignmentIndex = lineString.IndexOf('=');
+                        string left = lineString[..assignmentIndex];
+                        string right = lineString[(assignmentIndex + 1)..];
                         if (right.Contains('"'))
                         {
                             varNameList.Add(left.Remove(left.Length - 1).Trim(), contexts);

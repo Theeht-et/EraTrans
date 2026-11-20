@@ -50,6 +50,14 @@ public sealed class AiProviderHttpClientTests
     }
 
     [Fact]
+    public void ParseChatCompletionResponse_IgnoresNonStringTextParts()
+    {
+        string response = OpenAiCompatibleChatCompletionClient.ParseChatCompletionResponse(
+            """{"choices":[{"message":{"content":[{"type":"text","text":{"unexpected":"object"}},{"type":"text","text":"valid reply"},{"type":"image","image_url":"ignored"}]}}]}""");
+        Assert.Equal("valid reply", response);
+    }
+
+    [Fact]
     public async Task CompleteAsync_ReportsProviderErrorAndHttpStatus()
     {
         using var handler = new StubHandler(_ =>

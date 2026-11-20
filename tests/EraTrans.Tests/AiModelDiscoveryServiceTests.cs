@@ -156,15 +156,32 @@ public sealed class AiModelDiscoveryServiceTests
                             "name": "GPT-4o mini",
                             "family": "gpt-4o",
                             "status": "active",
-                            "tool": true,
-                            "rsn": false,
-                            "so": true,
-                            "in": ["text", "image"],
-                            "out": ["text"],
+                            "tool_call": true,
+                            "reasoning": true,
+                            "structured_output": true,
+                            "attachment": true,
+                            "temperature": true,
+                            "open_weights": true,
+                            "knowledge": "2024-10",
+                            "release_date": "2024-07-18",
+                            "last_updated": "2025-01-01",
+                            "modalities": {
+                              "input": ["text", "image"],
+                              "output": ["text"]
+                            },
                             "limit": {
                               "context": 128000,
                               "input": 120000,
                               "output": 16000
+                            },
+                            "cost": {
+                              "input": 2.5,
+                              "output": 10.0,
+                              "reasoning": 12.0,
+                              "cache_read": 0.25,
+                              "cache_write": 3.0,
+                              "input_audio": 40.0,
+                              "output_audio": 80.0
                             }
                           }
                         }
@@ -203,11 +220,27 @@ public sealed class AiModelDiscoveryServiceTests
         Assert.Equal(120000, model.InputLimit);
         Assert.Equal(16000, model.OutputLimit);
         Assert.True(model.SupportsTools);
+        Assert.True(model.SupportsReasoning);
         Assert.True(model.SupportsStructuredOutput);
+        Assert.True(model.SupportsAttachments);
+        Assert.True(model.SupportsTemperature);
+        Assert.True(model.OpenWeights);
+        Assert.Equal("2024-10", model.Knowledge);
+        Assert.Equal("2024-07-18", model.ReleaseDate);
+        Assert.Equal("2025-01-01", model.LastUpdated);
         Assert.Contains("image", model.InputModalities);
         Assert.Contains("text", model.OutputModalities);
+        Assert.Equal(2.5, model.InputCostPerMillion);
+        Assert.Equal(10.0, model.OutputCostPerMillion);
+        Assert.Equal(12.0, model.ReasoningCostPerMillion);
+        Assert.Equal(0.25, model.CacheReadCostPerMillion);
+        Assert.Equal(3.0, model.CacheWriteCostPerMillion);
+        Assert.Equal(40.0, model.InputAudioCostPerMillion);
+        Assert.Equal(80.0, model.OutputAudioCostPerMillion);
         Assert.Contains("上下文 128K", model.MetadataSummary);
         Assert.Contains("工具调用", model.MetadataSummary);
+        Assert.Contains("输入 $2.5/1M", model.MetadataSummary);
+        Assert.Contains("输出 $10/1M", model.MetadataSummary);
     }
 
     [Fact]

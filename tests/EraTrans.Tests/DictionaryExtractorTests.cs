@@ -8,6 +8,55 @@ namespace EraTrans.Tests;
 public sealed class DictionaryExtractorTests
 {
     [Fact]
+    public void Extract_DefaultOptionsSuppressVariableEntriesButKeepTranslatableText()
+    {
+        string root = CreateTempDirectory();
+        string game = Path.Combine(root, "Game");
+        string output = Path.Combine(root, "Output");
+        Write(game, "ERB/sample.erb", string.Join(Environment.NewLine,
+        [
+            "@SAMPLE",
+            "CALL 日本語関数(ARG:0)",
+            "PRINTFORML 可翻译文本"
+        ]));
+
+        new DictionaryExtractor().Extract(game, output);
+
+        JArray entries = JArray.Parse(File.ReadAllText(Path.Combine(output, "ERB", "sample.json")));
+        Assert.Contains(entries, entry => ((string?)entry!["key"])?.StartsWith("文本", StringComparison.Ordinal) == true);
+        Assert.DoesNotContain(entries, entry => ((string?)entry!["key"])?.StartsWith("变量", StringComparison.Ordinal) == true);
+    }
+
+    [Fact]
+    public void Extract_GameNamedOutputStoresDictionaryAndGroupingSidecarUnderSameGameFolder()
+    {
+        string root = CreateTempDirectory();
+        string game = Path.Combine(root, "Games", "ExampleGame");
+        string output = Path.Combine(root, "Translations");
+        Write(game, "ERB/menu.erb", string.Join(Environment.NewLine,
+        [
+            "@MENU",
+            "PRINTFORML 选择一个项目",
+            "INPUT",
+            "SELECTCASE RESULT",
+            "CASE 0",
+            "PRINTFORML 第一项"
+        ]));
+
+        EraTransOutputLayout layout = EraTransOutputLayout.Create(output, game);
+        DictionaryExtractionResult result =
+            new DictionaryExtractor().Extract(game, layout.DictionaryDirectory);
+
+        string dictionaryPath = Path.Combine(layout.DictionaryDirectory, "ERB", "menu.json");
+        string sidecarPath = Path.Combine(layout.AiContextDirectory, "ERB", "menu.groups.json");
+        Assert.True(File.Exists(dictionaryPath));
+        Assert.True(File.Exists(sidecarPath));
+        Assert.Contains(sidecarPath, result.UpdatedGroupingFiles ?? Array.Empty<string>());
+        Assert.False(Directory.Exists(Path.Combine(output, "字典")));
+        Assert.False(Directory.Exists(Path.Combine(output, "AI上下文")));
+    }
+
+    [Fact]
     public void Extract_UsesLegacyParsers_AndLeavesGameFilesUnchanged()
     {
         string root = CreateTempDirectory();
@@ -110,7 +159,10 @@ public sealed class DictionaryExtractorTests
             "CALL ASCII_CALL(ARG:0, \"普通CALL英文函数参数文本\")"
         }));
 
-        new DictionaryExtractor().Extract(game, output);
+        new DictionaryExtractor().Extract(
+            game,
+            output,
+            options: new EraParserOptions { HideVariableEntries = false });
 
         JArray entries = JArray.Parse(File.ReadAllText(Path.Combine(output, "ERB", "functionNames.json")));
         string[] originals = entries
@@ -329,6 +381,94 @@ public sealed class DictionaryExtractorTests
 
         var entries = JArray.Parse(File.ReadAllText(Path.Combine(output, "CSV", "items.json")));
         Assert.Equal("商品名", (string?)entries[0]?["original"]);
+    }
+
+    [Fact]
+    public void Extract_ErbFiles_GeneratesSemanticGroupingSidecarWithoutChangingDictionaryShape()
+    {
+        string root = CreateTempDirectory();
+        string game = Path.Combine(root, "Game");
+        string output = Path.Combine(root, "Output");
+        Write(game, "ERB/menu.erb", string.Join(Environment.NewLine,
+        [
+            "@MENU",
+            "PRINTFORML 選択してください",
+            "PRINTFORML 項目を選んでください",
+            "INPUT",
+            "SELECTCASE RESULT",
+            "CASE 0",
+            "PRINTFORML 第一項",
+            "CASEELSE",
+            "PRINTFORML 第二項",
+            "ENDSELECT",
+            "ENDFUNC"
+        ]));
+
+        DictionaryExtractionResult result = new DictionaryExtractor().Extract(game, output);
+
+        string dictionaryPath = Path.Combine(output, "ERB", "menu.json");
+        string sidecarPath = Path.Combine(output, "AI上下文", "ERB", "menu.groups.json");
+        Assert.True(File.Exists(dictionaryPath));
+        Assert.True(File.Exists(sidecarPath));
+        Assert.Contains(sidecarPath, result.UpdatedGroupingFiles ?? Array.Empty<string>());
+
+        JArray dictionary = JArray.Parse(File.ReadAllText(dictionaryPath));
+        Assert.All(dictionary, entry =>
+        {
+            Assert.NotNull(entry["key"]);
+            Assert.NotNull(entry["original"]);
+            Assert.NotNull(entry["translation"]);
+            Assert.NotNull(entry["stage"]);
+            Assert.Equal(5, ((JObject)entry!).Properties().Count());
+        });
+
+        string sidecar = File.ReadAllText(sidecarPath);
+        Assert.Contains("MENU_PROMPT", sidecar, StringComparison.Ordinal);
+        Assert.Contains("CASE: 0", sidecar, StringComparison.Ordinal);
+        Assert.Contains("CASEELSE", sidecar, StringComparison.Ordinal);
+        Assert.Contains("文本ERB", sidecar, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Extract_ErbGrouping_SeparatesIfElseBranchesAndControlFlowSegments()
+    {
+        string root = CreateTempDirectory();
+        string game = Path.Combine(root, "Game");
+        string output = Path.Combine(root, "Output");
+        Write(game, "ERB/flow.erb", string.Join(Environment.NewLine,
+        [
+            "@FLOW",
+            "IF FLAG:1",
+            "PRINTFORML 条件成立时的文本",
+            "ELSE",
+            "PRINTFORML 条件不成立时的文本",
+            "ENDIF",
+            "PRINTFORML 控制转移前的文本",
+            "GOTO LABEL_END",
+            "PRINTFORML 控制转移后的文本",
+            "@LABEL_END",
+            "PRINTFORML 标签函数中的文本"
+        ]));
+
+        new DictionaryExtractor().Extract(game, output);
+
+        JObject sidecar = JObject.Parse(File.ReadAllText(
+            Path.Combine(output, "AI上下文", "ERB", "flow.groups.json")));
+        JArray entries = Assert.IsType<JArray>(sidecar["entries"]);
+
+        string GroupFor(string original) =>
+            entries.Children<JObject>()
+                .Single(entry => (string?)entry["original"] == original)["groupId"]!.Value<string>()!;
+
+        Assert.NotEqual(
+            GroupFor("条件成立时的文本"),
+            GroupFor("条件不成立时的文本"));
+        Assert.NotEqual(
+            GroupFor("控制转移前的文本"),
+            GroupFor("控制转移后的文本"));
+        Assert.NotEqual(
+            GroupFor("控制转移后的文本"),
+            GroupFor("标签函数中的文本"));
     }
 
     private static List<string> ReadOriginals(string path)

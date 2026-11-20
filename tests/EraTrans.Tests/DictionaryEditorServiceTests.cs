@@ -119,6 +119,56 @@ public sealed class DictionaryEditorServiceTests
     }
 
     [Fact]
+    public void Load_EntriesWithStandardStagesShareReadOnlyStageOptions()
+    {
+        string root = CreateTempDirectory();
+        string path = Path.Combine(root, "items.json");
+        Write(path,
+            """
+            [
+              { "key": "文本A", "original": "A", "translation": "", "stage": 0 },
+              { "key": "文本B", "original": "B", "translation": "", "stage": 0 },
+              { "key": "文本C", "original": "C", "translation": "", "stage": 1 }
+            ]
+            """);
+
+        var document = new DictionaryEditorService().Load(path);
+
+        Assert.Same(document.Entries[0].StageOptions, document.Entries[1].StageOptions);
+        Assert.Same(document.Entries[0].StageOptions, document.Entries[2].StageOptions);
+    }
+
+    [Fact]
+    public void EditingTranslationDoesNotRecalculateSummary_ButChangingStageDoes()
+    {
+        string root = CreateTempDirectory();
+        string path = Path.Combine(root, "items.json");
+        Write(path,
+            """
+            [
+              { "key": "文本A", "original": "A", "translation": "", "stage": 0 }
+            ]
+            """);
+
+        var document = new DictionaryEditorService().Load(path);
+        int summaryChanges = 0;
+        document.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(DictionaryEditorDocument.SummaryText))
+            {
+                summaryChanges++;
+            }
+        };
+
+        document.Entries[0].Translation = "译文";
+        Assert.Equal(0, summaryChanges);
+
+        document.Entries[0].Stage = 1;
+        Assert.Equal(1, summaryChanges);
+        Assert.Equal(1, document.TranslatedEntryCount);
+    }
+
+    [Fact]
     public void Save_RefusesToOverwriteFileChangedByAnotherProgram()
     {
         string root = CreateTempDirectory();

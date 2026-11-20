@@ -38,6 +38,7 @@ public partial class ParserSettingsWindow : Window
         HideVariableEntriesCheckBox.IsChecked = settings.HideVariableEntries;
         MergeConcatenatedStringsCheckBox.IsChecked = settings.MergeConcatenatedStrings;
         WriteContextCheckBox.IsChecked = settings.WriteContext;
+        EnableErbSemanticGroupingTranslationCheckBox.IsChecked = settings.EnableErbSemanticGroupingTranslation;
 
         TargetFileExtensionsTextBox.Text = string.Join(Environment.NewLine, settings.TargetFileExtensions);
         AutoReplaceReferenceFilesTextBox.Text = string.Join(Environment.NewLine, settings.AutoReplaceReferenceFiles);
@@ -73,6 +74,7 @@ public partial class ParserSettingsWindow : Window
                 HideVariableEntries = HideVariableEntriesCheckBox.IsChecked == true,
                 MergeConcatenatedStrings = MergeConcatenatedStringsCheckBox.IsChecked == true,
                 WriteContext = WriteContextCheckBox.IsChecked == true,
+                EnableErbSemanticGroupingTranslation = EnableErbSemanticGroupingTranslationCheckBox.IsChecked == true,
                 TargetFileExtensions = ReadLines(TargetFileExtensionsTextBox),
                 AutoReplaceReferenceFiles = ReadLines(AutoReplaceReferenceFilesTextBox),
                 VariableNameCharacters = ReadLines(VariableNameCharactersTextBox),

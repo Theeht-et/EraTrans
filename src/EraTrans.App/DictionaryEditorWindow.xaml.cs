@@ -13,8 +13,13 @@ public partial class DictionaryEditorWindow : Window
     private const int TranslationBatchSize = 12;
 
     private readonly string _dictionaryDirectory;
+    private readonly string _gameDirectory;
+    private readonly EraTransUserSettings _settings;
     private readonly DictionaryEditorService _service = new();
+    private readonly ErbTranslationGroupingService _groupingService = new();
     private readonly AiProviderSettingsStore _providerStore = new();
+    private ErbTranslationGroupingIndex? _activeGroupingIndex;
+    private string? _groupingFallbackReason;
     private readonly AiTranslationService _translationService = new();
     private readonly Dictionary<string, TreeViewItem> _fileTreeItems = new(StringComparer.OrdinalIgnoreCase);
     private DictionaryEditorDocument? _document;
@@ -24,10 +29,18 @@ public partial class DictionaryEditorWindow : Window
     private bool _changingFileSelection;
     private bool _isTranslating;
 
-    public DictionaryEditorWindow(string dictionaryDirectory)
+    public DictionaryEditorWindow(
+        string dictionaryDirectory,
+        string? gameDirectory,
+        EraTransUserSettings settings)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(dictionaryDirectory);
+        ArgumentNullException.ThrowIfNull(settings);
         _dictionaryDirectory = Path.GetFullPath(dictionaryDirectory);
+        _gameDirectory = string.IsNullOrWhiteSpace(gameDirectory)
+            ? string.Empty
+            : Path.GetFullPath(gameDirectory);
+        _settings = settings;
 
         InitializeComponent();
         DictionaryDirectoryTextBlock.Text = _dictionaryDirectory;
@@ -99,6 +112,13 @@ public partial class DictionaryEditorWindow : Window
         _fileTreeItems.Clear();
 
         var folders = new Dictionary<string, TreeViewItem>(StringComparer.OrdinalIgnoreCase);
+        var folderChildren = new Dictionary<string, ItemCollection>(StringComparer.OrdinalIgnoreCase)
+        {
+            [string.Empty] = DictionaryFilesTreeView.Items
+        };
+
+        // Create every folder first. This guarantees folders appear before files at
+        // every level, regardless of the relative names in the extracted dictionary.
         foreach (DictionaryEditorFile file in files)
         {
             string relativePath = file.RelativePath
@@ -107,7 +127,6 @@ public partial class DictionaryEditorWindow : Window
                 Path.DirectorySeparatorChar,
                 StringSplitOptions.RemoveEmptyEntries);
 
-            ItemCollection children = DictionaryFilesTreeView.Items;
             string currentFolder = string.Empty;
             for (int index = 0; index < segments.Length - 1; index++)
             {
@@ -120,18 +139,30 @@ public partial class DictionaryEditorWindow : Window
                     folderNode = new TreeViewItem
                     {
                         Header = segments[index],
-                        IsExpanded = true,
+                        IsExpanded = false,
                         FontWeight = FontWeights.SemiBold
                     };
-                    children.Add(folderNode);
+                    folderChildren[currentFolder] = folderNode.Items;
+                    folderChildren[Path.GetDirectoryName(currentFolder) ?? string.Empty]
+                        .Add(folderNode);
                     folders.Add(currentFolder, folderNode);
                 }
-
-                children = folderNode.Items;
             }
+        }
 
+        // Add files only after the complete folder hierarchy has been created.
+        foreach (DictionaryEditorFile file in files)
+        {
+            string relativePath = file.RelativePath
+                .Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
+            string[] segments = relativePath.Split(
+                Path.DirectorySeparatorChar,
+                StringSplitOptions.RemoveEmptyEntries);
+            string parentFolder = segments.Length > 1
+                ? Path.Combine(segments[..^1])
+                : string.Empty;
             var fileNode = new TreeViewItem { Header = segments[^1], Tag = file };
-            children.Add(fileNode);
+            folderChildren[parentFolder].Add(fileNode);
             _fileTreeItems[file.FullPath] = fileNode;
         }
     }
@@ -149,6 +180,37 @@ public partial class DictionaryEditorWindow : Window
             _document = document;
             _document.PropertyChanged += Document_PropertyChanged;
             _currentFile = file;
+            _activeGroupingIndex = null;
+            _groupingFallbackReason = null;
+
+            string outputRoot = Directory.GetParent(_dictionaryDirectory)?.FullName ?? _dictionaryDirectory;
+            string sidecarPath = Path.Combine(
+                outputRoot,
+                "AI上下文",
+                Path.ChangeExtension(file.RelativePath, ".groups.json"));
+            bool shouldLoadGrouping =
+                file.RelativePath.StartsWith("ERB" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
+                File.Exists(sidecarPath);
+
+            if (shouldLoadGrouping)
+            {
+                if (_groupingService.TryLoad(
+                        _dictionaryDirectory,
+                        file.FullPath,
+                        document.Entries.ToArray(),
+                        _gameDirectory,
+                        out ErbTranslationGroupingIndex? groupingIndex,
+                        out string? reason))
+                {
+                    _activeGroupingIndex = groupingIndex;
+                    ApplySemanticGroupDisplay(document.Entries, groupingIndex!);
+                }
+                else
+                {
+                    _groupingFallbackReason = reason ??
+                        "分组文件不可用，本文件将使用现有翻译方式。";
+                }
+            }
             SelectedFileTextBlock.Text = file.RelativePath;
             _entriesView = CollectionViewSource.GetDefaultView(document.Entries);
             _entriesView.Filter = FilterEntry;
@@ -162,8 +224,20 @@ public partial class DictionaryEditorWindow : Window
             else
             {
                 EntryContextTextBox.Text = "当前字典没有词条。";
+                EntryGroupTextBox.Text = "当前字典没有词条。";
+                EntryGroupLabelTextBlock.Text = "同组条目";
             }
             StatusTextBlock.Text = "变量类词条只读；状态值：-1 忽略、0 未翻译、1 已翻译。";
+            if (_activeGroupingIndex is not null)
+            {
+                StatusTextBlock.Text += _settings.EnableErbSemanticGroupingTranslation
+                    ? " · 已加载 ERB 分组，语义分组翻译已启用"
+                    : " · 已加载 ERB 分组（语义分组翻译未启用）";
+            }
+            else if (!string.IsNullOrWhiteSpace(_groupingFallbackReason))
+            {
+                StatusTextBlock.Text += " · " + _groupingFallbackReason;
+            }
             UpdateDocumentStatus();
             UpdateTranslationButtons();
         }
@@ -174,12 +248,40 @@ public partial class DictionaryEditorWindow : Window
             _entriesView = null;
             EntriesDataGrid.ItemsSource = null;
             EntryContextTextBox.Text = string.Empty;
+            EntryGroupTextBox.Text = string.Empty;
+            EntryGroupLabelTextBlock.Text = "同组条目";
             SelectedFileTextBlock.Text = file.RelativePath;
             SummaryTextBlock.Text = "无法加载此字典";
             SaveButton.IsEnabled = false;
             StatusTextBlock.Text = "文件未被修改。请检查 JSON 格式。";
             MessageBox.Show(this, ex.Message, "字典加载失败", MessageBoxButton.OK, MessageBoxImage.Error);
             RestoreFileSelection();
+        }
+    }
+
+    private static void ApplySemanticGroupDisplay(
+        IReadOnlyList<DictionaryEditorEntry> dictionaryEntries,
+        ErbTranslationGroupingIndex index)
+    {
+        var entriesByKey = dictionaryEntries.ToDictionary(entry => entry.Key, StringComparer.Ordinal);
+        foreach (ErbTranslationGroup group in index.Groups)
+        {
+            string typeLabel = group.Type switch
+            {
+                "dialogue" => "对白",
+                "menu" => "菜单",
+                "branch" => "分支",
+                "condition" => "条件",
+                _ => "语义"
+            };
+            string label = $"{typeLabel} {group.Id.Replace("group_", "#", StringComparison.Ordinal)}";
+            string preview = string.Join(Environment.NewLine,
+                group.EntryKeys.Where(entriesByKey.ContainsKey)
+                    .Select(key => $"{key}  {entriesByKey[key].Original}"));
+
+            foreach (string key in group.EntryKeys)
+                if (entriesByKey.TryGetValue(key, out DictionaryEditorEntry? entry))
+                    entry.SetSemanticGroupInfo(label, preview);
         }
     }
 
@@ -199,7 +301,8 @@ public partial class DictionaryEditorWindow : Window
         return Contains(entry.Key, search) ||
                Contains(entry.Original, search) ||
                Contains(entry.Translation, search) ||
-               Contains(entry.Context, search);
+               Contains(entry.Context, search) ||
+               Contains(entry.SemanticGroupEntriesPreview, search);
     }
 
     private static bool Contains(string source, string search) =>
@@ -233,6 +336,13 @@ public partial class DictionaryEditorWindow : Window
                 .Select(cell => cell.Item)
                 .OfType<DictionaryEditorEntry>()
                 .FirstOrDefault();
+
+        EntryGroupLabelTextBlock.Text = entry is null || string.IsNullOrWhiteSpace(entry.SemanticGroupLabel)
+            ? "同组条目"
+            : $"同组条目 · {entry.SemanticGroupLabel}";
+        EntryGroupTextBox.Text = entry is null || string.IsNullOrWhiteSpace(entry.SemanticGroupEntriesPreview)
+            ? "当前词条没有可用的 ERB 语义分组信息。"
+            : entry.SemanticGroupEntriesPreview;
 
         EntryContextTextBox.Text = entry is null
             ? "选择一个词条查看上下文。"
@@ -425,6 +535,18 @@ public partial class DictionaryEditorWindow : Window
         if (_document is null)
             return;
 
+        if (_settings.EnableErbSemanticGroupingTranslation &&
+            _activeGroupingIndex is null &&
+            !string.IsNullOrWhiteSpace(_groupingFallbackReason))
+        {
+            MessageBox.Show(
+                this,
+                _groupingFallbackReason + "\n\n本次将使用现有的 AI 翻译方式，不会使用未经验证的分组关系。",
+                "ERB 语义分组不可用",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+
         using var cancellation = new CancellationTokenSource();
         _translationCancellation = cancellation;
         _isTranslating = true;
@@ -437,14 +559,43 @@ public partial class DictionaryEditorWindow : Window
         int total = entries.Count;
         try
         {
-            for (int offset = 0; offset < total; offset += TranslationBatchSize)
+            IReadOnlyList<ErbTranslationBatch> batches;
+            bool useSemanticGrouping = _settings.EnableErbSemanticGroupingTranslation &&
+                                       _activeGroupingIndex is not null &&
+                                       _document is not null;
+            if (useSemanticGrouping)
+            {
+                try
+                {
+                    batches = _groupingService.BuildTranslationBatches(
+                        entries,
+                        _document!.Entries.ToArray(),
+                        _activeGroupingIndex!);
+                }
+                catch (Exception ex) when (ex is InvalidDataException or ArgumentException or KeyNotFoundException)
+                {
+                    useSemanticGrouping = false;
+                    _groupingFallbackReason =
+                        $"当前待翻译词条无法完整匹配分组文件：{ex.Message}";
+                    batches = CreateLegacyTranslationBatches(entries);
+                    MessageBox.Show(
+                        this,
+                        _groupingFallbackReason + "\n\n本次将使用现有的 AI 翻译方式继续。",
+                        "ERB 语义分组回退",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
+                }
+            }
+            else
+            {
+                batches = CreateLegacyTranslationBatches(entries);
+            }
+
+            foreach (ErbTranslationBatch workBatch in batches)
             {
                 cancellation.Token.ThrowIfCancellationRequested();
 
-                DictionaryEditorEntry[] batch = entries
-                    .Skip(offset)
-                    .Take(TranslationBatchSize)
-                    .ToArray();
+                DictionaryEditorEntry[] batch = workBatch.Targets.ToArray();
                 AiTranslationRequest[] requests = batch
                     .Select(entry => new AiTranslationRequest(
                         entry.Index,
@@ -454,13 +605,19 @@ public partial class DictionaryEditorWindow : Window
                     .ToArray();
 
                 StatusTextBlock.Text =
-                    $"正在请求 AI 翻译：{completed}/{total}（本批 {batch.Length} 项）……";
+                    $"正在请求 AI 翻译：{completed}/{total}（本批 {batch.Length} 项，{(useSemanticGrouping ? "语义分组" : "旧方式")}）……";
 
                 IReadOnlyList<AiTranslationResult> results =
-                    await _translationService.TranslateAsync(
-                        profile,
-                        requests,
-                        cancellation.Token);
+                    useSemanticGrouping
+                        ? await _translationService.TranslateWithSemanticContextAsync(
+                            profile,
+                            requests,
+                            workBatch.SemanticContextGroups,
+                            cancellation.Token)
+                        : await _translationService.TranslateAsync(
+                            profile,
+                            requests,
+                            cancellation.Token);
 
                 var entriesByIndex = batch.ToDictionary(entry => entry.Index);
                 var requestsById = requests.ToDictionary(request => request.Id);
@@ -502,6 +659,16 @@ public partial class DictionaryEditorWindow : Window
             UpdateProviderStatus();
         }
     }
+
+    private static IReadOnlyList<ErbTranslationBatch> CreateLegacyTranslationBatches(
+        IReadOnlyList<DictionaryEditorEntry> entries) =>
+        entries
+            .Select((entry, index) => (entry, index))
+            .GroupBy(item => item.index / TranslationBatchSize)
+            .Select(group => new ErbTranslationBatch(
+                group.Select(item => item.entry).ToArray(),
+                Array.Empty<AiTranslationSemanticContextGroup>()))
+            .ToArray();
 
     private void SetTranslationControlsEnabled(bool enabled)
     {

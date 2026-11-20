@@ -3,8 +3,8 @@ using System.Text;
 namespace EraTrans.Core;
 
 /// <summary>
-/// User-configurable application and legacy parser settings.
-/// The property defaults mirror the original ErbParserForTranslate first-run config.
+/// User-configurable application and parser settings.
+/// Variable dictionary entries are suppressed by default; this can be changed in settings.
 /// </summary>
 public sealed class EraTransUserSettings
 {
@@ -14,9 +14,10 @@ public sealed class EraTransUserSettings
     public bool EnableVariableAutoCorrection { get; set; } = true;
     public bool HideEnglishText { get; set; } = true;
     public bool MergeDuplicateEntries { get; set; } = false;
-    public bool HideVariableEntries { get; set; } = false;
+    public bool HideVariableEntries { get; set; } = true;
     public bool MergeConcatenatedStrings { get; set; } = true;
     public bool WriteContext { get; set; } = true;
+    public bool EnableErbSemanticGroupingTranslation { get; set; } = false;
 
     public List<string> TargetFileExtensions { get; set; } =
     [

@@ -63,8 +63,7 @@ public sealed class DictionaryEditorService
             entries = JArray.Parse(json, new JsonLoadSettings
             {
                 DuplicatePropertyNameHandling = DuplicatePropertyNameHandling.Error,
-                CommentHandling = CommentHandling.Ignore,
-                LineInfoHandling = LineInfoHandling.Load
+                CommentHandling = CommentHandling.Ignore
             });
         }
         catch (JsonException ex)
@@ -92,17 +91,20 @@ public sealed class DictionaryEditorService
 /// </summary>
 public sealed class DictionaryEditorEntry : INotifyPropertyChanged
 {
-    private static readonly DictionaryStageOption[] StandardStageOptions =
-    [
-        new(-1, "忽略（-1）"),
-        new(0, "未翻译（0）"),
-        new(1, "已翻译（1）")
-    ];
+    private static readonly IReadOnlyList<DictionaryStageOption> StandardStageOptions =
+        Array.AsReadOnly(new[]
+        {
+            new DictionaryStageOption(-1, "忽略（-1）"),
+            new DictionaryStageOption(0, "未翻译（0）"),
+            new DictionaryStageOption(1, "已翻译（1）")
+        });
 
     private readonly JObject _source;
     private readonly Action _markDocumentDirty;
     private string _translation;
     private int _stage;
+    private string _semanticGroupLabel = string.Empty;
+    private string _semanticGroupEntriesPreview = string.Empty;
 
     internal DictionaryEditorEntry(JObject source, Action markDocumentDirty, int index)
     {
@@ -133,12 +135,11 @@ public sealed class DictionaryEditorEntry : INotifyPropertyChanged
         IsVariable = Key.StartsWith("变量", StringComparison.Ordinal);
         IsEditable = !IsVariable;
 
-        var options = StandardStageOptions.ToList();
-        if (options.All(option => option.Value != _stage))
-        {
-            options.Add(new DictionaryStageOption(_stage, $"自定义（{_stage}）"));
-        }
-        StageOptions = options;
+        StageOptions = StandardStageOptions.Any(option => option.Value == _stage)
+            ? StandardStageOptions
+            : StandardStageOptions
+                .Append(new DictionaryStageOption(_stage, $"自定义（{_stage}）"))
+                .ToArray();
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -150,6 +151,16 @@ public sealed class DictionaryEditorEntry : INotifyPropertyChanged
     public bool IsVariable { get; }
     public bool IsEditable { get; }
     public IReadOnlyList<DictionaryStageOption> StageOptions { get; }
+    public string SemanticGroupLabel => _semanticGroupLabel;
+    public string SemanticGroupEntriesPreview => _semanticGroupEntriesPreview;
+
+    public void SetSemanticGroupInfo(string label, string entriesPreview)
+    {
+        _semanticGroupLabel = label ?? string.Empty;
+        _semanticGroupEntriesPreview = entriesPreview ?? string.Empty;
+        OnPropertyChanged(nameof(SemanticGroupLabel));
+        OnPropertyChanged(nameof(SemanticGroupEntriesPreview));
+    }
 
     public string Translation
     {
@@ -339,20 +350,23 @@ public sealed class DictionaryEditorDocument : INotifyPropertyChanged
 
     private void Entry_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        OnPropertyChanged(nameof(SummaryText));
+        // Translation edits do not affect the summary counters. Recount only when
+        // the translation stage itself changes.
+        if (e.PropertyName == nameof(DictionaryEditorEntry.Stage))
+        {
+            OnPropertyChanged(nameof(SummaryText));
+        }
     }
 
     private void MarkDirty()
     {
         if (_isDirty)
         {
-            OnPropertyChanged(nameof(SummaryText));
             return;
         }
 
         _isDirty = true;
         OnPropertyChanged(nameof(IsDirty));
-        OnPropertyChanged(nameof(SummaryText));
     }
 
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null)

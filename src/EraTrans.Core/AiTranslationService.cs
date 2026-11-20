@@ -11,6 +11,16 @@ public sealed record AiTranslationRequest(int Id, string Key, string Original, s
 
 public sealed record AiTranslationResult(int Id, string Translation);
 
+public sealed record AiTranslationContextEntry(string Key, string Original);
+
+public sealed record AiTranslationSemanticContextGroup(
+    string GroupId,
+    string GroupType,
+    string FunctionId,
+    string BranchPath,
+    string Relationship,
+    IReadOnlyList<AiTranslationContextEntry> Entries);
+
 public interface IAiChatCompletionClient
 {
     Task<string> CompleteAsync(
@@ -76,6 +86,17 @@ public sealed class AiTranslationService
         不要添加 Markdown 代码围栏、解释、前言或数组之外的内容。不能遗漏或重复任何 id。
         """;
 
+    private const string SemanticSystemPrompt = """
+        你是 ERA 游戏文本本地化翻译助手。请将 targets 中指定的游戏文本翻译为简体中文。
+        保留原文中的变量占位符、控制代码、转义序列、格式标记、数值和专有标识。
+        entryContexts 中的 targetIds 指明对应上下文适用于哪些目标；没有对应项时不要自行补充上下文。
+        同一请求中的 targets 应作为一个整体阅读和翻译；如果它们属于连续对白或同一段文本，应保持人物称呼、代词、语气、术语和前后句表达一致，不要把每条译文当作互不相关的孤立句子。
+        semanticContext 是只读参考，不是翻译目标。same-group 表示同一文本片段，menu-prompt 表示菜单提示，alternative-branch 表示互斥的条件分支，只能作为场景参考，不能当成连续发生的对白。groupType 用于补充说明参考文本的类别。
+        只能翻译 targets 中的词条，只返回 targets 对应的 id。
+        只返回 JSON 数组，每项必须包含原样的整数 id 和字符串 translation。
+        不要添加 Markdown 代码围栏、解释、前言或数组之外的内容。不能遗漏或重复任何 id。
+        """;
+
     private static readonly JsonSerializerOptions PromptJsonOptions = new()
     {
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
@@ -88,10 +109,27 @@ public sealed class AiTranslationService
         _client = client ?? new OpenAiCompatibleChatCompletionClient();
     }
 
-    public async Task<IReadOnlyList<AiTranslationResult>> TranslateAsync(
+    public Task<IReadOnlyList<AiTranslationResult>> TranslateAsync(
         AiProviderProfile profile,
         IReadOnlyList<AiTranslationRequest> requests,
+        CancellationToken cancellationToken = default) =>
+        TranslateCoreAsync(profile, requests, null, cancellationToken);
+
+    public Task<IReadOnlyList<AiTranslationResult>> TranslateWithSemanticContextAsync(
+        AiProviderProfile profile,
+        IReadOnlyList<AiTranslationRequest> requests,
+        IReadOnlyList<AiTranslationSemanticContextGroup> semanticContextGroups,
         CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(semanticContextGroups);
+        return TranslateCoreAsync(profile, requests, semanticContextGroups, cancellationToken);
+    }
+
+    private async Task<IReadOnlyList<AiTranslationResult>> TranslateCoreAsync(
+        AiProviderProfile profile,
+        IReadOnlyList<AiTranslationRequest> requests,
+        IReadOnlyList<AiTranslationSemanticContextGroup>? semanticContextGroups,
+        CancellationToken cancellationToken)
     {
         AiProviderProfileValidator.Validate(profile);
         ArgumentNullException.ThrowIfNull(requests);
@@ -104,22 +142,75 @@ public sealed class AiTranslationService
         if (requests.Any(item => item.Key.StartsWith("变量", StringComparison.Ordinal)))
             throw new InvalidOperationException("变量类词条不能提交给 AI 翻译。");
 
-        var payload = requests.Select(item => new
-        {
-            id = item.Id,
-            key = item.Key,
-            original = item.Original,
-            context = item.Context
-        });
+        object payload = semanticContextGroups is null
+            ? requests.Select(item => new
+            {
+                id = item.Id,
+                key = item.Key,
+                original = item.Original,
+                context = item.Context
+            }).ToArray()
+            : BuildSemanticPayload(requests, semanticContextGroups);
 
         string userPrompt = JsonSerializer.Serialize(payload, PromptJsonOptions);
         string response = await _client.CompleteAsync(
             profile,
-            SystemPrompt,
+            semanticContextGroups is null ? SystemPrompt : SemanticSystemPrompt,
             userPrompt,
             cancellationToken);
 
         return ParseResponse(response, requests);
+    }
+
+    private static Dictionary<string, object> BuildSemanticPayload(
+        IReadOnlyList<AiTranslationRequest> requests,
+        IReadOnlyList<AiTranslationSemanticContextGroup> semanticContextGroups)
+    {
+        var payload = new Dictionary<string, object>(StringComparer.Ordinal)
+        {
+            ["targets"] = requests.Select(item => new
+            {
+                id = item.Id,
+                original = item.Original
+            }).ToArray()
+        };
+
+        var entryContexts = requests
+            .Where(item =>
+                !string.IsNullOrWhiteSpace(item.Context) &&
+                !string.Equals(item.Context, item.Original, StringComparison.Ordinal))
+            .GroupBy(item => item.Context, StringComparer.Ordinal)
+            .Select(group => new
+            {
+                targetIds = group.Select(item => item.Id).ToArray(),
+                text = group.Key
+            })
+            .ToArray();
+
+        if (entryContexts.Length > 0)
+        {
+            payload["entryContexts"] = entryContexts;
+        }
+
+        var semanticContexts = semanticContextGroups
+            .Select(group => new
+            {
+                type = group.Relationship,
+                groupType = group.GroupType,
+                texts = group.Entries
+                    .Where(entry => !string.IsNullOrWhiteSpace(entry.Original))
+                    .Select(entry => entry.Original)
+                    .ToArray()
+            })
+            .Where(group => group.texts.Length > 0)
+            .ToArray();
+
+        if (semanticContexts.Length > 0)
+        {
+            payload["semanticContext"] = semanticContexts;
+        }
+
+        return payload;
     }
 
     public async Task TestConnectionAsync(

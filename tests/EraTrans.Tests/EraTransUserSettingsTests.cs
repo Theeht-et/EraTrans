@@ -28,9 +28,11 @@ public sealed class EraTransUserSettingsTests
         Assert.True(settings.EnableVariableAutoCorrection);
         Assert.True(settings.HideEnglishText);
         Assert.False(settings.MergeDuplicateEntries);
-        Assert.False(settings.HideVariableEntries);
+        Assert.True(settings.HideVariableEntries);
         Assert.True(settings.MergeConcatenatedStrings);
         Assert.True(settings.WriteContext);
+        Assert.False(settings.EnableErbSemanticGroupingTranslation);
+        Assert.True(new EraParserOptions().HideVariableEntries);
         Assert.Equal(new[] { ".csv", ".erb", ".erh", ".erd" }, settings.TargetFileExtensions);
         Assert.Equal(
             new[]
@@ -45,7 +47,7 @@ public sealed class EraTransUserSettingsTests
     }
 
     [Fact]
-    public void Store_SaveAndLoad_RoundTripsAllLegacySettings()
+    public void Store_SaveAndLoad_RoundTripsCurrentParserSettings()
     {
         using var temporary = new TemporaryDirectory();
         var store = new EraTransUserSettingsStore(Path.Combine(temporary.Path, "settings.json"));
@@ -56,9 +58,10 @@ public sealed class EraTransUserSettingsTests
         settings.EnableVariableAutoCorrection = false;
         settings.HideEnglishText = false;
         settings.MergeDuplicateEntries = true;
-        settings.HideVariableEntries = true;
+        settings.HideVariableEntries = false;
         settings.MergeConcatenatedStrings = false;
         settings.WriteContext = false;
+        settings.EnableErbSemanticGroupingTranslation = true;
         settings.TargetFileExtensions = [".erb", ".erh"];
         settings.AutoReplaceReferenceFiles = ["Abl", "Base"];
         settings.VariableNameCharacters = ["☆", "※"];
@@ -73,9 +76,10 @@ public sealed class EraTransUserSettingsTests
         Assert.Equal(settings.EnableVariableAutoCorrection, loaded.EnableVariableAutoCorrection);
         Assert.Equal(settings.HideEnglishText, loaded.HideEnglishText);
         Assert.Equal(settings.MergeDuplicateEntries, loaded.MergeDuplicateEntries);
-        Assert.Equal(settings.HideVariableEntries, loaded.HideVariableEntries);
+        Assert.False(loaded.HideVariableEntries);
         Assert.Equal(settings.MergeConcatenatedStrings, loaded.MergeConcatenatedStrings);
         Assert.Equal(settings.WriteContext, loaded.WriteContext);
+        Assert.Equal(settings.EnableErbSemanticGroupingTranslation, loaded.EnableErbSemanticGroupingTranslation);
         Assert.Equal(settings.TargetFileExtensions, loaded.TargetFileExtensions);
         Assert.Equal(settings.AutoReplaceReferenceFiles, loaded.AutoReplaceReferenceFiles);
         Assert.Equal(settings.VariableNameCharacters, loaded.VariableNameCharacters);
@@ -84,25 +88,16 @@ public sealed class EraTransUserSettingsTests
     }
 
     [Fact]
-    public void Store_LoadLegacyAppDataSettings_CopiesSettingsBesideExecutableAndKeepsSource()
+    public void Store_LoadMissingFile_UsesCurrentDefaultsWithoutCreatingAFile()
     {
         using var temporary = new TemporaryDirectory();
-        string legacyPath = Path.Combine(temporary.Path, "AppData", "EraTrans", "settings.json");
-        string portablePath = Path.Combine(temporary.Path, "Software", "Config", "settings.json");
-        var legacyStore = new EraTransUserSettingsStore(legacyPath);
-        var settings = EraTransUserSettings.CreateDefault();
-        settings.FileEncodingId = "936";
-        settings.HideEnglishText = false;
-        legacyStore.Save(settings);
-        byte[] originalLegacyFile = File.ReadAllBytes(legacyPath);
+        string path = Path.Combine(temporary.Path, "settings.json");
 
-        var portableStore = new EraTransUserSettingsStore(portablePath, legacyPath);
-        EraTransUserSettings loaded = portableStore.Load();
+        EraTransUserSettings settings = new EraTransUserSettingsStore(path).Load();
 
-        Assert.Equal("936", loaded.FileEncodingId);
-        Assert.False(loaded.HideEnglishText);
-        Assert.True(File.Exists(portablePath));
-        Assert.Equal(originalLegacyFile, File.ReadAllBytes(legacyPath));
+        Assert.False(File.Exists(path));
+        Assert.False(settings.EnableErbSemanticGroupingTranslation);
+        Assert.True(settings.HideVariableEntries);
     }
 
     [Fact]

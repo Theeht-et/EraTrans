@@ -3,7 +3,7 @@ using System.Text;
 namespace EraTrans.Core;
 
 /// <summary>
-/// Settings retained from the legacy ERA parser. Defaults match the legacy generated config.
+/// Settings for parsing ERA source files and applying dictionary entries.
 /// </summary>
 public sealed class EraParserOptions
 {
@@ -11,17 +11,17 @@ public sealed class EraParserOptions
     public bool ForceFilterVariableNames { get; init; } = true;
     public bool HideEnglishText { get; init; } = true;
     public bool MergeDuplicateEntries { get; init; } = false;
-    public bool HideVariableEntries { get; init; } = false;
+    public bool HideVariableEntries { get; init; } = true;
     public bool MergeConcatenatedStrings { get; init; } = true;
     public bool WriteContext { get; init; } = true;
 
     /// <summary>
-    /// Matches the first-run default in the legacy parser's generated config.json.
+    /// Controls automatic variable correction when applying translations.
     /// </summary>
     public bool EnableVariableAutoCorrection { get; init; } = true;
 
     /// <summary>
-    /// Top-level CSV dictionary names used by the legacy autoReplace step,
+    /// Top-level CSV dictionary names used for variable auto-correction,
     /// without the .json extension.
     /// </summary>
     public IReadOnlyList<string> AutoReplaceReferenceFiles { get; init; } =
@@ -34,7 +34,7 @@ public sealed class EraParserOptions
     ];
 
     /// <summary>
-    /// File extensions the legacy translator checks for a dictionary with the same relative path.
+    /// Game-file extensions checked when applying a dictionary at the same relative path.
     /// </summary>
     public IReadOnlyList<string> TargetFileExtensions { get; init; } =
     [
@@ -45,7 +45,7 @@ public sealed class EraParserOptions
     ];
 
     /// <summary>
-    /// Characters that may be part of ERA variable names in the legacy expression parser.
+    /// Additional characters allowed in ERA variable names.
     /// </summary>
     public IReadOnlyList<string> VariableNameCharacters { get; init; } =
     [
@@ -53,7 +53,7 @@ public sealed class EraParserOptions
     ];
 
     /// <summary>
-    /// Operators recognized by the legacy ERA expression parser.
+    /// Operators recognized by the ERA expression parser.
     /// </summary>
     public IReadOnlyList<string> Operators { get; init; } =
     [

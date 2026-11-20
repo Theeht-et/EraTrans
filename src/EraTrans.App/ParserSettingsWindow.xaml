@@ -22,7 +22,7 @@
                        FontWeight="SemiBold"
                        Foreground="#20242A" />
             <TextBlock Margin="0,5,0,0"
-                       Text="迁移旧版字典工具的配置选项。设置保存在当前 Windows 用户的 AppData 中，提取和应用译文时都会读取。"
+                       Text="配置用于控制 ERA 游戏文件解析与译文应用。设置保存在程序目录下的 Config/ 文件夹中，提取和应用译文时都会读取。"
                        TextWrapping="Wrap"
                        FontSize="12"
                        Foreground="#68717D" />
@@ -77,7 +77,7 @@
                         <CheckBox x:Name="ForceFilterVariableNamesCheckBox"
                                   Grid.Row="2"
                                   Content="强力过滤变量名"
-                                  ToolTip="启用旧版强力变量名过滤规则，减少把变量误识别为可翻译文本的情况。"
+                                  ToolTip="使用强力变量名过滤规则，减少把变量误识别为可翻译文本的情况。"
                                   Margin="0,2,10,12"
                                   Foreground="#39414A" />
                         <CheckBox x:Name="AutoOpenFolderCheckBox"
@@ -91,14 +91,14 @@
                         <CheckBox x:Name="EnableVariableAutoCorrectionCheckBox"
                                   Grid.Row="3"
                                   Content="变量自动修正"
-                                  ToolTip="应用译文后，读取参考 CSV 字典，对游戏副本中的 ERB、ERH、ERD 执行旧版全局变量修正。"
+                                  ToolTip="应用译文后，读取参考 CSV 字典，对游戏副本中的 ERB、ERH、ERD 执行全局变量修正。"
                                   Margin="0,2,10,12"
                                   Foreground="#39414A" />
                         <CheckBox x:Name="HideEnglishTextCheckBox"
                                   Grid.Row="3"
                                   Grid.Column="1"
                                   Content="隐藏英文词条"
-                                  ToolTip="按旧版规则过滤英文词条；需要保留但不翻译的英文内容会标记为忽略。"
+                                  ToolTip="过滤英文词条；需要保留但不翻译的英文内容会标记为忽略。"
                                   Margin="8,2,0,12"
                                   Foreground="#39414A" />
 
@@ -118,7 +118,7 @@
                         <CheckBox x:Name="MergeConcatenatedStringsCheckBox"
                                   Grid.Row="5"
                                   Content="合并联立字符串"
-                                  ToolTip="按旧版处理方式拆分/合并函数参数中的联立字符串。关闭后使用整体表达式解析方式。"
+                                  ToolTip="拆分或合并函数参数中的联立字符串。关闭后使用整体表达式解析方式。"
                                   Margin="0,12,10,0"
                                   Foreground="#39414A" />
                         <CheckBox x:Name="WriteContextCheckBox"
@@ -129,6 +129,29 @@
                                   Margin="8,12,0,0"
                                   Foreground="#39414A" />
                     </Grid>
+                </Border>
+
+                <Border Padding="16"
+                        Margin="0,0,0,12"
+                        Background="White"
+                        BorderBrush="#E3E6EA"
+                        BorderThickness="1"
+                        CornerRadius="8">
+                    <StackPanel>
+                        <TextBlock Text="AI 翻译方式"
+                                   FontSize="16"
+                                   FontWeight="SemiBold"
+                                   Foreground="#20242A" />
+                        <CheckBox x:Name="EnableErbSemanticGroupingTranslationCheckBox"
+                                  Content="启用 ERB 语义分组翻译"
+                                  ToolTip="默认关闭时，继续使用普通逐词条上下文和每批 12 条翻译方式。开启后，ERB 词条会依据函数、条件分支和相邻输出片段分组；同组及互斥分支文本只作为参考上下文，AI 仍只能翻译本次指定的词条。"
+                                  Margin="0,12,0,6"
+                                  Foreground="#39414A" />
+                        <TextBlock Text="此选项只改变 AI 请求的上下文组织方式，不修改原有 JSON 字典格式、key、译文和词条状态。分组文件缺失、过期或校验失败时，该字典会自动退回现有翻译方式。"
+                                   TextWrapping="Wrap"
+                                   FontSize="11"
+                                   Foreground="#68717D" />
+                    </StackPanel>
                 </Border>
 
                 <Border Padding="16"
@@ -197,7 +220,7 @@
                                    FontSize="16"
                                    FontWeight="SemiBold"
                                    Foreground="#20242A" />
-                        <TextBlock Text="这些列表会直接传给旧版表达式解析逻辑。除非你了解 ERA 表达式规则，否则建议保留默认值。"
+                        <TextBlock Text="这些列表会直接传给 ERA 表达式解析器。除非你了解 ERA 表达式规则，否则建议保留默认值。"
                                    Margin="0,5,0,12"
                                    TextWrapping="Wrap"
                                    Foreground="#68717D"

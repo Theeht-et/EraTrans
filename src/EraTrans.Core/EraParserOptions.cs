@@ -11,7 +11,7 @@ public sealed class EraParserOptions
     public bool ForceFilterVariableNames { get; init; } = true;
     public bool HideEnglishText { get; init; } = true;
     public bool MergeDuplicateEntries { get; init; } = false;
-    public bool HideVariableEntries { get; init; } = false;
+    public bool HideVariableEntries { get; init; } = true;
     public bool MergeConcatenatedStrings { get; init; } = true;
     public bool WriteContext { get; init; } = true;
 

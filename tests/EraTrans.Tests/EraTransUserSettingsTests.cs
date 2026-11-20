@@ -28,10 +28,11 @@ public sealed class EraTransUserSettingsTests
         Assert.True(settings.EnableVariableAutoCorrection);
         Assert.True(settings.HideEnglishText);
         Assert.False(settings.MergeDuplicateEntries);
-        Assert.False(settings.HideVariableEntries);
+        Assert.True(settings.HideVariableEntries);
         Assert.True(settings.MergeConcatenatedStrings);
         Assert.True(settings.WriteContext);
         Assert.False(settings.EnableErbSemanticGroupingTranslation);
+        Assert.True(new EraParserOptions().HideVariableEntries);
         Assert.Equal(new[] { ".csv", ".erb", ".erh", ".erd" }, settings.TargetFileExtensions);
         Assert.Equal(
             new[]
@@ -96,6 +97,7 @@ public sealed class EraTransUserSettingsTests
         EraTransUserSettings settings = new EraTransUserSettingsStore(path).Load();
 
         Assert.False(settings.EnableErbSemanticGroupingTranslation);
+        Assert.True(settings.HideVariableEntries);
     }
 
     [Fact]

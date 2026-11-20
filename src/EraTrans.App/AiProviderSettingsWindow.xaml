@@ -179,9 +179,18 @@
                     </StackPanel>
                     <StackPanel Grid.Row="3" Margin="0,0,0,14">
                         <TextBlock Text="API Base URL" Margin="0,0,0,6" FontSize="12" Foreground="#39414A"/>
-                        <TextBox x:Name="BaseUrlTextBox" Height="36" Padding="10,0"
-                                 VerticalContentAlignment="Center"
-                                 ToolTip="填写服务商提供的 OpenAI 兼容 API 根地址，不要填写 /chat/completions。"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBox x:Name="BaseUrlTextBox" Height="36" Padding="10,0"
+                                     VerticalContentAlignment="Center"
+                                     ToolTip="填写服务商提供的 OpenAI 兼容 API 根地址，不要填写 /chat/completions。"/>
+                            <Button x:Name="RestoreDefaultBaseUrlButton" Grid.Column="1"
+                                    Content="恢复默认" Width="82" Height="36" Margin="8,0,0,0"
+                                    Click="RestoreDefaultBaseUrl_Click" Visibility="Collapsed"/>
+                        </Grid>
                     </StackPanel>
                     <StackPanel Grid.Row="4" Margin="0,0,0,14">
                         <TextBlock Text="API Key" Margin="0,0,0,6" FontSize="12" Foreground="#39414A"/>

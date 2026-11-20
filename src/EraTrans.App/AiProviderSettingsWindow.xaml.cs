@@ -111,7 +111,7 @@ public partial class AiProviderSettingsWindow : Window
 
         _modelView.Refresh();
         ModelCountTextBlock.Text = _availableModels.Count == 0
-            ? "尚未获取模型列表。若服务商不支持 GET /models，可在上方手动填写模型 ID。"
+            ? "当前没有缓存模型。若接口已返回空列表或服务商不支持 GET /models，可手动填写模型 ID。"
             : $"已缓存 {_availableModels.Count} 个模型。点击模型后选择“使用选中模型”，也可双击直接使用。";
 
         ModelsListView.SelectedItem = profile is null

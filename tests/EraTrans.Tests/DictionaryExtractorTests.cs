@@ -110,7 +110,10 @@ public sealed class DictionaryExtractorTests
             "CALL ASCII_CALL(ARG:0, \"普通CALL英文函数参数文本\")"
         }));
 
-        new DictionaryExtractor().Extract(game, output);
+        new DictionaryExtractor().Extract(
+            game,
+            output,
+            options: new EraParserOptions { HideVariableEntries = false });
 
         JArray entries = JArray.Parse(File.ReadAllText(Path.Combine(output, "ERB", "functionNames.json")));
         string[] originals = entries

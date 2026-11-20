@@ -9,10 +9,10 @@ namespace EraTrans.Core;
 /// </summary>
 public sealed class AiModelCatalogEnrichmentService
 {
-    private const string CatalogUrl = "https://models.dev/api.json?type=all";
+    private const string CatalogUrl = "https://models.dev/api.json";
     private static readonly HttpClient SharedHttpClient = new()
     {
-        Timeout = TimeSpan.FromSeconds(8)
+        Timeout = TimeSpan.FromSeconds(60)
     };
     private static readonly SemaphoreSlim CacheGate = new(1, 1);
     private static readonly Dictionary<string, CatalogCacheEntry> Cache = new(StringComparer.Ordinal);
@@ -20,15 +20,52 @@ public sealed class AiModelCatalogEnrichmentService
     private readonly HttpClient _httpClient;
     private readonly Func<DateTimeOffset> _utcNow;
     private readonly Uri _catalogUri;
+    private readonly string? _catalogCacheFilePath;
+
+    private static readonly IReadOnlyDictionary<string, string[]> KnownProviderIdsByHost =
+        new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["api.openai.com"] = ["openai"],
+            ["api.deepseek.com"] = ["deepseek"],
+            ["dashscope.aliyuncs.com"] = ["alibaba", "alibaba-cn"],
+            ["dashscope-intl.aliyuncs.com"] = ["alibaba"],
+            ["open.bigmodel.cn"] = ["zhipuai", "zai"],
+            ["api.moonshot.cn"] = ["moonshotai"],
+            ["api.moonshot.ai"] = ["moonshotai"],
+            ["ark.cn-beijing.volces.com"] = ["volcengine"],
+            ["api.siliconflow.cn"] = ["siliconflow"],
+            ["openrouter.ai"] = ["openrouter"],
+            ["api.x.ai"] = ["xai"]
+        };
+
+    private static readonly IReadOnlyDictionary<string, string> CatalogVendorPrefixToProviderId =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["openai"] = "openai",
+            ["anthropic"] = "anthropic",
+            ["google"] = "google",
+            ["deepseek"] = "deepseek",
+            ["moonshotai"] = "moonshotai",
+            ["qwen"] = "alibaba",
+            ["x-ai"] = "xai",
+            ["z-ai"] = "zai",
+            ["mistralai"] = "mistral",
+            ["meta-llama"] = "meta"
+        };
 
     public AiModelCatalogEnrichmentService(
         HttpClient? httpClient = null,
         Func<DateTimeOffset>? utcNow = null,
-        Uri? catalogUri = null)
+        Uri? catalogUri = null,
+        string? catalogCacheFilePath = null)
     {
         _httpClient = httpClient ?? SharedHttpClient;
         _utcNow = utcNow ?? (() => DateTimeOffset.UtcNow);
         _catalogUri = catalogUri ?? new Uri(CatalogUrl);
+        _catalogCacheFilePath = catalogCacheFilePath ??
+            (httpClient is null && catalogUri is null
+                ? EraTransPaths.AiModelCatalogCacheFilePath
+                : null);
     }
 
     public async Task<IReadOnlyList<AiProviderModel>> EnrichAsync(
@@ -46,54 +83,54 @@ public sealed class AiModelCatalogEnrichmentService
         CatalogSnapshot? catalog = await GetCatalogAsync(cancellationToken);
         if (catalog is null)
         {
-            return models;
+            return models.Select(ApplyKnownReasoningHint).ToArray();
         }
 
-        IReadOnlyList<string> providerIds = ResolveProviderIds(profile.BaseUrl, catalog);
+        IReadOnlyList<string> providerIds = ResolveProviderIds(profile.BaseUrl, catalog)
+            .Where(catalog.Providers.ContainsKey)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
         var globalMatches = new Dictionary<string, CatalogModel>(StringComparer.OrdinalIgnoreCase);
         var ambiguousModelIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        if (providerIds.Count == 0)
+        foreach (CatalogProvider provider in catalog.Providers.Values)
         {
-            foreach (CatalogProvider provider in catalog.Providers.Values)
+            foreach (CatalogModel model in provider.Models.Values)
             {
-                foreach (CatalogModel model in provider.Models.Values)
-                {
-                    if (ambiguousModelIds.Contains(model.Id))
-                    {
-                        continue;
-                    }
+                if (ambiguousModelIds.Contains(model.Id))
+                    continue;
 
-                    if (globalMatches.Remove(model.Id))
-                    {
-                        ambiguousModelIds.Add(model.Id);
-                    }
-                    else
-                    {
-                        globalMatches[model.Id] = model;
-                    }
-                }
+                if (globalMatches.Remove(model.Id))
+                    ambiguousModelIds.Add(model.Id);
+                else
+                    globalMatches[model.Id] = model;
             }
         }
 
         return models.Select(model =>
         {
             CatalogModel? metadata = null;
-            foreach (string providerId in providerIds)
+            IReadOnlyList<string> candidates = GetProviderCandidates(providerIds, model.Id);
+            foreach (string providerId in candidates)
             {
                 if (catalog.Providers.TryGetValue(providerId, out CatalogProvider? provider) &&
                     TryFindModel(provider, model.Id, out metadata))
-                {
                     break;
+            }
+
+            if (metadata is null)
+            {
+                globalMatches.TryGetValue(model.Id, out metadata);
+                if (metadata is null)
+                {
+                    int slash = model.Id.IndexOf('/');
+                    if (slash > 0)
+                        globalMatches.TryGetValue(model.Id[(slash + 1)..], out metadata);
                 }
             }
 
-            if (metadata is null && providerIds.Count == 0)
-            {
-                globalMatches.TryGetValue(model.Id, out metadata);
-            }
-
-            return metadata is null ? model : ApplyMetadata(model, metadata);
+            AiProviderModel enriched = metadata is null ? model : ApplyMetadata(model, metadata);
+            return ApplyKnownReasoningHint(enriched);
         }).ToArray();
     }
 
@@ -103,48 +140,100 @@ public sealed class AiModelCatalogEnrichmentService
         await CacheGate.WaitAsync(cancellationToken);
         try
         {
-            if (Cache.TryGetValue(cacheKey, out CatalogCacheEntry? cached) &&
-                _utcNow() < cached.ExpiresAt)
+            CatalogSnapshot? staleCatalog = null;
+            if (Cache.TryGetValue(cacheKey, out CatalogCacheEntry? cached))
             {
-                return cached.Catalog;
+                staleCatalog = cached.Catalog;
+                if (_utcNow() < cached.ExpiresAt)
+                    return cached.Catalog;
+            }
+
+            if (staleCatalog is null && !string.IsNullOrWhiteSpace(_catalogCacheFilePath))
+            {
+                try
+                {
+                    if (File.Exists(_catalogCacheFilePath))
+                    {
+                        string cachedJson = await File.ReadAllTextAsync(
+                            _catalogCacheFilePath, cancellationToken);
+                        staleCatalog = ParseCatalog(cachedJson);
+                        Cache[cacheKey] = new CatalogCacheEntry(
+                            staleCatalog, DateTimeOffset.MinValue);
+                    }
+                }
+                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                {
+                    // A local cache read timeout is not important enough to block model selection.
+                }
+                catch (Exception ex) when (
+                    ex is IOException or UnauthorizedAccessException or JsonException or InvalidDataException)
+                {
+                    // A corrupt/missing cache must not prevent a fresh catalog request.
+                }
             }
 
             try
             {
                 string json = await _httpClient.GetStringAsync(_catalogUri, cancellationToken);
                 CatalogSnapshot loaded = ParseCatalog(json);
-                Cache[cacheKey] = new CatalogCacheEntry(loaded, _utcNow().AddHours(12));
+                Cache[cacheKey] = new CatalogCacheEntry(loaded, _utcNow().AddHours(24));
+                SaveCatalogCache(json);
                 return loaded;
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
-                // models.dev is optional metadata; provider model discovery must still work.
-                return Cache.TryGetValue(cacheKey, out CatalogCacheEntry? stale)
-                    ? stale.Catalog
-                    : null;
+                return staleCatalog;
             }
             catch (HttpRequestException)
             {
-                return Cache.TryGetValue(cacheKey, out CatalogCacheEntry? stale)
-                    ? stale.Catalog
-                    : null;
+                return staleCatalog;
             }
             catch (JsonException)
             {
-                return Cache.TryGetValue(cacheKey, out CatalogCacheEntry? stale)
-                    ? stale.Catalog
-                    : null;
+                return staleCatalog;
             }
             catch (InvalidDataException)
             {
-                return Cache.TryGetValue(cacheKey, out CatalogCacheEntry? stale)
-                    ? stale.Catalog
-                    : null;
+                return staleCatalog;
             }
         }
         finally
         {
             CacheGate.Release();
+        }
+    }
+
+    private void SaveCatalogCache(string json)
+    {
+        if (string.IsNullOrWhiteSpace(_catalogCacheFilePath))
+            return;
+
+        string? directory = Path.GetDirectoryName(_catalogCacheFilePath);
+        if (string.IsNullOrWhiteSpace(directory))
+            return;
+
+        string temporaryPath = _catalogCacheFilePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
+        {
+            Directory.CreateDirectory(directory);
+            File.WriteAllText(temporaryPath, json, new System.Text.UTF8Encoding(false));
+            File.Move(temporaryPath, _catalogCacheFilePath, overwrite: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // The in-memory catalog is still usable when the local cache cannot be written.
+        }
+        finally
+        {
+            try
+            {
+                if (File.Exists(temporaryPath))
+                    File.Delete(temporaryPath);
+            }
+            catch (IOException)
+            {
+                // Best-effort cleanup of a temporary metadata cache file.
+            }
         }
     }
 
@@ -241,24 +330,28 @@ public sealed class AiModelCatalogEnrichmentService
     {
         string? host = null;
         if (Uri.TryCreate(baseUrl, UriKind.Absolute, out Uri? baseUri))
-        {
             host = baseUri.Host;
-        }
 
-        var matched = new List<string>();
+        var matched = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (!string.IsNullOrWhiteSpace(host))
         {
+            if (KnownProviderIdsByHost.TryGetValue(host, out string[]? knownIds))
+            {
+                foreach (string id in knownIds)
+                    matched.Add(id);
+            }
+
             foreach (CatalogProvider provider in catalog.Providers.Values)
             {
                 if (Uri.TryCreate(provider.Api, UriKind.Absolute, out Uri? providerUri) &&
                     string.Equals(providerUri.Host, host, StringComparison.OrdinalIgnoreCase))
-                {
                     matched.Add(provider.Id);
-                }
             }
         }
 
-        return matched;
+        return matched
+            .OrderBy(id => id, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
     }
 
     private static bool TryFindModel(
@@ -267,14 +360,23 @@ public sealed class AiModelCatalogEnrichmentService
         out CatalogModel? model)
     {
         if (provider.Models.TryGetValue(requestedId, out model))
-        {
             return true;
-        }
 
         int slash = requestedId.IndexOf('/');
         if (slash > 0 &&
             provider.Models.TryGetValue(requestedId[(slash + 1)..], out model))
+            return true;
+
+        string normalized = NormalizeModelId(requestedId);
+        CatalogModel[] matches = provider.Models.Values
+            .Where(candidate => string.Equals(
+                NormalizeModelId(candidate.Id), normalized, StringComparison.Ordinal))
+            .Take(2)
+            .ToArray();
+
+        if (matches.Length == 1)
         {
+            model = matches[0];
             return true;
         }
 
@@ -282,10 +384,85 @@ public sealed class AiModelCatalogEnrichmentService
         return false;
     }
 
+    private static string NormalizeModelId(string value) =>
+        new(value.Where(char.IsLetterOrDigit)
+            .Select(char.ToLowerInvariant)
+            .ToArray());
+
+    private static IReadOnlyList<string> GetProviderCandidates(
+        IReadOnlyList<string> hostProviderIds,
+        string modelId)
+    {
+        int slash = modelId.IndexOf('/');
+        if (slash > 0 &&
+            CatalogVendorPrefixToProviderId.TryGetValue(
+                modelId[..slash], out string? mappedProvider))
+        {
+            return [mappedProvider, .. hostProviderIds.Where(id =>
+                !string.Equals(id, mappedProvider, StringComparison.OrdinalIgnoreCase))];
+        }
+
+        return hostProviderIds;
+    }
+
+    private static AiProviderModel ApplyKnownReasoningHint(AiProviderModel model)
+    {
+        // Follow Kelivo's conservative model-id defaults only when neither the provider
+        // nor the public catalog supplied an explicit true/false capability.
+        if (model.ReasoningSupport is not null || model.SupportsReasoning)
+            return model;
+
+        string id = model.Id.Trim().ToLowerInvariant();
+        int slash = id.LastIndexOf('/');
+        if (slash >= 0)
+            id = id[(slash + 1)..];
+
+        bool supportsReasoning =
+            id.StartsWith("o1", StringComparison.Ordinal) ||
+            id.StartsWith("o3", StringComparison.Ordinal) ||
+            id.StartsWith("o4", StringComparison.Ordinal) ||
+            id.StartsWith("gpt-5", StringComparison.Ordinal) ||
+            id.StartsWith("gpt-6", StringComparison.Ordinal) ||
+            id.StartsWith("deepseek-reasoner", StringComparison.Ordinal) ||
+            id.StartsWith("deepseek-r1", StringComparison.Ordinal) ||
+            id.StartsWith("deepseek-v3.1", StringComparison.Ordinal) ||
+            id.StartsWith("deepseek-v3.2", StringComparison.Ordinal) ||
+            id.StartsWith("deepseek-v4", StringComparison.Ordinal) ||
+            id.StartsWith("qwq", StringComparison.Ordinal) ||
+            id.StartsWith("qwen3", StringComparison.Ordinal) ||
+            id.StartsWith("qwen-3", StringComparison.Ordinal) ||
+            id.StartsWith("kimi-k2-thinking", StringComparison.Ordinal) ||
+            id.StartsWith("kimi-k2.5", StringComparison.Ordinal) ||
+            id.StartsWith("kimi-k2.6", StringComparison.Ordinal) ||
+            id.StartsWith("kimi-k2.7", StringComparison.Ordinal) ||
+            id.StartsWith("kimi-k3", StringComparison.Ordinal) ||
+            id.StartsWith("grok-4", StringComparison.Ordinal) ||
+            id.StartsWith("gemini-2.5", StringComparison.Ordinal) ||
+            id.StartsWith("gemini-3", StringComparison.Ordinal) ||
+            id.StartsWith("claude-3-7", StringComparison.Ordinal) ||
+            id.StartsWith("claude-3.7", StringComparison.Ordinal) ||
+            id.StartsWith("claude-sonnet-4", StringComparison.Ordinal) ||
+            id.StartsWith("claude-opus-4", StringComparison.Ordinal) ||
+            id.StartsWith("claude-haiku-4", StringComparison.Ordinal);
+
+        if (supportsReasoning)
+        {
+            model.ReasoningSupport = true;
+            model.SupportsReasoning = true;
+        }
+
+        return model;
+    }
+
     private static AiProviderModel ApplyMetadata(AiProviderModel source, CatalogModel metadata)
     {
-        var inputModalities = metadata.InputModalities.ToList();
-        var outputModalities = metadata.OutputModalities.ToList();
+        var inputModalities = metadata.InputModalities.Count > 0
+            ? metadata.InputModalities.ToList()
+            : source.InputModalities.ToList();
+        var outputModalities = metadata.OutputModalities.Count > 0
+            ? metadata.OutputModalities.ToList()
+            : source.OutputModalities.ToList();
+
         return new AiProviderModel
         {
             Id = source.Id,
@@ -300,28 +477,30 @@ public sealed class AiModelCatalogEnrichmentService
             IsRerank = source.IsRerank,
             Family = metadata.Family,
             Status = metadata.Status,
-            SupportsTools = metadata.SupportsTools,
-            SupportsReasoning = metadata.SupportsReasoning,
-            ReasoningSupport = metadata.ReasoningSupport,
-            SupportsStructuredOutput = metadata.SupportsStructuredOutput,
-            SupportsAttachments = metadata.SupportsAttachments,
-            SupportsTemperature = metadata.SupportsTemperature,
-            OpenWeights = metadata.OpenWeights,
-            Knowledge = metadata.Knowledge,
-            ReleaseDate = metadata.ReleaseDate,
-            LastUpdated = metadata.LastUpdated,
+            SupportsTools = metadata.SupportsTools || source.SupportsTools,
+            SupportsReasoning = source.ReasoningSupport
+                ?? metadata.ReasoningSupport
+                ?? (source.SupportsReasoning || metadata.SupportsReasoning),
+            ReasoningSupport = source.ReasoningSupport ?? metadata.ReasoningSupport,
+            SupportsStructuredOutput = metadata.SupportsStructuredOutput || source.SupportsStructuredOutput,
+            SupportsAttachments = metadata.SupportsAttachments || source.SupportsAttachments,
+            SupportsTemperature = metadata.SupportsTemperature || source.SupportsTemperature,
+            OpenWeights = metadata.OpenWeights || source.OpenWeights,
+            Knowledge = metadata.Knowledge ?? source.Knowledge,
+            ReleaseDate = metadata.ReleaseDate ?? source.ReleaseDate,
+            LastUpdated = metadata.LastUpdated ?? source.LastUpdated,
             InputModalities = inputModalities,
             OutputModalities = outputModalities,
-            ContextLimit = metadata.ContextLimit,
-            InputLimit = metadata.InputLimit,
-            OutputLimit = metadata.OutputLimit,
-            InputCostPerMillion = metadata.InputCostPerMillion,
-            OutputCostPerMillion = metadata.OutputCostPerMillion,
-            ReasoningCostPerMillion = metadata.ReasoningCostPerMillion,
-            CacheReadCostPerMillion = metadata.CacheReadCostPerMillion,
-            CacheWriteCostPerMillion = metadata.CacheWriteCostPerMillion,
-            InputAudioCostPerMillion = metadata.InputAudioCostPerMillion,
-            OutputAudioCostPerMillion = metadata.OutputAudioCostPerMillion
+            ContextLimit = source.ContextLimit ?? metadata.ContextLimit,
+            InputLimit = source.InputLimit ?? metadata.InputLimit,
+            OutputLimit = source.OutputLimit ?? metadata.OutputLimit,
+            InputCostPerMillion = metadata.InputCostPerMillion ?? source.InputCostPerMillion,
+            OutputCostPerMillion = metadata.OutputCostPerMillion ?? source.OutputCostPerMillion,
+            ReasoningCostPerMillion = metadata.ReasoningCostPerMillion ?? source.ReasoningCostPerMillion,
+            CacheReadCostPerMillion = metadata.CacheReadCostPerMillion ?? source.CacheReadCostPerMillion,
+            CacheWriteCostPerMillion = metadata.CacheWriteCostPerMillion ?? source.CacheWriteCostPerMillion,
+            InputAudioCostPerMillion = metadata.InputAudioCostPerMillion ?? source.InputAudioCostPerMillion,
+            OutputAudioCostPerMillion = metadata.OutputAudioCostPerMillion ?? source.OutputAudioCostPerMillion
         };
     }
 

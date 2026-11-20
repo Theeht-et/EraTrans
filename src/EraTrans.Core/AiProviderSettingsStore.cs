@@ -19,6 +19,8 @@ public sealed class AiProviderProfile
     public string Model { get; set; } = "";
     public string ApiKey { get; set; } = "";
     public AiProviderProtocol Protocol { get; set; } = AiProviderProtocol.OpenAiCompatible;
+    public bool IsEnabled { get; set; } = true;
+    public bool IsBuiltIn { get; set; }
     [JsonIgnore]
     public bool RequiresEndpointReview { get; set; }
     public List<AiProviderModel> AvailableModels { get; set; } = [];
@@ -30,8 +32,80 @@ public sealed class AiProviderSettings
     public string? ActiveProviderId { get; set; }
 
     public AiProviderProfile? ActiveProvider =>
-        Providers.FirstOrDefault(provider => provider.Id == ActiveProviderId) ??
-        Providers.FirstOrDefault();
+        Providers.FirstOrDefault(provider =>
+            provider.IsEnabled && provider.Id == ActiveProviderId) ??
+        Providers.FirstOrDefault(provider => provider.IsEnabled);
+
+    /// <summary>
+    /// Restores the application-owned provider list without replacing user credentials.
+    /// User-created configurations stay ahead of built-in providers in the UI.
+    /// </summary>
+    public void EnsureBuiltInProviders()
+    {
+        var remaining = Providers.ToList();
+        var builtIns = new List<AiProviderProfile>();
+
+        foreach (AiProviderPreset preset in AiProviderPresets.All)
+        {
+            int matchIndex = remaining.FindIndex(provider =>
+                provider.IsBuiltIn &&
+                string.Equals(
+                    CanonicalBuiltInName(provider.Name),
+                    preset.Name,
+                    StringComparison.OrdinalIgnoreCase));
+            AiProviderProfile profile;
+            if (matchIndex >= 0)
+            {
+                profile = remaining[matchIndex];
+                remaining.RemoveAt(matchIndex);
+                profile.Name = preset.Name;
+                profile.BaseUrl = string.IsNullOrWhiteSpace(profile.BaseUrl)
+                    ? preset.BaseUrl
+                    : profile.BaseUrl;
+            }
+            else
+            {
+                profile = new AiProviderProfile
+                {
+                    Name = preset.Name,
+                    BaseUrl = preset.BaseUrl,
+                    Protocol = AiProviderProtocol.OpenAiCompatible,
+                    IsEnabled = true
+                };
+            }
+
+            profile.IsBuiltIn = true;
+            builtIns.Add(profile);
+        }
+
+        foreach (AiProviderProfile provider in remaining)
+        {
+            provider.IsBuiltIn = false;
+            string canonical = CanonicalBuiltInName(provider.Name);
+            if (AiProviderPresets.All.Any(preset =>
+                    string.Equals(preset.Name, canonical, StringComparison.OrdinalIgnoreCase)))
+            {
+                provider.Name = canonical + " 自定义";
+            }
+        }
+
+        Providers = remaining.Concat(builtIns).ToList();
+        if (ActiveProvider is null)
+            ActiveProviderId = Providers.FirstOrDefault(provider => provider.IsEnabled)?.Id;
+    }
+
+    private static string CanonicalBuiltInName(string name) =>
+        name.Trim() switch
+        {
+            "OpenAI 官方" => "OpenAI",
+            "DeepSeek 深度求索" => "DeepSeek",
+            "通义千问（中国大陆）" or "通义千问（国际站）" => "通义千问",
+            "月之暗面 Kimi（中国大陆）" or "月之暗面 Kimi（国际站）" or "Kimi（月之暗面）" => "Kimi",
+            "火山引擎方舟（北京）" or "火山引擎方舟（豆包）" => "火山引擎方舟",
+            "硅基流动（中国大陆）" => "硅基流动",
+            "Grok（xAI）" => "Grok",
+            _ => name.Trim()
+        };
 }
 
 public static class AiProviderProfileValidator
@@ -167,6 +241,8 @@ public sealed class AiProviderSettingsStore
                         Model = item.Model,
                         ApiKey = Encoding.UTF8.GetString(keyBytes),
                         Protocol = AiProviderProtocol.OpenAiCompatible,
+                        IsEnabled = item.IsEnabled,
+                        IsBuiltIn = item.IsBuiltIn,
                         RequiresEndpointReview = item.Protocol != (int)AiProviderProtocol.OpenAiCompatible,
                         AvailableModels = (item.Models ?? [])
                             .Where(model => !string.IsNullOrWhiteSpace(model.Id))
@@ -265,6 +341,8 @@ public sealed class AiProviderSettingsStore
                     BaseUrl = profile.BaseUrl,
                     Model = profile.Model,
                     Protocol = (int)AiProviderProtocol.OpenAiCompatible,
+                    IsEnabled = profile.IsEnabled,
+                    IsBuiltIn = profile.IsBuiltIn,
                     ProtectedApiKey = protectedKey.Length == 0 ? "" : Convert.ToBase64String(protectedKey),
                     Models = (profile.AvailableModels ?? [])
                         .Where(model => !string.IsNullOrWhiteSpace(model.Id))
@@ -358,6 +436,8 @@ public sealed class AiProviderSettingsStore
         public string BaseUrl { get; set; } = "";
         public string Model { get; set; } = "";
         public int Protocol { get; set; } = (int)AiProviderProtocol.OpenAiCompatible;
+        public bool IsEnabled { get; set; } = true;
+        public bool IsBuiltIn { get; set; }
         public string ProtectedApiKey { get; set; } = "";
         public List<StoredModel>? Models { get; set; } = [];
     }

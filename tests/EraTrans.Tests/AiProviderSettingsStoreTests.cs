@@ -219,6 +219,115 @@ public sealed class AiProviderSettingsPortablePersistenceTests
         Assert.Equal("", loaded.Providers.Single(provider => provider.Id == "custom").BaseUrl);
     }
 
+
+    [Fact]
+    public void Store_RoundTripsEnabledAndBuiltInFlags()
+    {
+        using var temporary = new TemporaryDirectory();
+        string path = Path.Combine(temporary.Path, "Config", "ai-providers.json");
+        var store = new AiProviderSettingsStore(path);
+        store.Save(new AiProviderSettings
+        {
+            ActiveProviderId = "built-in",
+            Providers =
+            [
+                new AiProviderProfile
+                {
+                    Id = "built-in",
+                    Name = "OpenAI",
+                    BaseUrl = "https://api.openai.com/v1",
+                    IsBuiltIn = true,
+                    IsEnabled = false
+                },
+                new AiProviderProfile
+                {
+                    Id = "custom",
+                    Name = "自定义服务商",
+                    IsEnabled = true
+                }
+            ]
+        });
+
+        AiProviderSettings loaded = store.Load();
+        AiProviderProfile builtIn = Assert.Single(loaded.Providers, item => item.Id == "built-in");
+        Assert.True(builtIn.IsBuiltIn);
+        Assert.False(builtIn.IsEnabled);
+        AiProviderProfile custom = Assert.Single(loaded.Providers, item => item.Id == "custom");
+        Assert.False(custom.IsBuiltIn);
+        Assert.True(custom.IsEnabled);
+        Assert.Same(custom, loaded.ActiveProvider);
+    }
+
+    [Fact]
+    public void EnsureBuiltInProviders_AddsMissingDefaultsAndKeepsCustomFirst()
+    {
+        var settings = new AiProviderSettings
+        {
+            ActiveProviderId = "custom",
+            Providers =
+            [
+                new AiProviderProfile
+                {
+                    Id = "custom",
+                    Name = "我的接口",
+                    BaseUrl = "https://custom.example.com/v1"
+                },
+                new AiProviderProfile
+                {
+                    Id = "old-deepseek",
+                    Name = "DeepSeek 深度求索",
+                    BaseUrl = "https://api.deepseek.com",
+                    ApiKey = "preserved-key"
+                }
+            ]
+        };
+
+        settings.EnsureBuiltInProviders();
+
+        Assert.Equal("custom", settings.Providers[0].Id);
+        AiProviderProfile legacyDeepseek = Assert.Single(
+            settings.Providers, item => item.Id == "old-deepseek");
+        Assert.False(legacyDeepseek.IsBuiltIn);
+        Assert.Equal("DeepSeek 自定义", legacyDeepseek.Name);
+        Assert.Equal("preserved-key", legacyDeepseek.ApiKey);
+
+        AiProviderProfile builtInDeepseek = Assert.Single(
+            settings.Providers, item => item.IsBuiltIn && item.Name == "DeepSeek");
+        Assert.Equal("https://api.deepseek.com", builtInDeepseek.BaseUrl);
+        Assert.Equal(AiProviderPresets.All.Count, settings.Providers.Count(item => item.IsBuiltIn));
+        Assert.All(settings.Providers.Where(item => item.IsBuiltIn), item => Assert.True(item.IsEnabled));
+    }
+
+
+    [Fact]
+    public void EnsureBuiltInProviders_DoesNotTurnCustomEndpointIntoProtectedBuiltIn()
+    {
+        var settings = new AiProviderSettings
+        {
+            Providers =
+            [
+                new AiProviderProfile
+                {
+                    Id = "custom-deepseek-proxy",
+                    Name = "DeepSeek",
+                    BaseUrl = "https://proxy.example.com/v1",
+                    ApiKey = "private-key"
+                }
+            ]
+        };
+
+        settings.EnsureBuiltInProviders();
+
+        AiProviderProfile custom = Assert.Single(
+            settings.Providers,
+            provider => provider.Id == "custom-deepseek-proxy");
+        Assert.False(custom.IsBuiltIn);
+        Assert.Equal("DeepSeek 自定义", custom.Name);
+        Assert.Equal("private-key", custom.ApiKey);
+        Assert.Single(settings.Providers, provider =>
+            provider.IsBuiltIn && provider.Name == "DeepSeek");
+    }
+
     private sealed class TemporaryDirectory : IDisposable
     {
         public string Path { get; } = System.IO.Path.Combine(

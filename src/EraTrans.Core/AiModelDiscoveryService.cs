@@ -322,15 +322,34 @@ public sealed class AiModelDiscoveryService
                 GroupName = GetGroupName(id, ownedBy, isEmbedding, isRerank),
                 OwnedBy = ownedBy,
                 Created = created,
-                ContextLimit = ReadFirstInt32(row, "context_length", "context_window", "context_limit"),
-                InputLimit = ReadFirstInt32(row, "max_input_tokens", "input_limit"),
-                OutputLimit = ReadFirstInt32(row, "max_output_tokens", "output_limit", "max_tokens"),
-                ReasoningSupport = ReadNullableBoolean(row, "reasoning")
+                ContextLimit =
+                    ReadFirstInt32(row, "context_length", "context_window", "context_limit",
+                        "max_context_length", "max_context_window", "inputTokenLimit", "input_token_limit")
+                    ?? ReadNestedInt(row, "top_provider", "context_length")
+                    ?? ReadNestedInt(row, "limit", "context"),
+                InputLimit =
+                    ReadFirstInt32(row, "max_input_tokens", "input_limit", "inputTokenLimit", "input_token_limit")
+                    ?? ReadNestedInt(row, "top_provider", "context_length"),
+                OutputLimit =
+                    ReadFirstInt32(row, "max_output_tokens", "output_limit", "max_tokens",
+                        "max_completion_tokens", "outputTokenLimit", "output_token_limit")
+                    ?? ReadNestedInt(row, "top_provider", "max_completion_tokens")
+                    ?? ReadNestedInt(row, "limit", "output"),
+                ReasoningSupport =
+                    ReadNullableBoolean(row, "reasoning")
                     ?? ReadNullableBoolean(row, "supports_reasoning")
-                    ?? ReadNullableBoolean(row, "thinking"),
-                SupportsReasoning = ReadNullableBoolean(row, "reasoning") == true
-                    || ReadNullableBoolean(row, "supports_reasoning") == true
-                    || ReadNullableBoolean(row, "thinking") == true,
+                    ?? ReadNullableBoolean(row, "thinking")
+                    ?? ReadNestedBoolean(row, "reasoning", "supported")
+                    ?? ReadNestedBoolean(row, "thinking", "supported")
+                    ?? ReadNestedBoolean(row, "capabilities", "reasoning"),
+                SupportsReasoning =
+                    (ReadNullableBoolean(row, "reasoning")
+                    ?? ReadNullableBoolean(row, "supports_reasoning")
+                    ?? ReadNullableBoolean(row, "thinking")
+                    ?? ReadNestedBoolean(row, "reasoning", "supported")
+                    ?? ReadNestedBoolean(row, "thinking", "supported")
+                    ?? ReadNestedBoolean(row, "capabilities", "reasoning")
+                    ?? false),
                 IsEmbedding = isEmbedding,
                 IsRerank = isRerank
             });
@@ -429,6 +448,31 @@ public sealed class AiModelDiscoveryService
             JsonValueKind.False => false,
             _ => null
         };
+    }
+
+    private static int? ReadNestedInt(JsonElement element, string objectName, string propertyName)
+    {
+        if (!TryGetProperty(element, objectName, out JsonElement nested) ||
+            nested.ValueKind != JsonValueKind.Object)
+            return null;
+
+        long? value = ReadInt64(nested, propertyName);
+        return value is > 0 and <= int.MaxValue ? (int)value.Value : null;
+    }
+
+    private static bool? ReadNestedBoolean(JsonElement element, string objectName, string propertyName)
+    {
+        if (!TryGetProperty(element, objectName, out JsonElement nested) ||
+            nested.ValueKind != JsonValueKind.Object ||
+            !TryGetProperty(nested, propertyName, out JsonElement value))
+            return null;
+
+        if (value.ValueKind == JsonValueKind.True) return true;
+        if (value.ValueKind == JsonValueKind.False) return false;
+        if (value.ValueKind != JsonValueKind.Object) return null;
+
+        return ReadNullableBoolean(value, "supported")
+            ?? ReadNullableBoolean(value, "enabled");
     }
 
     private static long? ReadInt64(JsonElement element, string name)

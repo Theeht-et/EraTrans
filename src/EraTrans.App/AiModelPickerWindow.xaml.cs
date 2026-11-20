@@ -57,20 +57,9 @@ public partial class AiModelPickerWindow : Window
 
     private void UpdateSelectionHint()
     {
-        if (ModelsListView.SelectedItem is AiProviderModel model)
-        {
-            SelectionHintTextBlock.Text = model.IsChatModel
-                ? $"{model.DisplayName} · 上下文 {model.ContextLimitDescription} · {model.ReasoningSupportDescription}"
-                : model.IsEmbedding
-                    ? "这是嵌入模型，不适用于当前对话翻译。"
-                    : "这是重排模型，不适用于当前对话翻译。";
-            UseModelButton.IsEnabled = model.IsChatModel;
-        }
-        else
-        {
-            SelectionHintTextBlock.Text = "选择一个对话模型。";
-            UseModelButton.IsEnabled = false;
-        }
+        SelectionHintTextBlock.Text = "嵌入模型与重排模型只能查看，不能用于当前翻译。";
+        UseModelButton.IsEnabled =
+            ModelsListView.SelectedItem is AiProviderModel { IsChatModel: true };
     }
 
     private void UseModel_Click(object sender, RoutedEventArgs e)

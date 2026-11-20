@@ -57,9 +57,9 @@
                 <ListView.ItemContainerStyle>
                     <Style TargetType="{x:Type ListViewItem}">
                         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                        <Setter Property="Padding" Value="8,7" />
-                        <Setter Property="Margin" Value="0,0,0,5" />
-                        <Setter Property="MinHeight" Value="68" />
+                        <Setter Property="Padding" Value="8,5" />
+                        <Setter Property="Margin" Value="0,0,0,4" />
+                        <Setter Property="MinHeight" Value="44" />
                     </Style>
                 </ListView.ItemContainerStyle>
                 <ListView.GroupStyle>
@@ -85,37 +85,28 @@
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <StackPanel VerticalAlignment="Center">
-                                <TextBlock Text="{Binding DisplayName}"
-                                           FontSize="13"
-                                           FontWeight="SemiBold"
-                                           Foreground="#20242A"
-                                           TextTrimming="CharacterEllipsis" />
-                                <TextBlock Text="{Binding Id}"
-                                           Margin="0,3,0,0"
-                                           FontSize="11"
-                                           Foreground="#68717D"
-                                           TextWrapping="Wrap" />
-                                <TextBlock Text="{Binding MetadataSummary}"
-                                           Margin="0,4,0,0"
-                                           FontSize="11"
-                                           Foreground="#7A8490"
-                                           TextWrapping="Wrap" />
-                            </StackPanel>
+                            <TextBlock Text="{Binding DisplayName}"
+                                       VerticalAlignment="Center"
+                                       FontSize="13"
+                                       FontWeight="SemiBold"
+                                       Foreground="#20242A"
+                                       TextTrimming="CharacterEllipsis" />
                             <StackPanel Grid.Column="1"
+                                        Orientation="Horizontal"
                                         VerticalAlignment="Center"
                                         HorizontalAlignment="Right"
                                         Margin="14,0,4,0">
                                 <TextBlock Text="{Binding ContextLimitLabel}"
-                                           HorizontalAlignment="Right"
+                                           VerticalAlignment="Center"
                                            FontSize="11"
                                            FontWeight="SemiBold"
                                            Foreground="#39414A" />
                                 <TextBlock Text="{Binding ReasoningSupportDescription}"
-                                           Margin="0,4,0,0"
-                                           HorizontalAlignment="Right"
+                                           Margin="12,0,0,0"
+                                           VerticalAlignment="Center"
                                            FontSize="11"
-                                           Foreground="#68717D" />
+                                           FontWeight="SemiBold"
+                                           Foreground="#39414A" />
                             </StackPanel>
                         </Grid>
                     </DataTemplate>

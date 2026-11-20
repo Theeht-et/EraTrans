@@ -72,14 +72,45 @@
                         </ListBox.ItemContainerStyle>
                         <ListBox.ItemTemplate>
                             <DataTemplate>
-                                <StackPanel>
-                                    <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold"
-                                               Foreground="#29313A" TextTrimming="CharacterEllipsis"/>
-                                    <TextBlock Text="{Binding BaseUrl}" Margin="0,4,0,0" FontSize="10"
-                                               Foreground="#7A8490" TextTrimming="CharacterEllipsis"/>
-                                    <TextBlock Text="{Binding Model}" Margin="0,3,0,0" FontSize="10"
-                                               Foreground="#68717D" TextTrimming="CharacterEllipsis"/>
-                                </StackPanel>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold"
+                                                   Foreground="#29313A" TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Text="{Binding Model}" Margin="0,3,0,0" FontSize="10"
+                                                   Foreground="#68717D" TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock x:Name="EnabledStatusTextBlock" Text="已启用"
+                                                   Margin="0,4,0,0" FontSize="10" Foreground="#26834A"/>
+                                        <TextBlock x:Name="DisabledStatusTextBlock" Text="已禁用"
+                                                   Margin="0,4,0,0" FontSize="10" Foreground="#A66B18"
+                                                   Visibility="Collapsed"/>
+                                    </StackPanel>
+                                    <Button Grid.Column="1" Tag="{Binding}" Margin="8,0,0,0"
+                                            Padding="9,4" VerticalAlignment="Center"
+                                            Click="ToggleProviderEnabled_Click">
+                                        <Button.Style>
+                                            <Style TargetType="{x:Type Button}">
+                                                <Setter Property="Content" Value="禁用"/>
+                                                <Setter Property="MinWidth" Value="52"/>
+                                                <Setter Property="FontSize" Value="11"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsEnabled}" Value="False">
+                                                        <Setter Property="Content" Value="启用"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Button.Style>
+                                    </Button>
+                                </Grid>
+                                <DataTemplate.Triggers>
+                                    <DataTrigger Binding="{Binding IsEnabled}" Value="False">
+                                        <Setter TargetName="EnabledStatusTextBlock" Property="Visibility" Value="Collapsed"/>
+                                        <Setter TargetName="DisabledStatusTextBlock" Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </DataTemplate.Triggers>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>

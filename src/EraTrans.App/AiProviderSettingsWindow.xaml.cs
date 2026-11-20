@@ -2,7 +2,6 @@ using EraTrans.Core;
 using System.Collections.ObjectModel;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Controls.Primitives;
 
 namespace EraTrans.App;
 
@@ -32,27 +31,15 @@ public partial class AiProviderSettingsWindow : Window
                 "读取 AI 配置失败", MessageBoxButton.OK, MessageBoxImage.Error);
         }
 
+        _settings.EnsureBuiltInProviders();
         foreach (AiProviderProfile provider in _settings.Providers)
             _providers.Add(provider);
 
-        if (_providers.Count == 0)
-        {
-            foreach (AiProviderPreset preset in AiProviderPresets.All)
-            {
-                _providers.Add(new AiProviderProfile
-                {
-                    Name = preset.Name,
-                    BaseUrl = preset.BaseUrl,
-                    Protocol = AiProviderProtocol.OpenAiCompatible
-                });
-            }
-        }
-
         ProviderListBox.ItemsSource = _providers;
         AiProviderProfile? initial = _providers.FirstOrDefault(provider =>
+            provider.IsEnabled &&
             string.Equals(provider.Id, _settings.ActiveProviderId, StringComparison.Ordinal))
-            ?? _providers.FirstOrDefault(provider =>
-                provider.Name.Contains("OpenAI", StringComparison.OrdinalIgnoreCase))
+            ?? _providers.FirstOrDefault(provider => provider.IsEnabled)
             ?? _providers.FirstOrDefault();
         ProviderListBox.SelectedItem = initial;
         LoadSelectedProfile();
@@ -97,7 +84,11 @@ public partial class AiProviderSettingsWindow : Window
         ModelTextBox.IsEnabled = enabled && idle;
         FetchModelsButton.IsEnabled = enabled && idle;
         TestButton.IsEnabled = enabled && idle;
-        RemoveProviderButton.IsEnabled = enabled && idle && _providers.Count > 1;
+        RemoveProviderButton.Content = _currentProfile?.IsBuiltIn == true
+            ? "默认服务商不可删除"
+            : "删除当前自定义服务商";
+        RemoveProviderButton.IsEnabled =
+            enabled && idle && _currentProfile is not null && !_currentProfile.IsBuiltIn;
         AddProviderButton.IsEnabled = idle;
     }
 
@@ -122,53 +113,52 @@ public partial class AiProviderSettingsWindow : Window
     {
         if (_isTesting || _isFetchingModels)
             return;
-        var menu = new ContextMenu();
-        foreach (AiProviderPreset preset in AiProviderPresets.All)
+
+        SaveFieldsToCurrentProfile();
+        int suffix = 1;
+        string customName = "自定义服务商";
+        while (_providers.Any(provider =>
+                   string.Equals(provider.Name, customName, StringComparison.OrdinalIgnoreCase)))
         {
-            var item = new MenuItem { Header = preset.Name, Tag = preset };
-            item.Click += (_, _) => AddProvider((AiProviderPreset)item.Tag);
-            menu.Items.Add(item);
+            suffix++;
+            customName = $"自定义服务商 {suffix}";
         }
-        menu.Items.Add(new Separator());
-        var custom = new MenuItem { Header = "自定义 OpenAI 兼容服务" };
-        custom.Click += (_, _) => AddCustomProvider();
-        menu.Items.Add(custom);
-        menu.PlacementTarget = AddProviderButton;
-        menu.Placement = PlacementMode.Bottom;
-        menu.IsOpen = true;
-    }
 
-    private void AddProvider(AiProviderPreset preset)
-    {
-        SaveFieldsToCurrentProfile();
         var profile = new AiProviderProfile
         {
-            Name = preset.Name,
-            BaseUrl = preset.BaseUrl,
-            Protocol = AiProviderProtocol.OpenAiCompatible
-        };
-        _providers.Add(profile);
-        ProviderListBox.SelectedItem = profile;
-        LoadSelectedProfile();
-    }
-
-    private void AddCustomProvider()
-    {
-        SaveFieldsToCurrentProfile();
-        var profile = new AiProviderProfile
-        {
-            Name = "自定义服务商",
+            Name = customName,
             BaseUrl = "",
-            Protocol = AiProviderProtocol.OpenAiCompatible
+            Protocol = AiProviderProtocol.OpenAiCompatible,
+            IsBuiltIn = false,
+            IsEnabled = true
         };
-        _providers.Add(profile);
+
+        _providers.Insert(0, profile);
         ProviderListBox.SelectedItem = profile;
         LoadSelectedProfile();
+    }
+
+    private void ToggleProviderEnabled_Click(object sender, RoutedEventArgs e)
+    {
+        if (_isTesting || _isFetchingModels ||
+            sender is not Button { Tag: AiProviderProfile profile })
+            return;
+
+        profile.IsEnabled = !profile.IsEnabled;
+        ProviderListBox.Items.Refresh();
+
+        if (_currentProfile?.Id == profile.Id)
+        {
+            StatusTextBlock.Text = profile.IsEnabled
+                ? "服务商已启用，可用于 AI 翻译。"
+                : "服务商已禁用，不会用于 AI 翻译；配置仍会保留。";
+        }
     }
 
     private void RemoveProvider_Click(object sender, RoutedEventArgs e)
     {
-        if (_currentProfile is null || _providers.Count <= 1 || _isTesting || _isFetchingModels)
+        if (_currentProfile is null || _currentProfile.IsBuiltIn ||
+            _isTesting || _isFetchingModels)
             return;
         MessageBoxResult result = MessageBox.Show(this,
             $"确定删除“{_currentProfile.Name}”配置吗？此操作不会影响其他服务商。",
@@ -264,7 +254,9 @@ public partial class AiProviderSettingsWindow : Window
             foreach (AiProviderProfile provider in _providers)
                 AiProviderProfileValidator.ValidateForStorage(provider);
             _settings.Providers = _providers.ToList();
-            _settings.ActiveProviderId = _currentProfile?.Id;
+            _settings.ActiveProviderId = _currentProfile?.IsEnabled == true
+                ? _currentProfile.Id
+                : _providers.FirstOrDefault(provider => provider.IsEnabled)?.Id;
             _store.Save(_settings);
             DialogResult = true;
         }

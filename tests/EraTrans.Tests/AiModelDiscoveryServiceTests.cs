@@ -237,7 +237,7 @@ public sealed class AiModelDiscoveryServiceTests
         Assert.Equal(3.0, model.CacheWriteCostPerMillion);
         Assert.Equal(40.0, model.InputAudioCostPerMillion);
         Assert.Equal(80.0, model.OutputAudioCostPerMillion);
-        Assert.Equal("上下文：128K", model.ContextLimitLabel);
+        Assert.Equal("上下文大小：128K", model.ContextLimitLabel);
         Assert.True(model.ReasoningSupport == true);
         Assert.Contains("输入 $2.5/1M", model.MetadataSummary);
         Assert.Contains("输出 $10/1M", model.MetadataSummary);
@@ -268,6 +268,231 @@ public sealed class AiModelDiscoveryServiceTests
         Assert.Null(original.ContextLimit);
     }
 
+    [Fact]
+    public void ParseModelsResponse_ReadsNestedContextAndReasoningMetadata()
+    {
+        const string json = """
+            {
+              "data": [
+                {
+                  "id": "catalog-model",
+                  "top_provider": {
+                    "context_length": 262144,
+                    "max_completion_tokens": 32768
+                  },
+                  "reasoning": { "supported": true }
+                },
+                {
+                  "id": "limited-model",
+                  "limit": {
+                    "context": 65536,
+                    "output": 8192
+                  },
+                  "thinking": { "supported": false }
+                }
+              ]
+            }
+            """;
+
+        IReadOnlyList<AiProviderModel> models = AiModelDiscoveryService.ParseModelsResponse(json);
+        AiProviderModel catalogModel = Assert.Single(models, model => model.Id == "catalog-model");
+        Assert.Equal(262144, catalogModel.ContextLimit);
+        Assert.Equal(262144, catalogModel.InputLimit);
+        Assert.Equal(32768, catalogModel.OutputLimit);
+        Assert.Equal(true, catalogModel.ReasoningSupport);
+        Assert.True(catalogModel.SupportsReasoning);
+
+        AiProviderModel limitedModel = Assert.Single(models, model => model.Id == "limited-model");
+        Assert.Equal(65536, limitedModel.ContextLimit);
+        Assert.Equal(8192, limitedModel.OutputLimit);
+        Assert.Equal(false, limitedModel.ReasoningSupport);
+        Assert.False(limitedModel.SupportsReasoning);
+    }
+
+    [Fact]
+    public void ModelCapabilityLabels_AlwaysShowUnknownWhenMetadataIsMissing()
+    {
+        var unknown = new AiProviderModel { Id = "provider-model" };
+        Assert.Equal("上下文大小：未知", unknown.ContextLimitLabel);
+        Assert.Equal("推理能力：未知", unknown.ReasoningSupportDescription);
+
+        var supported = new AiProviderModel
+        {
+            Id = "reasoning-model",
+            ContextLimit = 128000,
+            ReasoningSupport = true
+        };
+        Assert.Equal("上下文大小：128K", supported.ContextLimitLabel);
+        Assert.Equal("推理能力：支持", supported.ReasoningSupportDescription);
+
+        var unsupported = new AiProviderModel
+        {
+            Id = "standard-model",
+            ReasoningSupport = false
+        };
+        Assert.Equal("推理能力：不支持", unsupported.ReasoningSupportDescription);
+    }
+
+    [Fact]
+    public async Task CatalogEnrichment_ResolvesProviderAliasHostAndPersistsCatalogCache()
+    {
+        using var temporary = new TemporaryDirectory();
+        string cachePath = Path.Combine(temporary.Path, "models-dev-catalog.json");
+        var firstUri = new Uri("https://models.dev/api.json?test=moonshot-host-alias-first");
+        const string catalogJson = """
+            {
+              "moonshotai": {
+                "id": "moonshotai",
+                "name": "Moonshot AI",
+                "api": "https://api.moonshot.ai/v1",
+                "models": {
+                  "kimi-k2-thinking": {
+                    "id": "kimi-k2-thinking",
+                    "name": "Kimi K2 Thinking",
+                    "reasoning": true,
+                    "limit": { "context": 262144, "input": 250000, "output": 32768 }
+                  }
+                }
+              }
+            }
+            """;
+
+        using var firstHandler = new StubHandler(request =>
+        {
+            Assert.Equal(firstUri, request.RequestUri);
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(catalogJson, Encoding.UTF8, "application/json")
+            };
+        });
+        using var firstClient = new HttpClient(firstHandler);
+        var firstService = new AiModelCatalogEnrichmentService(
+            firstClient,
+            catalogUri: firstUri,
+            catalogCacheFilePath: cachePath);
+
+        AiProviderModel discovered = new()
+        {
+            Id = "kimi-k2-thinking",
+            DisplayName = "kimi-k2-thinking",
+            GroupName = "Kimi"
+        };
+        IReadOnlyList<AiProviderModel> firstResult = await firstService.EnrichAsync(
+            new AiProviderProfile { BaseUrl = "https://api.moonshot.cn/v1" },
+            [discovered]);
+
+        AiProviderModel enriched = Assert.Single(firstResult);
+        Assert.Equal("Kimi K2 Thinking", enriched.DisplayName);
+        Assert.Equal(262144, enriched.ContextLimit);
+        Assert.Equal(250000, enriched.InputLimit);
+        Assert.Equal(32768, enriched.OutputLimit);
+        Assert.Equal(true, enriched.ReasoningSupport);
+        Assert.True(File.Exists(cachePath));
+
+        // A different catalog URL simulates a fresh process with no in-memory entry.
+        var secondUri = new Uri("https://models.dev/api.json?test=moonshot-host-alias-after-restart");
+        using var secondHandler = new StubHandler(_ =>
+            new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
+        using var secondClient = new HttpClient(secondHandler);
+        var secondService = new AiModelCatalogEnrichmentService(
+            secondClient,
+            catalogUri: secondUri,
+            catalogCacheFilePath: cachePath);
+
+        IReadOnlyList<AiProviderModel> cachedResult = await secondService.EnrichAsync(
+            new AiProviderProfile { BaseUrl = "https://api.moonshot.cn/v1" },
+            [discovered]);
+
+        AiProviderModel cached = Assert.Single(cachedResult);
+        Assert.Equal(262144, cached.ContextLimit);
+        Assert.Equal(true, cached.ReasoningSupport);
+    }
+
+    [Fact]
+    public async Task CatalogEnrichment_MapsNamespacedModelIdsToFirstPartyProviderCatalog()
+    {
+        var catalogUri = new Uri("https://models.dev/api.json?test=provider-prefix-route");
+        const string json = """
+            {
+              "openrouter": {
+                "id": "openrouter",
+                "api": "https://openrouter.ai/api/v1",
+                "models": {}
+              },
+              "deepseek": {
+                "id": "deepseek",
+                "api": "https://api.deepseek.com/v1",
+                "models": {
+                  "deepseek-chat": {
+                    "id": "deepseek-chat",
+                    "name": "DeepSeek Chat",
+                    "reasoning": false,
+                    "limit": { "context": 131072 }
+                  }
+                }
+              }
+            }
+            """;
+        using var handler = new StubHandler(_ =>
+            new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json")
+            });
+        using var client = new HttpClient(handler);
+        var enrichment = new AiModelCatalogEnrichmentService(client, catalogUri: catalogUri);
+
+        IReadOnlyList<AiProviderModel> result = await enrichment.EnrichAsync(
+            new AiProviderProfile { BaseUrl = "https://openrouter.ai/api/v1" },
+            [new AiProviderModel
+            {
+                Id = "deepseek/deepseek-chat",
+                DisplayName = "deepseek/deepseek-chat"
+            }]);
+
+        AiProviderModel model = Assert.Single(result);
+        Assert.Equal("DeepSeek Chat", model.DisplayName);
+        Assert.Equal(131072, model.ContextLimit);
+        Assert.Equal(false, model.ReasoningSupport);
+    }
+
+    [Fact]
+    public async Task CatalogEnrichment_UsesConservativeKelivoStyleReasoningDefaultsOnlyWhenUnknown()
+    {
+        var catalogUri = new Uri("https://models.dev/api.json?test=reasoning-defaults-fallback");
+        using var handler = new StubHandler(_ =>
+            new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
+        using var client = new HttpClient(handler);
+        var enrichment = new AiModelCatalogEnrichmentService(client, catalogUri: catalogUri);
+
+        AiProviderModel[] models =
+        [
+            new() { Id = "deepseek-reasoner", DisplayName = "deepseek-reasoner" },
+            new() { Id = "custom-reasoning-model", DisplayName = "custom-reasoning-model" },
+            new()
+            {
+                Id = "deepseek-r1",
+                DisplayName = "deepseek-r1",
+                ReasoningSupport = false
+            }
+        ];
+
+        IReadOnlyList<AiProviderModel> result = await enrichment.EnrichAsync(
+            new AiProviderProfile { BaseUrl = "https://custom.example.com/v1" },
+            models);
+
+        AiProviderModel deepseekReasoner = Assert.Single(
+            result, model => model.Id == "deepseek-reasoner");
+        Assert.Equal(true, deepseekReasoner.ReasoningSupport);
+
+        AiProviderModel custom = Assert.Single(
+            result, model => model.Id == "custom-reasoning-model");
+        Assert.Null(custom.ReasoningSupport);
+
+        AiProviderModel explicitFalse = Assert.Single(
+            result, model => model.Id == "deepseek-r1");
+        Assert.Equal(false, explicitFalse.ReasoningSupport);
+    }
+
     private sealed class StubHandler(
         Func<HttpRequestMessage, HttpResponseMessage> responseFactory) : HttpMessageHandler
     {
@@ -277,6 +502,22 @@ public sealed class AiModelDiscoveryServiceTests
         {
             cancellationToken.ThrowIfCancellationRequested();
             return Task.FromResult(responseFactory(request));
+        }
+    }
+
+    private sealed class TemporaryDirectory : IDisposable
+    {
+        public string Path { get; } = System.IO.Path.Combine(
+            System.IO.Path.GetTempPath(),
+            "EraTransModelCatalogTests",
+            Guid.NewGuid().ToString("N"));
+
+        public TemporaryDirectory() => Directory.CreateDirectory(Path);
+
+        public void Dispose()
+        {
+            if (Directory.Exists(Path))
+                Directory.Delete(Path, recursive: true);
         }
     }
 }

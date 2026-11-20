@@ -12,6 +12,7 @@ public partial class AiProviderSettingsWindow : Window
 {
     private readonly AiProviderSettingsStore _store = new();
     private readonly AiModelDiscoveryService _modelDiscovery = new();
+    private readonly AiModelCatalogEnrichmentService _modelCatalogEnrichment = new();
     private readonly AiProviderSettings _settings;
     private readonly ObservableCollection<AiProviderProfile> _providers = [];
     private readonly ObservableCollection<AiProviderModel> _availableModels = [];
@@ -218,8 +219,10 @@ public partial class AiProviderSettingsWindow : Window
             StatusTextBlock.Text = "正在请求服务商的模型列表……";
             ModelCountTextBlock.Text = "正在获取模型信息……";
 
-            IReadOnlyList<AiProviderModel> models =
+            IReadOnlyList<AiProviderModel> discovered =
                 await _modelDiscovery.FetchModelsAsync(profile);
+            IReadOnlyList<AiProviderModel> models =
+                await _modelCatalogEnrichment.EnrichAsync(profile, discovered);
 
             profile.AvailableModels = models.ToList();
             if (ReferenceEquals(_currentProfile, profile))

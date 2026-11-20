@@ -255,7 +255,7 @@ public sealed class AiProviderSettingsPortablePersistenceTests
         AiProviderProfile custom = Assert.Single(loaded.Providers, item => item.Id == "custom");
         Assert.False(custom.IsBuiltIn);
         Assert.True(custom.IsEnabled);
-        Assert.Same(custom, loaded.ActiveProvider);
+        Assert.Null(loaded.ActiveProvider);
     }
 
     [Fact]
@@ -326,6 +326,113 @@ public sealed class AiProviderSettingsPortablePersistenceTests
         Assert.Equal("private-key", custom.ApiKey);
         Assert.Single(settings.Providers, provider =>
             provider.IsBuiltIn && provider.Name == "DeepSeek");
+    }
+
+    [Fact]
+    public void ActiveProvider_RequiresACompleteEnabledProfileAndHonorsTheSelectedId()
+    {
+        var disabled = new AiProviderProfile
+        {
+            Id = "disabled",
+            Name = "Disabled",
+            BaseUrl = "https://disabled.example.com/v1",
+            Model = "model",
+            ApiKey = "key",
+            IsEnabled = false
+        };
+        var incomplete = new AiProviderProfile
+        {
+            Id = "incomplete",
+            Name = "Incomplete",
+            BaseUrl = "https://incomplete.example.com/v1",
+            IsEnabled = true
+        };
+        var readyA = new AiProviderProfile
+        {
+            Id = "ready-a",
+            Name = "Ready A",
+            BaseUrl = "https://a.example.com/v1",
+            Model = "model-a",
+            ApiKey = "key-a",
+            IsEnabled = true
+        };
+        var readyB = new AiProviderProfile
+        {
+            Id = "ready-b",
+            Name = "Ready B",
+            BaseUrl = "https://b.example.com/v1",
+            Model = "model-b",
+            ApiKey = "key-b",
+            IsEnabled = true
+        };
+        var settings = new AiProviderSettings
+        {
+            ActiveProviderId = "ready-b",
+            Providers = [disabled, incomplete, readyA, readyB]
+        };
+
+        Assert.Same(readyB, settings.ActiveProvider);
+
+        settings.ActiveProviderId = "incomplete";
+        Assert.Same(readyA, settings.ActiveProvider);
+
+        settings.ActiveProviderId = "disabled";
+        Assert.Same(readyA, settings.ActiveProvider);
+
+        readyA.RequiresEndpointReview = true;
+        Assert.Same(readyB, settings.ActiveProvider);
+    }
+
+    [Fact]
+    public void EnsureBuiltInProviders_PreservesExistingOrderAndAppendsMissingBuiltIns()
+    {
+        var customFirst = new AiProviderProfile
+        {
+            Id = "custom-first",
+            Name = "Custom first",
+            BaseUrl = "https://first.example.com/v1"
+        };
+        var builtInInMiddle = new AiProviderProfile
+        {
+            Id = "builtin-deepseek",
+            Name = "DeepSeek",
+            BaseUrl = "https://api.deepseek.com",
+            IsBuiltIn = true
+        };
+        var customLast = new AiProviderProfile
+        {
+            Id = "custom-last",
+            Name = "Custom last",
+            BaseUrl = "https://last.example.com/v1"
+        };
+        var settings = new AiProviderSettings
+        {
+            Providers = [customFirst, builtInInMiddle, customLast]
+        };
+
+        settings.EnsureBuiltInProviders();
+
+        Assert.Equal(
+            new[] { "custom-first", "builtin-deepseek", "custom-last" },
+            settings.Providers.Take(3).Select(provider => provider.Id));
+        Assert.Equal(AiProviderPresets.All.Count, settings.Providers.Count(provider => provider.IsBuiltIn));
+        Assert.Equal(settings.Providers.Count, settings.Providers.Select(provider => provider.Id).Distinct().Count());
+    }
+
+    [Fact]
+    public void Store_LoadRejectsNullProviderListAndDuplicateProviderIds()
+    {
+        using var temporary = new TemporaryDirectory();
+        string path = Path.Combine(temporary.Path, "Config", "ai-providers.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        var store = new AiProviderSettingsStore(path);
+
+        File.WriteAllText(path, """{"Providers":null}""");
+        Assert.Throws<InvalidDataException>(() => store.Load());
+
+        File.WriteAllText(path,
+            """{"Providers":[{"Id":"same","Name":"A"},{"Id":"same","Name":"B"}]}""");
+        Assert.Throws<InvalidDataException>(() => store.Load());
     }
 
     private sealed class TemporaryDirectory : IDisposable

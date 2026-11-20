@@ -808,7 +808,9 @@ public sealed class ErbTranslationGroupingService
         ErbTranslationSourceEntry current)
     {
         if (!string.Equals(previous.FunctionId, current.FunctionId, StringComparison.Ordinal) ||
-            !string.Equals(previous.BranchPath, current.BranchPath, StringComparison.Ordinal))
+            !string.Equals(previous.BranchPath, current.BranchPath, StringComparison.Ordinal) ||
+            !string.Equals(previous.ControlScopeId, current.ControlScopeId, StringComparison.Ordinal) ||
+            !string.Equals(previous.BranchLabel, current.BranchLabel, StringComparison.Ordinal))
         {
             return false;
         }

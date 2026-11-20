@@ -79,6 +79,11 @@ public sealed class AiProviderModel
                 parts.Add($"上下文 {FormatTokenLimit(ContextLimit.Value)}");
             }
 
+            if (InputLimit is > 0)
+            {
+                parts.Add($"最大输入 {FormatTokenLimit(InputLimit.Value)}");
+            }
+
             if (OutputLimit is > 0)
             {
                 parts.Add($"最大输出 {FormatTokenLimit(OutputLimit.Value)}");
@@ -162,6 +167,36 @@ public sealed class AiProviderModel
             if (OutputCostPerMillion is not null)
             {
                 parts.Add($"输出 ${FormatCost(OutputCostPerMillion.Value)}/1M");
+            }
+
+            if (ReasoningCostPerMillion is not null)
+            {
+                parts.Add($"推理 ${FormatCost(ReasoningCostPerMillion.Value)}/1M");
+            }
+
+            if (CacheReadCostPerMillion is not null)
+            {
+                parts.Add($"缓存读 ${FormatCost(CacheReadCostPerMillion.Value)}/1M");
+            }
+
+            if (CacheWriteCostPerMillion is not null)
+            {
+                parts.Add($"缓存写 ${FormatCost(CacheWriteCostPerMillion.Value)}/1M");
+            }
+
+            if (InputAudioCostPerMillion is not null)
+            {
+                parts.Add($"音频输入 ${FormatCost(InputAudioCostPerMillion.Value)}/1M");
+            }
+
+            if (OutputAudioCostPerMillion is not null)
+            {
+                parts.Add($"音频输出 ${FormatCost(OutputAudioCostPerMillion.Value)}/1M");
+            }
+
+            if (!string.IsNullOrWhiteSpace(LastUpdated))
+            {
+                parts.Add($"更新 {LastUpdated}");
             }
 
             if (IsEmbedding)

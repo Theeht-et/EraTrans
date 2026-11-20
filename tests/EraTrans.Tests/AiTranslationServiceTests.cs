@@ -342,11 +342,14 @@ public sealed class AiTranslationServiceTests
 
         Assert.Equal("原始文本", target.Original);
         Assert.Equal("文本ERB\\OPENING00001", target.Key);
-        Assert.Equal(0, target.Stage);
+        Assert.Equal("00001", target.DisplayKey);
+        Assert.Equal(1, target.Stage);
+        Assert.Equal("已翻译", target.StageDescription);
         document.Save();
 
         string saved = File.ReadAllText(path);
         Assert.Contains("AI 译文", saved);
+        Assert.Contains("\"stage\": 1", saved);
         Assert.Contains("手工译文", saved);
         Assert.Contains("preserve", saved);
         Assert.Contains("上下文", saved);

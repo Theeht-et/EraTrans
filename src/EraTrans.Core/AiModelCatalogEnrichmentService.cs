@@ -15,18 +15,20 @@ public sealed class AiModelCatalogEnrichmentService
         Timeout = TimeSpan.FromSeconds(8)
     };
     private static readonly SemaphoreSlim CacheGate = new(1, 1);
-    private static CatalogSnapshot? _cachedCatalog;
-    private static DateTimeOffset _cacheExpiresAt;
+    private static readonly Dictionary<string, CatalogCacheEntry> Cache = new(StringComparer.Ordinal);
 
     private readonly HttpClient _httpClient;
     private readonly Func<DateTimeOffset> _utcNow;
+    private readonly Uri _catalogUri;
 
     public AiModelCatalogEnrichmentService(
         HttpClient? httpClient = null,
-        Func<DateTimeOffset>? utcNow = null)
+        Func<DateTimeOffset>? utcNow = null,
+        Uri? catalogUri = null)
     {
         _httpClient = httpClient ?? SharedHttpClient;
         _utcNow = utcNow ?? (() => DateTimeOffset.UtcNow);
+        _catalogUri = catalogUri ?? new Uri(CatalogUrl);
     }
 
     public async Task<IReadOnlyList<AiProviderModel>> EnrichAsync(
@@ -91,38 +93,47 @@ public sealed class AiModelCatalogEnrichmentService
 
     private async Task<CatalogSnapshot?> GetCatalogAsync(CancellationToken cancellationToken)
     {
+        string cacheKey = _catalogUri.AbsoluteUri;
         await CacheGate.WaitAsync(cancellationToken);
         try
         {
-            if (_cachedCatalog is not null && _utcNow() < _cacheExpiresAt)
+            if (Cache.TryGetValue(cacheKey, out CatalogCacheEntry? cached) &&
+                _utcNow() < cached.ExpiresAt)
             {
-                return _cachedCatalog;
+                return cached.Catalog;
             }
 
             try
             {
-                string json = await _httpClient.GetStringAsync(CatalogUrl, cancellationToken);
+                string json = await _httpClient.GetStringAsync(_catalogUri, cancellationToken);
                 CatalogSnapshot loaded = ParseCatalog(json);
-                _cachedCatalog = loaded;
-                _cacheExpiresAt = _utcNow().AddHours(12);
+                Cache[cacheKey] = new CatalogCacheEntry(loaded, _utcNow().AddHours(12));
                 return loaded;
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
                 // models.dev is optional metadata; provider model discovery must still work.
-                return _cachedCatalog;
+                return Cache.TryGetValue(cacheKey, out CatalogCacheEntry? stale)
+                    ? stale.Catalog
+                    : null;
             }
             catch (HttpRequestException)
             {
-                return _cachedCatalog;
+                return Cache.TryGetValue(cacheKey, out CatalogCacheEntry? stale)
+                    ? stale.Catalog
+                    : null;
             }
             catch (JsonException)
             {
-                return _cachedCatalog;
+                return Cache.TryGetValue(cacheKey, out CatalogCacheEntry? stale)
+                    ? stale.Catalog
+                    : null;
             }
             catch (InvalidDataException)
             {
-                return _cachedCatalog;
+                return Cache.TryGetValue(cacheKey, out CatalogCacheEntry? stale)
+                    ? stale.Catalog
+                    : null;
             }
         }
         finally
@@ -257,7 +268,8 @@ public sealed class AiModelCatalogEnrichmentService
         return new AiProviderModel
         {
             Id = source.Id,
-            DisplayName = string.IsNullOrWhiteSpace(source.DisplayName)
+            DisplayName = string.IsNullOrWhiteSpace(source.DisplayName) ||
+                          string.Equals(source.DisplayName, source.Id, StringComparison.Ordinal)
                 ? metadata.Name
                 : source.DisplayName,
             GroupName = source.GroupName,
@@ -340,6 +352,10 @@ public sealed class AiModelCatalogEnrichmentService
 
     private sealed record CatalogSnapshot(
         Dictionary<string, CatalogProvider> Providers);
+
+    private sealed record CatalogCacheEntry(
+        CatalogSnapshot Catalog,
+        DateTimeOffset ExpiresAt);
 
     private sealed class CatalogProvider
     {

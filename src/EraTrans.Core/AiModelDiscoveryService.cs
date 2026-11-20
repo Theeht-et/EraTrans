@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json;
@@ -22,11 +23,24 @@ public sealed class AiProviderModel
     public bool SupportsTools { get; set; }
     public bool SupportsReasoning { get; set; }
     public bool SupportsStructuredOutput { get; set; }
+    public bool SupportsAttachments { get; set; }
+    public bool SupportsTemperature { get; set; }
+    public bool OpenWeights { get; set; }
+    public string? Knowledge { get; set; }
+    public string? ReleaseDate { get; set; }
+    public string? LastUpdated { get; set; }
     public List<string> InputModalities { get; set; } = [];
     public List<string> OutputModalities { get; set; } = [];
     public int? ContextLimit { get; set; }
     public int? InputLimit { get; set; }
     public int? OutputLimit { get; set; }
+    public double? InputCostPerMillion { get; set; }
+    public double? OutputCostPerMillion { get; set; }
+    public double? ReasoningCostPerMillion { get; set; }
+    public double? CacheReadCostPerMillion { get; set; }
+    public double? CacheWriteCostPerMillion { get; set; }
+    public double? InputAudioCostPerMillion { get; set; }
+    public double? OutputAudioCostPerMillion { get; set; }
 
     public bool IsChatModel => !IsEmbedding && !IsRerank;
 
@@ -115,6 +129,41 @@ public sealed class AiProviderModel
                 parts.Add("结构化输出");
             }
 
+            if (SupportsAttachments)
+            {
+                parts.Add("文件附件");
+            }
+
+            if (SupportsTemperature)
+            {
+                parts.Add("支持温度参数");
+            }
+
+            if (OpenWeights)
+            {
+                parts.Add("开放权重");
+            }
+
+            if (!string.IsNullOrWhiteSpace(Knowledge))
+            {
+                parts.Add($"知识截止 {Knowledge}");
+            }
+
+            if (!string.IsNullOrWhiteSpace(ReleaseDate))
+            {
+                parts.Add($"发布 {ReleaseDate}");
+            }
+
+            if (InputCostPerMillion is not null)
+            {
+                parts.Add($"输入 ${FormatCost(InputCostPerMillion.Value)}/1M");
+            }
+
+            if (OutputCostPerMillion is not null)
+            {
+                parts.Add($"输出 ${FormatCost(OutputCostPerMillion.Value)}/1M");
+            }
+
             if (IsEmbedding)
             {
                 parts.Add("嵌入模型");
@@ -144,6 +193,9 @@ public sealed class AiProviderModel
             : value >= 1_000
                 ? $"{value / 1_000d:0.#}K"
                 : value.ToString();
+
+    private static string FormatCost(double value) =>
+        value.ToString("0.####", CultureInfo.InvariantCulture);
 }
 
 /// <summary>

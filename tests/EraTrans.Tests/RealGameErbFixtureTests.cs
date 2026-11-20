@@ -108,7 +108,7 @@ public sealed class RealGameErbFixtureTests
             Assert.NotEmpty(textEntries);
             Assert.Equal(textEntries.Length, index!.Entries.Count);
 
-            string expectedText = ExpectedJapaneseText[sourceRelativePath];
+            string expectedText = ExpectedJapaneseText.Single(pair => string.Equals(\n                NormalizePath(pair.Key), sourceRelativePath, StringComparison.Ordinal)).Value;
             Assert.Contains(textEntries, entry =>
                 entry.Original.Contains(expectedText, StringComparison.Ordinal));
 
@@ -158,7 +158,7 @@ public sealed class RealGameErbFixtureTests
 
         // Real continuous narrative: a selected story line must receive neighboring
         // lines from the same output passage as read-only AI context.
-        const string storyPath = @"ERB\シナリオ\サブイベント\サブイベント_商業区建設解禁.ERB";
+        const string storyPath = "ERB/シナリオ/サブイベント/サブイベント_商業区建設解禁.ERB";
         DictionaryEditorDocument storyDocument = documentsBySource[storyPath];
         ErbTranslationGroupingIndex storyIndex = indexesBySource[storyPath];
         DictionaryEditorEntry storyTarget = Assert.Single(storyDocument.Entries.Where(entry =>
@@ -174,7 +174,7 @@ public sealed class RealGameErbFixtureTests
 
         // Real menu: when one choice is the target, the other choice and the prompt
         // from the same screen must be present as read-only context.
-        const string confessionPath = @"ERB\一日開始時処理\起床時告白処理.ERB";
+        const string confessionPath = "ERB/一日開始時処理/起床時告白処理.ERB";
         DictionaryEditorDocument confessionDocument = documentsBySource[confessionPath];
         ErbTranslationGroupingIndex confessionIndex = indexesBySource[confessionPath];
         DictionaryEditorEntry choiceTarget = Assert.Single(confessionDocument.Entries.Where(entry =>

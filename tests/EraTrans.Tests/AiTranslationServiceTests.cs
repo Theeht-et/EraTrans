@@ -1,4 +1,5 @@
 using EraTrans.Core;
+using System.Text.Json;
 using System.Runtime.Versioning;
 using Xunit;
 
@@ -48,7 +49,7 @@ public sealed class AiTranslationServiceTests
     }
 
     [Fact]
-    public async Task TranslateWithSemanticContextAsync_OnlyTargetsExplicitEntries_AndMarksAlternativeBranchesAsReference()
+    public async Task TranslateWithSemanticContextAsync_OnlySendsTargetsAndUsefulContextMetadata()
     {
         var fake = new FakeChatClient(
             """[{ "id": 5, "translation": "目标译文" }]""");
@@ -60,16 +61,19 @@ public sealed class AiTranslationServiceTests
         AiTranslationSemanticContextGroup[] context =
         [
             new(
-                "group_000001",
+                "opaque_group_000001",
                 "menu",
-                "MENU",
+                "INTERNAL_FUNCTION_NAME",
                 "menu_0001:SELECTCASE:SELECTOR",
                 "same-group",
-                [new AiTranslationContextEntry("文本ERB\\MENU00001", "第一个选项")]),
+                [
+                    new AiTranslationContextEntry("文本ERB\\MENU00001", "第一个选项"),
+                    new AiTranslationContextEntry("文本ERB\\MENU00003", "第一个选项")
+                ]),
             new(
-                "group_000003",
+                "opaque_group_000003",
                 "branch",
-                "MENU",
+                "INTERNAL_FUNCTION_NAME",
                 "menu_0001:SELECTCASE:CASE 1",
                 "alternative-branch",
                 [new AiTranslationContextEntry("文本ERB\\MENU00002", "第二个分支")])
@@ -80,11 +84,79 @@ public sealed class AiTranslationServiceTests
 
         Assert.Single(results);
         Assert.Equal(5, results[0].Id);
-        Assert.Contains("targets", fake.LastUserPrompt);
-        Assert.Contains("第一个选项", fake.LastUserPrompt);
-        Assert.Contains("第二个分支", fake.LastUserPrompt);
-        Assert.Contains("alternative-branch", fake.LastUserPrompt);
+
+        using JsonDocument document = JsonDocument.Parse(fake.LastUserPrompt);
+        JsonElement root = document.RootElement;
+        Assert.Equal(
+            new[] { "targets", "entryContexts", "semanticContext" },
+            root.EnumerateObject().Select(property => property.Name));
+
+        JsonElement target = Assert.Single(root.GetProperty("targets").EnumerateArray());
+        Assert.Equal(5, target.GetProperty("id").GetInt32());
+        Assert.Equal("请做出选择", target.GetProperty("original").GetString());
+        Assert.Equal(new[] { "id", "original" },
+            target.EnumerateObject().Select(property => property.Name));
+
+        JsonElement entryContext = Assert.Single(root.GetProperty("entryContexts").EnumerateArray());
+        Assert.Equal(new[] { 5 }, entryContext.GetProperty("targetIds").EnumerateArray()
+            .Select(id => id.GetInt32()));
+        Assert.Equal("PRINTFORML 请做出选择", entryContext.GetProperty("text").GetString());
+
+        JsonElement[] semanticContexts = root.GetProperty("semanticContext")
+            .EnumerateArray().ToArray();
+        Assert.Equal(2, semanticContexts.Length);
+        Assert.Equal("same-group", semanticContexts[0].GetProperty("type").GetString());
+        Assert.Equal("menu", semanticContexts[0].GetProperty("groupType").GetString());
+        Assert.Equal(new[] { "第一个选项", "第一个选项" },
+            semanticContexts[0].GetProperty("texts").EnumerateArray()
+                .Select(text => text.GetString()));
+        Assert.Equal("alternative-branch", semanticContexts[1].GetProperty("type").GetString());
+        Assert.Equal("branch", semanticContexts[1].GetProperty("groupType").GetString());
+        Assert.Equal(new[] { "第二个分支" },
+            semanticContexts[1].GetProperty("texts").EnumerateArray()
+                .Select(text => text.GetString()));
+
+        Assert.DoesNotContain("文本ERB", fake.LastUserPrompt);
+        Assert.DoesNotContain("opaque_group_000001", fake.LastUserPrompt);
+        Assert.DoesNotContain("INTERNAL_FUNCTION_NAME", fake.LastUserPrompt);
+        Assert.DoesNotContain("menu_0001", fake.LastUserPrompt);
+        Assert.Contains("targetIds", fake.LastSystemPrompt);
         Assert.Contains("互斥", fake.LastSystemPrompt);
+    }
+
+    [Fact]
+    public async Task TranslateWithSemanticContextAsync_DeduplicatesSharedEntryContextAndOmitsEmptyContext()
+    {
+        var fake = new FakeChatClient(
+            """[
+              { "id": 4, "translation": "第四项" },
+              { "id": 3, "translation": "第三项" },
+              { "id": 2, "translation": "第二项" },
+              { "id": 1, "translation": "第一项" }
+            ]""");
+        var service = new AiTranslationService(fake);
+        AiTranslationRequest[] requests =
+        [
+            new(1, "文本1", "原文1", "共同场景"),
+            new(2, "文本2", "原文2", "共同场景"),
+            new(3, "文本3", "原文3", "原文3"),
+            new(4, "文本4", "原文4", "   ")
+        ];
+
+        IReadOnlyList<AiTranslationResult> results =
+            await service.TranslateWithSemanticContextAsync(CreateProfile(), requests, []);
+
+        Assert.Equal(new[] { 1, 2, 3, 4 }, results.Select(result => result.Id));
+        using JsonDocument document = JsonDocument.Parse(fake.LastUserPrompt);
+        JsonElement root = document.RootElement;
+
+        JsonElement entryContext = Assert.Single(root.GetProperty("entryContexts").EnumerateArray());
+        Assert.Equal(new[] { 1, 2 }, entryContext.GetProperty("targetIds").EnumerateArray()
+            .Select(id => id.GetInt32()));
+        Assert.Equal("共同场景", entryContext.GetProperty("text").GetString());
+        Assert.False(root.TryGetProperty("semanticContext", out _));
+        Assert.Equal(new[] { "targets", "entryContexts" },
+            root.EnumerateObject().Select(property => property.Name));
     }
 
     [Fact]

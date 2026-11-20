@@ -297,7 +297,7 @@ public sealed class AiModelDiscoveryServiceTests
         IReadOnlyList<AiProviderModel> models = AiModelDiscoveryService.ParseModelsResponse(json);
         AiProviderModel catalogModel = Assert.Single(models, model => model.Id == "catalog-model");
         Assert.Equal(262144, catalogModel.ContextLimit);
-        Assert.Equal(262144, catalogModel.InputLimit);
+        Assert.Null(catalogModel.InputLimit);
         Assert.Equal(32768, catalogModel.OutputLimit);
         Assert.Equal(true, catalogModel.ReasoningSupport);
         Assert.True(catalogModel.SupportsReasoning);

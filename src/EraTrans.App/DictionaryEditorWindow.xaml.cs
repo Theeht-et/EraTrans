@@ -591,9 +591,11 @@ public partial class DictionaryEditorWindow : Window
                 batches = CreateLegacyTranslationBatches(entries);
             }
 
+            int batchNumber = 0;
             foreach (ErbTranslationBatch workBatch in batches)
             {
                 cancellation.Token.ThrowIfCancellationRequested();
+                batchNumber++;
 
                 DictionaryEditorEntry[] batch = workBatch.Targets.ToArray();
                 AiTranslationRequest[] requests = batch
@@ -605,7 +607,7 @@ public partial class DictionaryEditorWindow : Window
                     .ToArray();
 
                 StatusTextBlock.Text =
-                    $"正在请求 AI 翻译：{completed}/{total}（本批 {batch.Length} 项，{(useSemanticGrouping ? "语义分组" : "旧方式")}）……";
+                    $"正在请求 AI 翻译：{completed}/{total}（第 {batchNumber}/{batches.Count} 批，本批 {batch.Length} 项、{workBatch.SemanticContextGroups.Count} 组上下文，{(useSemanticGrouping ? "语义分组" : "旧方式")}）……";
 
                 IReadOnlyList<AiTranslationResult> results =
                     useSemanticGrouping

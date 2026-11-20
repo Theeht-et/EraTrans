@@ -5,7 +5,7 @@ A lightweight Windows desktop tool for translating ERA games.
 ## Features
 
 - Extract and edit JSON dictionaries in a folder tree while preserving legacy ERA keys and unknown fields.
-- Store all generated files under one selected output directory: dictionaries in `字典/` and modified game-file copies in `游戏副本/`.
+- Store generated files in a subfolder named after the original game directory, keeping each game's dictionaries, AI context, and working copy separate.
 - Keep the original game directory read-only; operations first make a complete game copy, then modify only the copy.
 - Show source context for the selected dictionary entry. Re-extraction can backfill missing context fields without changing existing translations or custom dictionary fields.
 - Translate selected or pending dictionary entries through OpenAI-compatible Chat Completions APIs.
@@ -14,7 +14,7 @@ A lightweight Windows desktop tool for translating ERA games.
 - Encrypt saved API keys with Windows DPAPI for the current Windows user.
 - Keep AI output in the editor for review; dictionary files are only changed after the user saves.
 - Apply translations to a complete game working copy, including resources and files that do not need translation. The original game directory is not modified.
-- Configure the legacy parser options in the settings window, including encoding, variable filtering, duplicate merging, context output, auto-correction, extension matching, variable-name characters, and expression operators.
+- Configure parser options in the settings window, including encoding, variable filtering, duplicate merging, context output, auto-correction, extension matching, variable-name characters, and expression operators. Variable dictionary entries are suppressed by default and can be re-enabled in settings.
 
 ## Portable configuration
 
@@ -27,7 +27,7 @@ On first launch after upgrading from an earlier version, existing files in `%App
 
 The software folder must be writable by the current Windows user. For a portable setup, extract the downloaded artifact into a normal user-writable folder rather than `Program Files`.
 
-The parser settings window migrates the configurable options from the original ErbParserForTranslate `config.json`: file encoding, strong variable-name filtering, auto-open output folder, automatic variable correction, hiding English entries, merging duplicate entries, hiding variable entries, merging concatenated strings, writing context, target file extensions, variable-correction reference dictionaries, variable-name characters, and expression operators. Defaults match the original tool's first-run configuration. Advanced lists accept one item per line.
+The parser settings window migrates the configurable options from the original ErbParserForTranslate `config.json`: file encoding, strong variable-name filtering, auto-open output folder, automatic variable correction, hiding English entries, merging duplicate entries, hiding variable entries, merging concatenated strings, writing context, target file extensions, variable-correction reference dictionaries, variable-name characters, and expression operators. Defaults retain the legacy behavior except variable dictionary entries are now hidden by default. Older unversioned settings are upgraded once to this default; an explicit choice to show variables is preserved after settings are saved. Advanced lists accept one item per line.
 
 ## AI provider configuration
 
@@ -52,13 +52,23 @@ The package uses .NET single-file publishing and includes the .NET runtime, so a
 
 ## Output directory layout
 
-Choose one original game directory and one output directory in the app. EraTrans creates and uses the following folders inside the output directory:
+Choose one original game directory and one unified output directory in the app. EraTrans uses the final folder name of the original game directory to create an isolated output area:
+
+```text
+统一输出目录/
+└─ 原游戏文件夹名称/
+   ├─ 字典/
+   ├─ AI上下文/
+   └─ 游戏副本/
+```
 
 - `字典/` — extracted JSON dictionaries and user-edited translations. The existing JSON dictionary structure and keys are unchanged.
 - `AI上下文/` — separate ERB semantic-group metadata files generated during extraction and read only when semantic-group translation is enabled.
 - `游戏副本/` — a complete copy of the original game directory, including unrelated assets and empty folders. Existing copies are never overwritten.
 
-To rebuild a clean translated copy after changing translations, preserve any files you want to keep and remove or move the existing `游戏副本/` folder before applying translations again. The original game directory remains untouched.
+The main window previews these paths after both directories are selected. If an older unclassified `字典/`, `AI上下文/`, or `游戏副本/` exists directly under the unified output directory, EraTrans asks before moving it into the current game's folder. Only confirm the move when those old folders belong exclusively to the selected game; otherwise keep them in place and start a separate game folder. The original game directory remains untouched.
+
+To rebuild a clean translated copy after changing translations, preserve any files you want to keep and remove or move the current game's `游戏副本/` folder before applying translations again.
 
 ## Technology
 

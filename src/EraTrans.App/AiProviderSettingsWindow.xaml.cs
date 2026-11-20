@@ -114,6 +114,7 @@ public partial class AiProviderSettingsWindow : Window
 
     private void UpdateActiveProviderStatus()
     {
+        ProviderListBox.Items.Refresh();
         AiProviderProfile? active = _providers.FirstOrDefault(provider =>
             provider.IsReadyForTranslation &&
             string.Equals(provider.Id, _activeProviderId, StringComparison.Ordinal));
@@ -181,7 +182,6 @@ public partial class AiProviderSettingsWindow : Window
 
         // AiProviderProfile is intentionally a simple persistence model (not an
         // INotifyPropertyChanged view model), so refresh the left-hand summary.
-        ProviderListBox.Items.Refresh();
         UpdateActiveProviderStatus();
     }
 

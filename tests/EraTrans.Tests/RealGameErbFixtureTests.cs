@@ -213,7 +213,7 @@ public sealed class RealGameErbFixtureTests
         // the two menu choices and the IF/ELSE outcomes must reach the AI as
         // read-only semanticContext while only the selected choice is a target.
         var capturingClient = new CapturingChatClient(
-            $"""[{{ "id": {choiceTarget.Index}, "translation": "测试译文" }}]""");
+            $"""[{"id": {{choiceTarget.Index}}, "translation": "测试译文"}]""");
         var aiService = new AiTranslationService(capturingClient);
         await aiService.TranslateWithSemanticContextAsync(
             new AiProviderProfile

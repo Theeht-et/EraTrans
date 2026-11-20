@@ -128,12 +128,14 @@ public sealed class AiTranslationServiceTests
     public async Task TranslateWithSemanticContextAsync_DeduplicatesSharedEntryContextAndOmitsEmptyContext()
     {
         var fake = new FakeChatClient(
-            """[
+            """
+            [
               { "id": 4, "translation": "第四项" },
               { "id": 3, "translation": "第三项" },
               { "id": 2, "translation": "第二项" },
               { "id": 1, "translation": "第一项" }
-            ]""");
+            ]
+            """);
         var service = new AiTranslationService(fake);
         AiTranslationRequest[] requests =
         [

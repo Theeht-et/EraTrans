@@ -51,6 +51,7 @@ public sealed class AiModelCatalogEnrichmentService
 
         IReadOnlyList<string> providerIds = ResolveProviderIds(profile.BaseUrl, catalog);
         var globalMatches = new Dictionary<string, CatalogModel>(StringComparer.OrdinalIgnoreCase);
+        var ambiguousModelIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         if (providerIds.Count == 0)
         {
@@ -58,9 +59,14 @@ public sealed class AiModelCatalogEnrichmentService
             {
                 foreach (CatalogModel model in provider.Models.Values)
                 {
-                    if (globalMatches.ContainsKey(model.Id))
+                    if (ambiguousModelIds.Contains(model.Id))
                     {
-                        globalMatches.Remove(model.Id);
+                        continue;
+                    }
+
+                    if (globalMatches.Remove(model.Id))
+                    {
+                        ambiguousModelIds.Add(model.Id);
                     }
                     else
                     {

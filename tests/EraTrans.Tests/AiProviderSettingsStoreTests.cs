@@ -33,7 +33,16 @@ public sealed class AiProviderSettingsPortablePersistenceTests
                             DisplayName = "GPT-4o mini",
                             GroupName = "OpenAI",
                             OwnedBy = "openai",
-                            Created = 1720000000
+                            Created = 1720000000,
+                            Family = "gpt-4o",
+                            Status = "active",
+                            SupportsTools = true,
+                            SupportsStructuredOutput = true,
+                            InputModalities = ["text", "image"],
+                            OutputModalities = ["text"],
+                            ContextLimit = 128000,
+                            InputLimit = 120000,
+                            OutputLimit = 16000
                         },
                         new AiProviderModel
                         {
@@ -67,6 +76,15 @@ public sealed class AiProviderSettingsPortablePersistenceTests
                 Assert.Equal("OpenAI", model.GroupName);
                 Assert.Equal("openai", model.OwnedBy);
                 Assert.Equal(1720000000, model.Created);
+                Assert.Equal("gpt-4o", model.Family);
+                Assert.Equal("active", model.Status);
+                Assert.True(model.SupportsTools);
+                Assert.True(model.SupportsStructuredOutput);
+                Assert.Equal(new[] { "text", "image" }, model.InputModalities);
+                Assert.Equal(new[] { "text" }, model.OutputModalities);
+                Assert.Equal(128000, model.ContextLimit);
+                Assert.Equal(120000, model.InputLimit);
+                Assert.Equal(16000, model.OutputLimit);
                 Assert.True(model.IsChatModel);
             },
             model =>

@@ -204,6 +204,56 @@ public sealed class ErbTranslationGroupingServiceTests
     }
 
     [Fact]
+    public void TryWriteOrUpdate_SplitsGroupsWhenControlScopeOrBranchLabelChanges()
+    {
+        using var temporary = new TemporaryDirectory();
+        string dictionaryDirectory = Path.Combine(temporary.Path, "字典");
+        string dictionaryPath = Path.Combine(dictionaryDirectory, "ERB", "menu.json");
+        string candidatePath = Path.Combine(temporary.Path, "candidate.json");
+        string gameDirectory = Path.Combine(temporary.Path, "Game");
+        string sourcePath = WriteSource(gameDirectory, "ERB/menu.erb",
+            "@MENU\\nPRINTFORML 菜单提示\\nPRINTFORML 第一项\\nPRINTFORML 第二项");
+
+        ErbTranslationSourceEntry[] sourceEntries =
+        [
+            Source("文本ERB\\menu00000", "菜单提示", 0, 2, "MENU", "flow:0", "menu_0001", "MENU_PROMPT", null),
+            Source("文本ERB\\menu00001", "第一项", 1, 3, "MENU", "flow:0", "menu_0001", "CASE 0", null),
+            Source("文本ERB\\menu00002", "第二项", 2, 4, "MENU", "flow:0", "menu_0002", "CASE 0", null)
+        ];
+        WriteDictionary(dictionaryPath, sourceEntries);
+        WriteDictionary(candidatePath, sourceEntries);
+
+        var service = new ErbTranslationGroupingService();
+        Assert.True(service.TryWriteOrUpdate(
+            dictionaryDirectory,
+            dictionaryPath,
+            candidatePath,
+            sourcePath,
+            ErbTranslationGroupingService.ComputeSourceFingerprint(sourcePath),
+            "ERB/menu.erb",
+            sourceEntries,
+            [],
+            out _,
+            out string? writeWarning), writeWarning);
+
+        DictionaryEditorDocument document = new DictionaryEditorService().Load(dictionaryPath);
+        Assert.True(service.TryLoad(
+            dictionaryDirectory,
+            dictionaryPath,
+            document.Entries.ToArray(),
+            gameDirectory,
+            out ErbTranslationGroupingIndex? index,
+            out string? loadReason), loadReason);
+
+        Assert.NotNull(index);
+        Assert.Equal(3, index!.Groups.Count);
+        Assert.All(index.Groups, group => Assert.Single(group.EntryKeys));
+        Assert.Equal(
+            new[] { "MENU_PROMPT", "CASE 0", "CASE 0" },
+            index.Groups.Select(group => group.BranchLabel));
+    }
+
+    [Fact]
     public void TryLoad_AcceptsErbSourceFileDirectlyUnderGameRoot()
     {
         using var temporary = new TemporaryDirectory();

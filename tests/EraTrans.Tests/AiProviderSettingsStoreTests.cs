@@ -37,7 +37,21 @@ public sealed class AiProviderSettingsPortablePersistenceTests
                             Family = "gpt-4o",
                             Status = "active",
                             SupportsTools = true,
+                            SupportsReasoning = true,
                             SupportsStructuredOutput = true,
+                            SupportsAttachments = true,
+                            SupportsTemperature = true,
+                            OpenWeights = true,
+                            Knowledge = "2024-10",
+                            ReleaseDate = "2024-07-18",
+                            LastUpdated = "2025-01-01",
+                            InputCostPerMillion = 2.5,
+                            OutputCostPerMillion = 10.0,
+                            ReasoningCostPerMillion = 12.0,
+                            CacheReadCostPerMillion = 0.25,
+                            CacheWriteCostPerMillion = 3.0,
+                            InputAudioCostPerMillion = 40.0,
+                            OutputAudioCostPerMillion = 80.0,
                             InputModalities = ["text", "image"],
                             OutputModalities = ["text"],
                             ContextLimit = 128000,
@@ -79,7 +93,21 @@ public sealed class AiProviderSettingsPortablePersistenceTests
                 Assert.Equal("gpt-4o", model.Family);
                 Assert.Equal("active", model.Status);
                 Assert.True(model.SupportsTools);
+                Assert.True(model.SupportsReasoning);
                 Assert.True(model.SupportsStructuredOutput);
+                Assert.True(model.SupportsAttachments);
+                Assert.True(model.SupportsTemperature);
+                Assert.True(model.OpenWeights);
+                Assert.Equal("2024-10", model.Knowledge);
+                Assert.Equal("2024-07-18", model.ReleaseDate);
+                Assert.Equal("2025-01-01", model.LastUpdated);
+                Assert.Equal(2.5, model.InputCostPerMillion);
+                Assert.Equal(10.0, model.OutputCostPerMillion);
+                Assert.Equal(12.0, model.ReasoningCostPerMillion);
+                Assert.Equal(0.25, model.CacheReadCostPerMillion);
+                Assert.Equal(3.0, model.CacheWriteCostPerMillion);
+                Assert.Equal(40.0, model.InputAudioCostPerMillion);
+                Assert.Equal(80.0, model.OutputAudioCostPerMillion);
                 Assert.Equal(new[] { "text", "image" }, model.InputModalities);
                 Assert.Equal(new[] { "text" }, model.OutputModalities);
                 Assert.Equal(128000, model.ContextLimit);

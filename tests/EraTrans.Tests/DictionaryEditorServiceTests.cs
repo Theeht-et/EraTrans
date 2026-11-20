@@ -118,6 +118,43 @@ public sealed class DictionaryEditorServiceTests
         Assert.Equal("resource context", (string?)saved["context"]);
     }
 
+
+    [Fact]
+    public void LoadAndSave_PreservesLongMultilineTranslationExactly()
+    {
+        string root = CreateTempDirectory();
+        string path = Path.Combine(root, "long-translation.json");
+        Write(path,
+            """
+            [
+              {
+                "key": "文本ERB\\LONG00001",
+                "original": "长文本原文",
+                "translation": "",
+                "stage": 0,
+                "context": "上下文",
+                "customField": "preserve"
+              }
+            ]
+            """);
+
+        var document = new DictionaryEditorService().Load(path);
+        DictionaryEditorEntry entry = Assert.Single(document.Entries);
+        string longTranslation = string.Join(
+            Environment.NewLine + Environment.NewLine,
+            Enumerable.Range(1, 240).Select(index =>
+                $"第 {index} 段：這是一段用于验证长篇译文编辑和保存完整性的测试文本，必须保留所有字符、标点与换行。{new string('译', 80)}"));
+
+        entry.Translation = longTranslation;
+        document.Save();
+
+        JObject saved = Assert.IsType<JObject>(Assert.Single(JArray.Parse(File.ReadAllText(path))));
+        Assert.Equal(longTranslation, (string?)saved["translation"]);
+        Assert.Equal("长文本原文", (string?)saved["original"]);
+        Assert.Equal("preserve", (string?)saved["customField"]);
+        Assert.False(document.IsDirty);
+    }
+
     [Fact]
     public void Load_EntriesWithStandardStagesShareReadOnlyStageOptions()
     {

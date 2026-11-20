@@ -324,6 +324,36 @@ public partial class DictionaryEditorWindow : Window
         UpdateContextPreview();
     }
 
+    private void EditTranslationButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_isTranslating ||
+            sender is not FrameworkElement { DataContext: DictionaryEditorEntry entry } ||
+            !entry.IsEditable)
+        {
+            return;
+        }
+
+        if (!EntriesDataGrid.CommitEdit(DataGridEditingUnit.Cell, true) ||
+            !EntriesDataGrid.CommitEdit(DataGridEditingUnit.Row, true))
+        {
+            return;
+        }
+
+        var dialog = new TranslationEditWindow(entry.Key, entry.Original, entry.Translation)
+        {
+            Owner = this
+        };
+
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        entry.Translation = dialog.EditedTranslation;
+        StatusTextBlock.Text = "译文已更新到编辑器；保存当前字典后才会写入文件。";
+        UpdateDocumentStatus();
+    }
+
     private void UpdateContextPreview()
     {
         // CurrentCell tracks the entry the user is actively viewing. SelectedCells can

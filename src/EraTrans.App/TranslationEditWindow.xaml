@@ -1,0 +1,123 @@
+<Window x:Class="EraTrans.App.TranslationEditWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="编辑译文"
+        Width="980"
+        Height="780"
+        MinWidth="680"
+        MinHeight="540"
+        ResizeMode="CanResize"
+        WindowStartupLocation="CenterOwner"
+        Background="#F5F6F8"
+        PreviewKeyDown="Window_PreviewKeyDown">
+    <Grid Margin="22">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="116" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Margin="0,0,0,14">
+            <TextBlock Text="编辑译文"
+                       FontSize="22"
+                       FontWeight="SemiBold"
+                       Foreground="#20242A" />
+            <TextBlock Margin="0,5,0,0"
+                       Text="在此查看和编辑完整译文。确认后只回填当前编辑器，仍需保存字典文件才会写入磁盘。"
+                       TextWrapping="Wrap"
+                       FontSize="12"
+                       Foreground="#68717D" />
+        </StackPanel>
+
+        <Border Grid.Row="1"
+                Padding="10,8"
+                Margin="0,0,0,12"
+                Background="White"
+                BorderBrush="#E3E6EA"
+                BorderThickness="1"
+                CornerRadius="6">
+            <TextBlock x:Name="KeyTextBlock"
+                       FontSize="12"
+                       Foreground="#59636F"
+                       TextWrapping="Wrap" />
+        </Border>
+
+        <TextBlock Grid.Row="2"
+                   Text="原文（只读）"
+                   Margin="0,0,0,6"
+                   FontSize="13"
+                   FontWeight="SemiBold"
+                   Foreground="#39414A" />
+        <TextBox x:Name="OriginalTextBox"
+                 Grid.Row="3"
+                 IsReadOnly="True"
+                 Padding="10"
+                 Background="#FAFBFC"
+                 BorderBrush="#E3E6EA"
+                 BorderThickness="1"
+                 TextWrapping="Wrap"
+                 AcceptsReturn="True"
+                 VerticalScrollBarVisibility="Auto"
+                 HorizontalScrollBarVisibility="Disabled"
+                 FontSize="13" />
+
+        <Grid Grid.Row="4" Margin="0,14,0,6">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="译文（可编辑）"
+                       VerticalAlignment="Center"
+                       FontSize="13"
+                       FontWeight="SemiBold"
+                       Foreground="#39414A" />
+            <TextBlock Grid.Column="1"
+                       Text="支持多行、长文本和滚动"
+                       VerticalAlignment="Center"
+                       FontSize="11"
+                       Foreground="#87909B" />
+        </Grid>
+
+        <TextBox x:Name="TranslationTextBox"
+                 Grid.Row="5"
+                 Padding="12"
+                 Background="White"
+                 BorderBrush="#D5DAE0"
+                 BorderThickness="1"
+                 TextWrapping="Wrap"
+                 AcceptsReturn="True"
+                 AcceptsTab="True"
+                 VerticalScrollBarVisibility="Auto"
+                 HorizontalScrollBarVisibility="Disabled"
+                 FontSize="14"
+                 SpellCheck.IsEnabled="False" />
+
+        <Grid Grid.Row="6" Margin="0,14,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="Ctrl + Enter 确认 · Esc 取消"
+                       VerticalAlignment="Center"
+                       Foreground="#87909B"
+                       FontSize="11" />
+            <StackPanel Grid.Column="1"
+                        Orientation="Horizontal">
+                <Button Content="确定"
+                        Width="88"
+                        Height="36"
+                        Margin="0,0,8,0"
+                        IsDefault="True"
+                        Click="Confirm_Click" />
+                <Button Content="取消"
+                        Width="88"
+                        Height="36"
+                        IsCancel="True" />
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Window>

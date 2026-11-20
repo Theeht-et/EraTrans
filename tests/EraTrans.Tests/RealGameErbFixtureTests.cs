@@ -18,7 +18,7 @@ public sealed class RealGameErbFixtureTests
         };
 
     [Fact]
-    public void Extract_CompleteJapaneseRealGameFiles_GeneratesMeaningfulSemanticContexts()
+    public async Task Extract_CompleteJapaneseRealGameFiles_GeneratesMeaningfulSemanticContexts()
     {
         string gameDirectory = Path.Combine(
             AppContext.BaseDirectory,

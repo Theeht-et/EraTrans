@@ -913,6 +913,11 @@ public sealed class ErbTranslationGroupingService
             return "menu";
         }
 
+        if (entries.All(entry => entry.OutputType == "HTML_ACCUMULATOR"))
+        {
+            return "html";
+        }
+
         if (entries.All(entry => IsConditionOutput(entry.OutputType)))
         {
             return "condition";

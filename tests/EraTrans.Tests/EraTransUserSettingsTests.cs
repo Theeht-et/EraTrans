@@ -22,7 +22,6 @@ public sealed class EraTransUserSettingsTests
     {
         EraTransUserSettings settings = EraTransUserSettings.CreateDefault();
 
-        Assert.Equal(EraTransUserSettings.CurrentSettingsVersion, settings.SettingsVersion);
         Assert.Equal("utf8-bom", settings.FileEncodingId);
         Assert.True(settings.ForceFilterVariableNames);
         Assert.True(settings.AutoOpenFolder);
@@ -48,7 +47,7 @@ public sealed class EraTransUserSettingsTests
     }
 
     [Fact]
-    public void Store_SaveAndLoad_RoundTripsAllLegacySettings()
+    public void Store_SaveAndLoad_RoundTripsCurrentParserSettings()
     {
         using var temporary = new TemporaryDirectory();
         var store = new EraTransUserSettingsStore(Path.Combine(temporary.Path, "settings.json"));
@@ -59,7 +58,7 @@ public sealed class EraTransUserSettingsTests
         settings.EnableVariableAutoCorrection = false;
         settings.HideEnglishText = false;
         settings.MergeDuplicateEntries = true;
-        settings.HideVariableEntries = true;
+        settings.HideVariableEntries = false;
         settings.MergeConcatenatedStrings = false;
         settings.WriteContext = false;
         settings.EnableErbSemanticGroupingTranslation = true;
@@ -77,7 +76,7 @@ public sealed class EraTransUserSettingsTests
         Assert.Equal(settings.EnableVariableAutoCorrection, loaded.EnableVariableAutoCorrection);
         Assert.Equal(settings.HideEnglishText, loaded.HideEnglishText);
         Assert.Equal(settings.MergeDuplicateEntries, loaded.MergeDuplicateEntries);
-        Assert.Equal(settings.HideVariableEntries, loaded.HideVariableEntries);
+        Assert.False(loaded.HideVariableEntries);
         Assert.Equal(settings.MergeConcatenatedStrings, loaded.MergeConcatenatedStrings);
         Assert.Equal(settings.WriteContext, loaded.WriteContext);
         Assert.Equal(settings.EnableErbSemanticGroupingTranslation, loaded.EnableErbSemanticGroupingTranslation);
@@ -89,7 +88,7 @@ public sealed class EraTransUserSettingsTests
     }
 
     [Fact]
-    public void Store_LoadSettingsWithoutSemanticSwitch_DefaultsToLegacyTranslationMode()
+    public void Store_LoadPartialSettings_UsesCurrentDefaults()
     {
         using var temporary = new TemporaryDirectory();
         string path = Path.Combine(temporary.Path, "settings.json");
@@ -99,50 +98,6 @@ public sealed class EraTransUserSettingsTests
 
         Assert.False(settings.EnableErbSemanticGroupingTranslation);
         Assert.True(settings.HideVariableEntries);
-    }
-
-    [Fact]
-    public void Store_UpgradesUnversionedSettingsToHideVariableEntries_AndKeepsLaterUserChoice()
-    {
-        using var temporary = new TemporaryDirectory();
-        string path = Path.Combine(temporary.Path, "settings.json");
-        File.WriteAllText(path,
-            """{ "FileEncodingId": "utf8", "HideVariableEntries": false }""");
-        var store = new EraTransUserSettingsStore(path);
-
-        EraTransUserSettings upgraded = store.Load();
-
-        Assert.True(upgraded.HideVariableEntries);
-        Assert.Equal(EraTransUserSettings.CurrentSettingsVersion, upgraded.SettingsVersion);
-
-        upgraded.HideVariableEntries = false;
-        store.Save(upgraded);
-
-        EraTransUserSettings reloaded = store.Load();
-        Assert.False(reloaded.HideVariableEntries);
-        Assert.Equal(EraTransUserSettings.CurrentSettingsVersion, reloaded.SettingsVersion);
-    }
-
-    [Fact]
-    public void Store_LoadLegacyAppDataSettings_CopiesSettingsBesideExecutableAndKeepsSource()
-    {
-        using var temporary = new TemporaryDirectory();
-        string legacyPath = Path.Combine(temporary.Path, "AppData", "EraTrans", "settings.json");
-        string portablePath = Path.Combine(temporary.Path, "Software", "Config", "settings.json");
-        var legacyStore = new EraTransUserSettingsStore(legacyPath);
-        var settings = EraTransUserSettings.CreateDefault();
-        settings.FileEncodingId = "936";
-        settings.HideEnglishText = false;
-        legacyStore.Save(settings);
-        byte[] originalLegacyFile = File.ReadAllBytes(legacyPath);
-
-        var portableStore = new EraTransUserSettingsStore(portablePath, legacyPath);
-        EraTransUserSettings loaded = portableStore.Load();
-
-        Assert.Equal("936", loaded.FileEncodingId);
-        Assert.False(loaded.HideEnglishText);
-        Assert.True(File.Exists(portablePath));
-        Assert.Equal(originalLegacyFile, File.ReadAllBytes(legacyPath));
     }
 
     [Fact]

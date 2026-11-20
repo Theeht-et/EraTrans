@@ -12,6 +12,7 @@ public sealed class AiProviderProfile
     public string BaseUrl { get; set; } = "";
     public string Model { get; set; } = "";
     public string ApiKey { get; set; } = "";
+    public List<AiProviderModel> AvailableModels { get; set; } = [];
 }
 
 public sealed class AiProviderSettings
@@ -65,6 +66,15 @@ public static class AiProviderProfileValidator
             Fragment = ""
         };
         return builder.Uri.ToString().TrimEnd('/');
+    }
+
+    public static void ValidateForModelDiscovery(AiProviderProfile profile)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+        if (string.IsNullOrWhiteSpace(profile.Name))
+            throw new InvalidOperationException("请填写服务商名称。");
+
+        profile.BaseUrl = NormalizeBaseUrl(profile.BaseUrl);
     }
 
     public static void Validate(AiProviderProfile profile)
@@ -136,7 +146,24 @@ public sealed class AiProviderSettingsStore
                         Name = item.Name,
                         BaseUrl = item.BaseUrl,
                         Model = item.Model,
-                        ApiKey = Encoding.UTF8.GetString(keyBytes)
+                        ApiKey = Encoding.UTF8.GetString(keyBytes),
+                        AvailableModels = (item.Models ?? [])
+                            .Where(model => !string.IsNullOrWhiteSpace(model.Id))
+                            .Select(model => new AiProviderModel
+                            {
+                                Id = model.Id,
+                                DisplayName = string.IsNullOrWhiteSpace(model.DisplayName)
+                                    ? model.Id
+                                    : model.DisplayName,
+                                GroupName = string.IsNullOrWhiteSpace(model.GroupName)
+                                    ? "其他模型"
+                                    : model.GroupName,
+                                OwnedBy = model.OwnedBy,
+                                Created = model.Created,
+                                IsEmbedding = model.IsEmbedding,
+                                IsRerank = model.IsRerank
+                            })
+                            .ToList()
                     });
                 }
                 finally
@@ -189,7 +216,20 @@ public sealed class AiProviderSettingsStore
                     Name = profile.Name,
                     BaseUrl = profile.BaseUrl,
                     Model = profile.Model,
-                    ProtectedApiKey = Convert.ToBase64String(protectedKey)
+                    ProtectedApiKey = Convert.ToBase64String(protectedKey),
+                    Models = (profile.AvailableModels ?? [])
+                        .Where(model => !string.IsNullOrWhiteSpace(model.Id))
+                        .Select(model => new StoredModel
+                        {
+                            Id = model.Id,
+                            DisplayName = model.DisplayName,
+                            GroupName = model.GroupName,
+                            OwnedBy = model.OwnedBy,
+                            Created = model.Created,
+                            IsEmbedding = model.IsEmbedding,
+                            IsRerank = model.IsRerank
+                        })
+                        .ToList()
                 };
             }).ToList()
         };
@@ -245,5 +285,17 @@ public sealed class AiProviderSettingsStore
         public string BaseUrl { get; set; } = "";
         public string Model { get; set; } = "";
         public string ProtectedApiKey { get; set; } = "";
+        public List<StoredModel>? Models { get; set; } = [];
+    }
+
+    private sealed class StoredModel
+    {
+        public string Id { get; set; } = "";
+        public string DisplayName { get; set; } = "";
+        public string GroupName { get; set; } = "其他模型";
+        public string? OwnedBy { get; set; }
+        public long? Created { get; set; }
+        public bool IsEmbedding { get; set; }
+        public bool IsRerank { get; set; }
     }
 }

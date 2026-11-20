@@ -161,7 +161,17 @@ public sealed class AiProviderSettingsStore
                                 OwnedBy = model.OwnedBy,
                                 Created = model.Created,
                                 IsEmbedding = model.IsEmbedding,
-                                IsRerank = model.IsRerank
+                                IsRerank = model.IsRerank,
+                                Family = model.Family,
+                                Status = model.Status,
+                                SupportsTools = model.SupportsTools,
+                                SupportsReasoning = model.SupportsReasoning,
+                                SupportsStructuredOutput = model.SupportsStructuredOutput,
+                                InputModalities = [.. model.InputModalities],
+                                OutputModalities = [.. model.OutputModalities],
+                                ContextLimit = model.ContextLimit,
+                                InputLimit = model.InputLimit,
+                                OutputLimit = model.OutputLimit
                             })
                             .ToList()
                     });
@@ -227,7 +237,17 @@ public sealed class AiProviderSettingsStore
                             OwnedBy = model.OwnedBy,
                             Created = model.Created,
                             IsEmbedding = model.IsEmbedding,
-                            IsRerank = model.IsRerank
+                            IsRerank = model.IsRerank,
+                            Family = model.Family,
+                            Status = model.Status,
+                            SupportsTools = model.SupportsTools,
+                            SupportsReasoning = model.SupportsReasoning,
+                            SupportsStructuredOutput = model.SupportsStructuredOutput,
+                            InputModalities = [.. model.InputModalities],
+                            OutputModalities = [.. model.OutputModalities],
+                            ContextLimit = model.ContextLimit,
+                            InputLimit = model.InputLimit,
+                            OutputLimit = model.OutputLimit
                         })
                         .ToList()
                 };
@@ -297,5 +317,15 @@ public sealed class AiProviderSettingsStore
         public long? Created { get; set; }
         public bool IsEmbedding { get; set; }
         public bool IsRerank { get; set; }
+        public string? Family { get; set; }
+        public string? Status { get; set; }
+        public bool SupportsTools { get; set; }
+        public bool SupportsReasoning { get; set; }
+        public bool SupportsStructuredOutput { get; set; }
+        public List<string> InputModalities { get; set; } = [];
+        public List<string> OutputModalities { get; set; } = [];
+        public int? ContextLimit { get; set; }
+        public int? InputLimit { get; set; }
+        public int? OutputLimit { get; set; }
     }
 }

@@ -67,7 +67,7 @@ public sealed class DictionaryExtractorTests
         Directory.CreateDirectory(Path.Combine(game, "resources"));
         Directory.CreateDirectory(Path.Combine(game, "XML"));
 
-        Write(game, "CSV/items.csv", "ID,物品甲,123,物品乙\n");
+        Write(game, "CSV/items.csv", "ID,物品甲,123,物品乙\n; 注释行应被跳过\n");
         Write(game, "ERB/combined.erb", "PRINTFORM ERB主文本\n");
         Write(game, "ERB/combined.erh", "PRINTFORM ERH伴随文本\n");
         Write(game, "ERB/standalone.erh", "PRINTFORM 独立ERH文本\n");
@@ -381,6 +381,45 @@ public sealed class DictionaryExtractorTests
 
         var entries = JArray.Parse(File.ReadAllText(Path.Combine(output, "CSV", "items.json")));
         Assert.Equal("商品名", (string?)entries[0]?["original"]);
+    }
+
+
+    [Fact]
+    public void Extract_ErbNullableBoundariesPreserveDeclarationAndCompoundAssignmentEntries()
+    {
+        string root = CreateTempDirectory();
+        string game = Path.Combine(root, "Game");
+        string output = Path.Combine(root, "Output");
+        Write(game, "ERB/nullable-boundaries.erb", string.Join(Environment.NewLine,
+        [
+            "@関数名,引数名=定義パラメータ",
+            "#DIM 変数名 = 10",
+            "RESULTS:0 += \"追加テキスト\""
+        ]));
+
+        new DictionaryExtractor().Extract(
+            game,
+            output,
+            options: new EraParserOptions
+            {
+                HideVariableEntries = false,
+                HideEnglishText = false
+            });
+
+        JArray entries = JArray.Parse(File.ReadAllText(
+            Path.Combine(output, "ERB", "nullable-boundaries.json")));
+
+        string[] originals = entries
+            .Select(entry => (string?)entry!["original"] ?? string.Empty)
+            .ToArray();
+
+        Assert.Contains("関数名", originals);
+        Assert.Contains("引数名", originals);
+        Assert.Contains("変数名", originals);
+        Assert.Contains(originals, original =>
+            original.Contains("定義パラメータ", StringComparison.Ordinal));
+        Assert.Contains(originals, original =>
+            original.Contains("追加テキスト", StringComparison.Ordinal));
     }
 
     [Fact]

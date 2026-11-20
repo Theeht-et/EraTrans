@@ -367,7 +367,6 @@ public sealed class DictionaryEditorDocument : INotifyPropertyChanged
 
         _isDirty = true;
         OnPropertyChanged(nameof(IsDirty));
-        OnPropertyChanged(nameof(SummaryText));
     }
 
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null)

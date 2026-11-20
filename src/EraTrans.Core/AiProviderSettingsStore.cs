@@ -24,6 +24,14 @@ public sealed class AiProviderProfile
     [JsonIgnore]
     public bool RequiresEndpointReview { get; set; }
     public List<AiProviderModel> AvailableModels { get; set; } = [];
+
+    [JsonIgnore]
+    public bool IsReadyForTranslation =>
+        IsEnabled &&
+        !RequiresEndpointReview &&
+        !string.IsNullOrWhiteSpace(BaseUrl) &&
+        !string.IsNullOrWhiteSpace(Model) &&
+        !string.IsNullOrWhiteSpace(ApiKey);
 }
 
 public sealed class AiProviderSettings
@@ -33,65 +41,64 @@ public sealed class AiProviderSettings
 
     public AiProviderProfile? ActiveProvider =>
         Providers.FirstOrDefault(provider =>
-            provider.IsEnabled && provider.Id == ActiveProviderId) ??
-        Providers.FirstOrDefault(provider => provider.IsEnabled);
+            provider.IsReadyForTranslation &&
+            string.Equals(provider.Id, ActiveProviderId, StringComparison.Ordinal)) ??
+        Providers.FirstOrDefault(provider => provider.IsReadyForTranslation);
 
     /// <summary>
-    /// Restores the application-owned provider list without replacing user credentials.
-    /// User-created configurations stay ahead of built-in providers in the UI.
+    /// Adds missing application-owned profiles while preserving the user's saved
+    /// provider order and credentials. Legacy custom entries are never promoted
+    /// to built-ins based only on their name or endpoint.
     /// </summary>
     public void EnsureBuiltInProviders()
     {
-        var remaining = Providers.ToList();
-        var builtIns = new List<AiProviderProfile>();
+        var seenBuiltIns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (AiProviderProfile provider in Providers)
+        {
+            string canonicalName = CanonicalBuiltInName(provider.Name);
+            AiProviderPreset? preset = provider.IsBuiltIn
+                ? AiProviderPresets.All.FirstOrDefault(item =>
+                    string.Equals(item.Name, canonicalName, StringComparison.OrdinalIgnoreCase))
+                : null;
+
+            if (preset is not null && seenBuiltIns.Add(preset.Name))
+            {
+                provider.Name = preset.Name;
+                if (string.IsNullOrWhiteSpace(provider.BaseUrl))
+                    provider.BaseUrl = preset.BaseUrl;
+                provider.IsBuiltIn = true;
+                continue;
+            }
+
+            provider.IsBuiltIn = false;
+            if (AiProviderPresets.All.Any(item =>
+                    string.Equals(item.Name, canonicalName, StringComparison.OrdinalIgnoreCase)))
+            {
+                provider.Name = canonicalName + " 自定义";
+            }
+        }
 
         foreach (AiProviderPreset preset in AiProviderPresets.All)
         {
-            int matchIndex = remaining.FindIndex(provider =>
-                provider.IsBuiltIn &&
-                string.Equals(
-                    CanonicalBuiltInName(provider.Name),
-                    preset.Name,
-                    StringComparison.OrdinalIgnoreCase));
-            AiProviderProfile profile;
-            if (matchIndex >= 0)
+            if (seenBuiltIns.Add(preset.Name))
             {
-                profile = remaining[matchIndex];
-                remaining.RemoveAt(matchIndex);
-                profile.Name = preset.Name;
-                profile.BaseUrl = string.IsNullOrWhiteSpace(profile.BaseUrl)
-                    ? preset.BaseUrl
-                    : profile.BaseUrl;
-            }
-            else
-            {
-                profile = new AiProviderProfile
+                Providers.Add(new AiProviderProfile
                 {
                     Name = preset.Name,
                     BaseUrl = preset.BaseUrl,
                     Protocol = AiProviderProtocol.OpenAiCompatible,
-                    IsEnabled = true
-                };
-            }
-
-            profile.IsBuiltIn = true;
-            builtIns.Add(profile);
-        }
-
-        foreach (AiProviderProfile provider in remaining)
-        {
-            provider.IsBuiltIn = false;
-            string canonical = CanonicalBuiltInName(provider.Name);
-            if (AiProviderPresets.All.Any(preset =>
-                    string.Equals(preset.Name, canonical, StringComparison.OrdinalIgnoreCase)))
-            {
-                provider.Name = canonical + " 自定义";
+                    IsEnabled = true,
+                    IsBuiltIn = true
+                });
             }
         }
 
-        Providers = remaining.Concat(builtIns).ToList();
-        if (ActiveProvider is null)
-            ActiveProviderId = Providers.FirstOrDefault(provider => provider.IsEnabled)?.Id;
+        AiProviderProfile? active = Providers.FirstOrDefault(provider =>
+                provider.IsReadyForTranslation &&
+                string.Equals(provider.Id, ActiveProviderId, StringComparison.Ordinal)) ??
+            Providers.FirstOrDefault(provider => provider.IsReadyForTranslation);
+        ActiveProviderId = active?.Id;
     }
 
     private static string CanonicalBuiltInName(string name) =>
@@ -218,13 +225,26 @@ public sealed class AiProviderSettingsStore
             StoredSettings stored = JsonSerializer.Deserialize<StoredSettings>(json, JsonOptions)
                 ?? throw new InvalidDataException("AI 服务商配置文件为空或格式无效。");
 
+            if (stored.Providers is null)
+                throw new InvalidDataException("AI 服务商配置缺少 Providers 列表。");
+
             var settings = new AiProviderSettings
             {
                 ActiveProviderId = stored.ActiveProviderId
             };
+            var providerIds = new HashSet<string>(StringComparer.Ordinal);
 
             foreach (StoredProvider item in stored.Providers)
             {
+                if (item is null ||
+                    string.IsNullOrWhiteSpace(item.Id) ||
+                    string.IsNullOrWhiteSpace(item.Name))
+                {
+                    throw new InvalidDataException("AI 服务商配置中存在缺少 ID 或名称的项目。");
+                }
+                if (!providerIds.Add(item.Id))
+                    throw new InvalidDataException($"AI 服务商配置包含重复 ID：{item.Id}。");
+
                 byte[] keyBytes = string.IsNullOrEmpty(item.ProtectedApiKey)
                     ? []
                     : ProtectedData.Unprotect(
@@ -237,15 +257,15 @@ public sealed class AiProviderSettingsStore
                     {
                         Id = item.Id,
                         Name = item.Name,
-                        BaseUrl = item.BaseUrl,
-                        Model = item.Model,
+                        BaseUrl = item.BaseUrl ?? "",
+                        Model = item.Model ?? "",
                         ApiKey = Encoding.UTF8.GetString(keyBytes),
                         Protocol = AiProviderProtocol.OpenAiCompatible,
                         IsEnabled = item.IsEnabled,
                         IsBuiltIn = item.IsBuiltIn,
                         RequiresEndpointReview = item.Protocol != (int)AiProviderProtocol.OpenAiCompatible,
                         AvailableModels = (item.Models ?? [])
-                            .Where(model => !string.IsNullOrWhiteSpace(model.Id))
+                            .Where(model => model is not null && !string.IsNullOrWhiteSpace(model.Id))
                             .Select(model => new AiProviderModel
                             {
                                 Id = model.Id,
@@ -306,6 +326,17 @@ public sealed class AiProviderSettingsStore
     public void Save(AiProviderSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
+        if (settings.Providers is null)
+            throw new InvalidDataException("AI 服务商列表不能为 null。");
+
+        var providerIds = new HashSet<string>(StringComparer.Ordinal);
+        foreach (AiProviderProfile profile in settings.Providers)
+        {
+            if (profile is null || string.IsNullOrWhiteSpace(profile.Id))
+                throw new InvalidDataException("AI 服务商配置包含无效项目或空 ID。");
+            if (!providerIds.Add(profile.Id))
+                throw new InvalidDataException($"AI 服务商配置包含重复 ID：{profile.Id}。");
+        }
 
         string directory = Path.GetDirectoryName(_filePath)
             ?? throw new InvalidOperationException("AI 配置文件路径无效。");
@@ -317,7 +348,7 @@ public sealed class AiProviderSettingsStore
             Providers = settings.Providers.Select(profile =>
             {
                 AiProviderProfileValidator.ValidateForStorage(profile);
-                byte[] keyBytes = Encoding.UTF8.GetBytes(profile.ApiKey);
+                byte[] keyBytes = Encoding.UTF8.GetBytes(profile.ApiKey ?? "");
                 byte[] protectedKey = [];
                 try
                 {

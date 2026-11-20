@@ -1,0 +1,40 @@
+; EraTrans fixture: curated source excerpt, not a complete upstream file.
+; Source: eraNAS / ERB/TRANSLATION/OMOGATARI/ITEM/Item Modding.ERB
+; Upstream commit: e2f0c2c0c104ecfbe0a07ad804a0c2db3d7305e5
+; Excerpt retained for parser coverage; see the fixture README and LICENSE.
+    ;==============================================
+    ;NAS: Potty Chairs
+    @Add_ItemModList_PottyChair
+    SIF GETBIT(NAS_PAIL, 0)
+        PRINT [Scented Bags]
+    SIF GETBIT(NAS_PAIL, 1)
+        PRINT [Extended Reservoir]
+    SIF GETBIT(NAS_PAIL, 2)
+        PRINT [Auto-Wrapper]
+    SIF GETBIT(NAS_PAIL, 3)
+        PRINT [Air Purifier]
+    SIF GETBIT(NAS_PAIL, 4)
+        PRINT [Bathroom Teleporter]
+    SIF GETBIT(NAS_PAIL, 5)
+        PRINT [Liquid Blessing]
+    IF GETBIT(NAS_POTTY, 1)
+        PRINT [Even Bigger Pot]
+    ELSEIF GETBIT(NAS_POTTY, 0)
+        PRINT [Bigger Pot]
+    ENDIF
+    SIF GETBIT(NAS_POTTY, 2)
+        PRINT [Clothing Undresser]
+    SIF GETBIT(NAS_POTTY, 3)
+        PRINT [Motivational Fanfare]
+    SIF GETBIT(NAS_POTTY, 4)
+        PRINT [Flushing Mechanism]
+    @ItemMod_PottyChair
+    #FUNCTION
+    NAS_UPGRADE_NITORI '= @"「The Youkai Mountain Kappa Armory is proud to announce to be an authorized retailer and service center for Gensou-chan products such as their potty chair」/「If you buy a potty chair or upgrade from us, we'll add the mods you bought to all of them as well.」/「Now, how do you want to change it?」"
+    NAS_UPGRADE_VARNAME '= "NAS_P AIL"
+    NAS_UPGRADE_VARNAME '= "NAS_P OTTY"
+    @ItemMod_PottyChair_0
+    #FUNCTION
+    NAS_UPGRADE_NAME '= @"Scented Bags"
+    NAS_UPGRADE_DESC:0 '= @"Adds scented bags to the pail to help counteract odor (+50 Dirtiness threshold)."
+    NAS_UPGRADE_DESC:1 '= @"+50 Dirtiness threshold per pail"

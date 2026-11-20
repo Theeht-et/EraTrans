@@ -55,7 +55,7 @@ public partial class AiTranslationLogWindow : Window
         SelectedLogSummaryTextBlock.Text =
             $"{entry.DisplayTime} · {entry.RequestKindDescription} · {entry.StatusDescription} · {entry.Model} · {entry.Summary}";
         EndpointTextBlock.Text =
-            $"{entry.RequestMethod} {entry.Endpoint} · 服务商：{entry.ProviderName}";
+            $"{entry.RequestMethod} {entry.Endpoint} · 服务商：{entry.ProviderName} · 协议：{entry.Protocol}";
 
         RequestTextBox.Text = entry.RequestJson;
         ResponseTextBox.Text = string.IsNullOrWhiteSpace(entry.RawResponse)

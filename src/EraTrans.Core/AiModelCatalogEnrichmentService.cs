@@ -197,6 +197,8 @@ public sealed class AiModelCatalogEnrichmentService
                     Status = ReadString(row, "status"),
                     SupportsTools = ReadBoolean(row, "tool_call") || ReadBoolean(row, "tool"),
                     SupportsReasoning = ReadBoolean(row, "reasoning") || ReadBoolean(row, "rsn"),
+                    ReasoningSupport = ReadNullableBoolean(row, "reasoning")
+                        ?? ReadNullableBoolean(row, "rsn"),
                     SupportsStructuredOutput = ReadBoolean(row, "structured_output") || ReadBoolean(row, "so"),
                     SupportsAttachments = ReadBoolean(row, "attachment"),
                     SupportsTemperature = ReadBoolean(row, "temperature"),
@@ -300,6 +302,7 @@ public sealed class AiModelCatalogEnrichmentService
             Status = metadata.Status,
             SupportsTools = metadata.SupportsTools,
             SupportsReasoning = metadata.SupportsReasoning,
+            ReasoningSupport = metadata.ReasoningSupport,
             SupportsStructuredOutput = metadata.SupportsStructuredOutput,
             SupportsAttachments = metadata.SupportsAttachments,
             SupportsTemperature = metadata.SupportsTemperature,
@@ -352,6 +355,18 @@ public sealed class AiModelCatalogEnrichmentService
     private static bool ReadBoolean(JsonElement element, string name) =>
         TryGetProperty(element, name, out JsonElement value) &&
         value.ValueKind == JsonValueKind.True;
+
+    private static bool? ReadNullableBoolean(JsonElement element, string name)
+    {
+        if (!TryGetProperty(element, name, out JsonElement value))
+            return null;
+        return value.ValueKind switch
+        {
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            _ => null
+        };
+    }
 
     private static List<string> ReadStringArray(JsonElement element, string name)
     {
@@ -435,6 +450,7 @@ public sealed class AiModelCatalogEnrichmentService
         public string? Status { get; init; }
         public bool SupportsTools { get; init; }
         public bool SupportsReasoning { get; init; }
+        public bool? ReasoningSupport { get; init; }
         public bool SupportsStructuredOutput { get; init; }
         public bool SupportsAttachments { get; init; }
         public bool SupportsTemperature { get; init; }

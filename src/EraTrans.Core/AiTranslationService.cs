@@ -40,6 +40,13 @@ public interface IAiChatCompletionClient
 /// </summary>
 public sealed class OpenAiCompatibleChatCompletionClient : IAiChatCompletionClient
 {
+    private readonly NativeAiProviderClient _nativeClient;
+
+    public OpenAiCompatibleChatCompletionClient(HttpClient? nativeHttpClient = null)
+    {
+        _nativeClient = new NativeAiProviderClient(nativeHttpClient);
+    }
+
     public async Task<string> CompleteAsync(
         AiProviderProfile profile,
         string systemPrompt,
@@ -47,6 +54,12 @@ public sealed class OpenAiCompatibleChatCompletionClient : IAiChatCompletionClie
         CancellationToken cancellationToken)
     {
         AiProviderProfileValidator.Validate(profile);
+        if (profile.Protocol != AiProviderProtocol.OpenAiCompatible)
+        {
+            return await _nativeClient.CompleteAsync(
+                profile, systemPrompt, userPrompt, cancellationToken);
+        }
+
         var client = new ChatClient(
             model: profile.Model,
             credential: new ApiKeyCredential(profile.ApiKey),
@@ -182,18 +195,12 @@ public sealed class AiTranslationService
 
         if (_logStore is not null)
         {
-            string endpoint = AiProviderProfileValidator.NormalizeBaseUrl(profile.BaseUrl)
-                .TrimEnd('/') + "/chat/completions";
+            AiProviderHttpRequestDetails requestDetails =
+                AiProviderHttpRequestFactory.Create(profile, systemPrompt, userPrompt);
+            string endpoint = requestDetails.Endpoint;
+            using JsonDocument requestDocument = JsonDocument.Parse(requestDetails.JsonBody);
             string requestJson = JsonSerializer.Serialize(
-                new
-                {
-                    model = profile.Model,
-                    messages = new[]
-                    {
-                        new { role = "system", content = systemPrompt },
-                        new { role = "user", content = userPrompt }
-                    }
-                },
+                requestDocument.RootElement,
                 new JsonSerializerOptions
                 {
                     WriteIndented = true,
@@ -206,6 +213,8 @@ public sealed class AiTranslationService
                 StartedAtUtc = DateTimeOffset.UtcNow,
                 RequestKind = requestKind,
                 ProviderName = RedactSecret(profile.Name, apiKey),
+                Protocol = profile.Protocol.ToString(),
+                RequestMethod = requestDetails.Method,
                 Endpoint = endpoint,
                 Model = RedactSecret(profile.Model, apiKey),
                 RequestedEntryCount = requestedEntryCount,

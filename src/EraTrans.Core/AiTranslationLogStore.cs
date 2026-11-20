@@ -25,6 +25,7 @@ public sealed class AiTranslationLogEntry
     public long? DurationMilliseconds { get; set; }
     public string RequestKind { get; set; } = "Translation";
     public string ProviderName { get; set; } = "";
+    public string Protocol { get; set; } = "OpenAiCompatible";
     public string RequestMethod { get; set; } = "POST";
     public string Endpoint { get; set; } = "";
     public string Model { get; set; } = "";

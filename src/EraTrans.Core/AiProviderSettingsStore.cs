@@ -5,6 +5,13 @@ using System.Text.Json;
 
 namespace EraTrans.Core;
 
+public enum AiProviderProtocol
+{
+    OpenAiCompatible,
+    GoogleGemini,
+    AnthropicClaude
+}
+
 public sealed class AiProviderProfile
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
@@ -12,6 +19,7 @@ public sealed class AiProviderProfile
     public string BaseUrl { get; set; } = "";
     public string Model { get; set; } = "";
     public string ApiKey { get; set; } = "";
+    public AiProviderProtocol Protocol { get; set; } = AiProviderProtocol.OpenAiCompatible;
     public List<AiProviderModel> AvailableModels { get; set; } = [];
 }
 
@@ -147,6 +155,7 @@ public sealed class AiProviderSettingsStore
                         BaseUrl = item.BaseUrl,
                         Model = item.Model,
                         ApiKey = Encoding.UTF8.GetString(keyBytes),
+                        Protocol = item.Protocol,
                         AvailableModels = (item.Models ?? [])
                             .Where(model => !string.IsNullOrWhiteSpace(model.Id))
                             .Select(model => new AiProviderModel
@@ -160,6 +169,7 @@ public sealed class AiProviderSettingsStore
                                     : model.GroupName,
                                 OwnedBy = model.OwnedBy,
                                 Created = model.Created,
+                                ReasoningSupport = model.ReasoningSupport,
                                 IsEmbedding = model.IsEmbedding,
                                 IsRerank = model.IsRerank,
                                 Family = model.Family,
@@ -239,6 +249,7 @@ public sealed class AiProviderSettingsStore
                     Name = profile.Name,
                     BaseUrl = profile.BaseUrl,
                     Model = profile.Model,
+                    Protocol = profile.Protocol,
                     ProtectedApiKey = Convert.ToBase64String(protectedKey),
                     Models = (profile.AvailableModels ?? [])
                         .Where(model => !string.IsNullOrWhiteSpace(model.Id))
@@ -249,6 +260,7 @@ public sealed class AiProviderSettingsStore
                             GroupName = model.GroupName,
                             OwnedBy = model.OwnedBy,
                             Created = model.Created,
+                            ReasoningSupport = model.ReasoningSupport,
                             IsEmbedding = model.IsEmbedding,
                             IsRerank = model.IsRerank,
                             Family = model.Family,
@@ -330,6 +342,7 @@ public sealed class AiProviderSettingsStore
         public string Name { get; set; } = "";
         public string BaseUrl { get; set; } = "";
         public string Model { get; set; } = "";
+        public AiProviderProtocol Protocol { get; set; } = AiProviderProtocol.OpenAiCompatible;
         public string ProtectedApiKey { get; set; } = "";
         public List<StoredModel>? Models { get; set; } = [];
     }
@@ -341,6 +354,7 @@ public sealed class AiProviderSettingsStore
         public string GroupName { get; set; } = "其他模型";
         public string? OwnedBy { get; set; }
         public long? Created { get; set; }
+        public bool? ReasoningSupport { get; set; }
         public bool IsEmbedding { get; set; }
         public bool IsRerank { get; set; }
         public string? Family { get; set; }

@@ -16,6 +16,7 @@ public sealed class AiProviderModel
     public string GroupName { get; set; } = "其他模型";
     public string? OwnedBy { get; set; }
     public long? Created { get; set; }
+    public bool? ReasoningSupport { get; set; }
     public bool IsEmbedding { get; set; }
     public bool IsRerank { get; set; }
     public string? Family { get; set; }
@@ -44,6 +45,19 @@ public sealed class AiProviderModel
 
     public bool IsChatModel => !IsEmbedding && !IsRerank;
 
+    public string ReasoningSupportDescription => ReasoningSupport switch
+    {
+        true => "支持推理",
+        false => "不支持推理",
+        null => "推理能力未知"
+    };
+
+    public string ContextLimitDescription => ContextLimit is > 0
+        ? FormatTokenLimit(ContextLimit.Value)
+        : "未知";
+
+    public string ContextLimitLabel => $"上下文：{ContextLimitDescription}";
+
     public string MetadataSummary
     {
         get
@@ -52,20 +66,6 @@ public sealed class AiProviderModel
             if (!string.IsNullOrWhiteSpace(OwnedBy))
             {
                 parts.Add(OwnedBy);
-            }
-
-            if (Created is > 0)
-            {
-                try
-                {
-                    parts.Add(DateTimeOffset.FromUnixTimeSeconds(Created.Value)
-                        .ToLocalTime()
-                        .ToString("yyyy-MM-dd"));
-                }
-                catch (ArgumentOutOfRangeException)
-                {
-                    // Some compatible endpoints return non-standard timestamps.
-                }
             }
 
             if (!string.IsNullOrWhiteSpace(Family) &&
@@ -124,10 +124,7 @@ public sealed class AiProviderModel
                 parts.Add("工具调用");
             }
 
-            if (SupportsReasoning)
-            {
-                parts.Add("推理");
-            }
+            parts.Add(ReasoningSupportDescription);
 
             if (SupportsStructuredOutput)
             {
@@ -345,6 +342,15 @@ public sealed class AiModelDiscoveryService
                 GroupName = GetGroupName(id, ownedBy, isEmbedding, isRerank),
                 OwnedBy = ownedBy,
                 Created = created,
+                ContextLimit = ReadFirstInt32(row, "context_length", "context_window", "context_limit"),
+                InputLimit = ReadFirstInt32(row, "max_input_tokens", "input_limit"),
+                OutputLimit = ReadFirstInt32(row, "max_output_tokens", "output_limit", "max_tokens"),
+                ReasoningSupport = ReadNullableBoolean(row, "reasoning")
+                    ?? ReadNullableBoolean(row, "supports_reasoning")
+                    ?? ReadNullableBoolean(row, "thinking"),
+                SupportsReasoning = ReadNullableBoolean(row, "reasoning") == true
+                    || ReadNullableBoolean(row, "supports_reasoning") == true
+                    || ReadNullableBoolean(row, "thinking") == true,
                 IsEmbedding = isEmbedding,
                 IsRerank = isRerank
             });
@@ -417,6 +423,31 @@ public sealed class AiModelDiscoveryService
 
         string? text = value.GetString()?.Trim();
         return string.IsNullOrWhiteSpace(text) ? null : text;
+    }
+
+    private static int? ReadFirstInt32(JsonElement element, params string[] names)
+    {
+        foreach (string name in names)
+        {
+            long? value = ReadInt64(element, name);
+            if (value is > 0 and <= int.MaxValue)
+                return (int)value.Value;
+        }
+
+        return null;
+    }
+
+    private static bool? ReadNullableBoolean(JsonElement element, string name)
+    {
+        if (!TryGetProperty(element, name, out JsonElement value))
+            return null;
+
+        return value.ValueKind switch
+        {
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            _ => null
+        };
     }
 
     private static long? ReadInt64(JsonElement element, string name)

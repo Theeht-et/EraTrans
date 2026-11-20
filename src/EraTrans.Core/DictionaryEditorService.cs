@@ -146,6 +146,10 @@ public sealed class DictionaryEditorEntry : INotifyPropertyChanged
 
     public int Index { get; }
     public string Key { get; }
+    public string DisplayKey =>
+        Key.Length >= 5 && Key[^5..].All(char.IsDigit)
+            ? Key[^5..]
+            : Key;
     public string Original { get; }
     public string Context { get; }
     public bool IsVariable { get; }
@@ -223,7 +227,14 @@ public sealed class DictionaryEditorEntry : INotifyPropertyChanged
             return false;
         }
 
-        Translation = translation;
+        _translation = translation;
+        _source["translation"] = translation;
+        _stage = 1;
+        _source["stage"] = 1;
+        _markDocumentDirty();
+        OnPropertyChanged(nameof(Translation));
+        OnPropertyChanged(nameof(Stage));
+        OnPropertyChanged(nameof(StageDescription));
         return true;
     }
 

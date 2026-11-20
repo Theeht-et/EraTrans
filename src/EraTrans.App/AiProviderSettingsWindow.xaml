@@ -199,19 +199,24 @@
                                                FontSize="13"
                                                FontWeight="SemiBold"
                                                Foreground="#20242A"
-                                               TextTrimming="CharacterEllipsis" />
+                                               TextTrimming="CharacterEllipsis"
+                                               ToolTip="{Binding DisplayName}" />
                                     <TextBlock Text="{Binding Id}"
                                                Margin="0,2,0,0"
                                                FontSize="11"
                                                Foreground="#68717D"
-                                               TextTrimming="CharacterEllipsis" />
+                                               TextTrimming="CharacterEllipsis"
+                                               ToolTip="{Binding Id}" />
                                 </StackPanel>
                                 <TextBlock Grid.Column="1"
                                            Text="{Binding MetadataSummary}"
                                            Margin="12,0,4,0"
+                                           MaxWidth="320"
                                            VerticalAlignment="Center"
                                            FontSize="11"
-                                           Foreground="#87909B" />
+                                           Foreground="#87909B"
+                                           TextTrimming="CharacterEllipsis"
+                                           ToolTip="{Binding MetadataSummary}" />
                             </Grid>
                         </DataTemplate>
                     </ListView.ItemTemplate>
@@ -256,7 +261,7 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <TextBlock Text="模型列表来自服务商实际返回；嵌入、重排模型仅展示，当前翻译功能只使用对话模型。模型列表获取失败时仍可手动填写 ID。"
+            <TextBlock Text="模型 ID 来自服务商接口；匹配到 models.dev 时会补充上下文长度、输入输出模态和能力。嵌入、重排模型仅展示，当前翻译只使用对话模型；接口不支持 GET /models 时仍可手动填写 ID。"
                        VerticalAlignment="Center"
                        TextWrapping="Wrap"
                        Foreground="#87909B"

@@ -55,6 +55,29 @@ public sealed class DictionaryEditorServiceTests
     }
 
     [Fact]
+    public void DisplayKey_ShowsOnlyTrailingFiveDigitIndex_AndPreservesFullKey()
+    {
+        string root = CreateTempDirectory();
+        string path = Path.Combine(root, "keys.json");
+        Write(path,
+            """
+            [
+              { "key": "文本ERB\\OPENING00001", "original": "甲", "translation": "", "stage": 0 },
+              { "key": "CSV\\items00042", "original": "乙", "translation": "", "stage": 0 },
+              { "key": "custom-key", "original": "丙", "translation": "", "stage": 0 }
+            ]
+            """);
+
+        DictionaryEditorDocument document = new DictionaryEditorService().Load(path);
+
+        Assert.Equal(new[] { "00001", "00042", "custom-key" },
+            document.Entries.Select(entry => entry.DisplayKey));
+        Assert.Equal("文本ERB\\OPENING00001", document.Entries[0].Key);
+        Assert.Equal("CSV\\items00042", document.Entries[1].Key);
+        Assert.False(document.IsDirty);
+    }
+
+    [Fact]
     public void Load_VariableEntriesAreReadOnly_AndRemainUnchanged()
     {
         string root = CreateTempDirectory();

@@ -40,6 +40,7 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
                 <StackPanel Margin="0,0,0,20">
@@ -48,7 +49,7 @@
                                FontWeight="SemiBold"
                                Foreground="#20242A" />
                     <TextBlock Margin="0,6,0,0"
-                               Text="只需选择原游戏目录和输出目录。字典及其他生成文件统一保存在输出目录；需要汉化或转码时，先将整个原游戏目录完整复制到“游戏副本”，再修改副本，原游戏目录始终只读。"
+                               Text="只需选择原游戏目录和统一输出目录。程序会在输出目录下按原游戏文件夹名称分类保存字典、AI 上下文和游戏副本；原游戏目录始终只读。"
                                TextWrapping="Wrap"
                                FontSize="13"
                                Foreground="#68717D" />
@@ -96,7 +97,15 @@
                             Click="BrowseOutputDirectory_Click" />
                 </Grid>
 
-                <StackPanel Grid.Row="3"
+                <TextBlock x:Name="OutputLayoutPreviewTextBlock"
+                           Grid.Row="3"
+                           Margin="0,0,0,14"
+                           Text="选择原游戏目录和统一输出目录后，这里会显示本游戏的分类输出位置。"
+                           TextWrapping="Wrap"
+                           Foreground="#68717D"
+                           FontSize="12" />
+
+                <StackPanel Grid.Row="4"
                             Orientation="Horizontal"
                             Margin="0,0,0,4">
                     <Button x:Name="ExtractButton"
@@ -132,7 +141,7 @@
                 </StackPanel>
 
                 <TextBlock x:Name="StatusText"
-                           Grid.Row="4"
+                           Grid.Row="5"
                            Margin="0,16,0,0"
                            Text="输出目录自动管理字典和游戏副本；原游戏目录不会被修改。"
                            TextWrapping="Wrap"

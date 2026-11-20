@@ -5,15 +5,13 @@ using Xunit;
 namespace EraTrans.Tests;
 
 [SupportedOSPlatform("windows")]
-public sealed class AiProviderSettingsMigrationTests
+public sealed class AiProviderSettingsStoreTests
 {
     [Fact]
-    public void Store_LoadLegacyAppDataSettings_MigratesEncryptedApiKeyAndKeepsSource()
+    public void Store_SaveAndLoad_RoundTripsProviderSettingsAndEncryptsApiKey()
     {
         using var temporary = new TemporaryDirectory();
-        string legacyPath = Path.Combine(temporary.Path, "AppData", "EraTrans", "ai-providers.json");
-        string portablePath = Path.Combine(temporary.Path, "Software", "Config", "ai-providers.json");
-
+        string path = Path.Combine(temporary.Path, "Config", "ai-providers.json");
         var originalSettings = new AiProviderSettings
         {
             ActiveProviderId = "provider-1",
@@ -30,19 +28,18 @@ public sealed class AiProviderSettingsMigrationTests
             ]
         };
 
-        var legacyStore = new AiProviderSettingsStore(legacyPath);
-        legacyStore.Save(originalSettings);
-        byte[] originalLegacyFile = File.ReadAllBytes(legacyPath);
-
-        var portableStore = new AiProviderSettingsStore(portablePath, legacyPath);
-        AiProviderSettings loaded = portableStore.Load();
+        var store = new AiProviderSettingsStore(path);
+        store.Save(originalSettings);
+        AiProviderSettings loaded = store.Load();
 
         Assert.Equal("provider-1", loaded.ActiveProviderId);
-        Assert.Single(loaded.Providers);
-        Assert.Equal("secret-test-api-key", loaded.Providers[0].ApiKey);
-        Assert.True(File.Exists(portablePath));
-        Assert.Equal(originalLegacyFile, File.ReadAllBytes(legacyPath));
-        Assert.DoesNotContain("secret-test-api-key", File.ReadAllText(portablePath));
+        AiProviderProfile provider = Assert.Single(loaded.Providers);
+        Assert.Equal("Test provider", provider.Name);
+        Assert.Equal("https://api.example.com/v1", provider.BaseUrl);
+        Assert.Equal("test-model", provider.Model);
+        Assert.Equal("secret-test-api-key", provider.ApiKey);
+        Assert.True(File.Exists(path));
+        Assert.DoesNotContain("secret-test-api-key", File.ReadAllText(path));
     }
 
     private sealed class TemporaryDirectory : IDisposable

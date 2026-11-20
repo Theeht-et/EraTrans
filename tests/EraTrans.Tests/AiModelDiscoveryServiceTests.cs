@@ -43,7 +43,7 @@ public sealed class AiModelDiscoveryServiceTests
 
         Assert.Equal(3, models.Count);
         AiProviderModel gpt = Assert.Single(models, model => model.Id == "gpt-4o-mini");
-        Assert.Equal("OpenAI", gpt.GroupName);
+        Assert.Equal("OpenAI · GPT-4o", gpt.GroupName);
         Assert.Equal("openai", gpt.OwnedBy);
         Assert.Equal(1720000000, gpt.Created);
         Assert.True(gpt.IsChatModel);
@@ -131,6 +131,108 @@ public sealed class AiModelDiscoveryServiceTests
         Assert.Contains("HTTP 404", exception.Message);
         Assert.Contains("手动填写模型 ID", exception.Message);
         Assert.DoesNotContain("must-not-appear", exception.Message);
+    }
+
+
+    [Fact]
+    public async Task CatalogEnrichment_AddsOfficialModelCapabilitiesAndLimitsWhenProviderMatches()
+    {
+        var catalogUri = new Uri("https://models.dev/api.json?test=era-trans-enrichment-1");
+        using var handler = new StubHandler(request =>
+        {
+            Assert.Equal(catalogUri, request.RequestUri);
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    """
+                    {
+                      "openai": {
+                        "id": "openai",
+                        "name": "OpenAI",
+                        "api": "https://api.openai.com/v1",
+                        "models": {
+                          "gpt-4o-mini": {
+                            "id": "gpt-4o-mini",
+                            "name": "GPT-4o mini",
+                            "family": "gpt-4o",
+                            "status": "active",
+                            "tool": true,
+                            "rsn": false,
+                            "so": true,
+                            "in": ["text", "image"],
+                            "out": ["text"],
+                            "limit": {
+                              "context": 128000,
+                              "input": 120000,
+                              "output": 16000
+                            }
+                          }
+                        }
+                      }
+                    }
+                    """,
+                    Encoding.UTF8,
+                    "application/json")
+            };
+        });
+        using var client = new HttpClient(handler);
+        var enrichment = new AiModelCatalogEnrichmentService(
+            client,
+            catalogUri: catalogUri);
+        AiProviderModel[] discovered =
+        [
+            new()
+            {
+                Id = "gpt-4o-mini",
+                DisplayName = "gpt-4o-mini",
+                GroupName = "OpenAI · GPT-4o"
+            }
+        ];
+
+        IReadOnlyList<AiProviderModel> enriched = await enrichment.EnrichAsync(
+            new AiProviderProfile
+            {
+                BaseUrl = "https://api.openai.com/v1"
+            },
+            discovered);
+
+        AiProviderModel model = Assert.Single(enriched);
+        Assert.Equal("GPT-4o mini", model.DisplayName);
+        Assert.Equal("gpt-4o", model.Family);
+        Assert.Equal(128000, model.ContextLimit);
+        Assert.Equal(120000, model.InputLimit);
+        Assert.Equal(16000, model.OutputLimit);
+        Assert.True(model.SupportsTools);
+        Assert.True(model.SupportsStructuredOutput);
+        Assert.Contains("image", model.InputModalities);
+        Assert.Contains("text", model.OutputModalities);
+        Assert.Contains("上下文 128K", model.MetadataSummary);
+        Assert.Contains("工具调用", model.MetadataSummary);
+    }
+
+    [Fact]
+    public async Task CatalogEnrichment_CatalogFailureDoesNotBlockDiscoveredModels()
+    {
+        var catalogUri = new Uri("https://models.dev/api.json?test=era-trans-enrichment-failure");
+        using var handler = new StubHandler(_ =>
+            new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
+        using var client = new HttpClient(handler);
+        var enrichment = new AiModelCatalogEnrichmentService(
+            client,
+            catalogUri: catalogUri);
+        AiProviderModel original = new()
+        {
+            Id = "custom-model",
+            DisplayName = "custom-model",
+            GroupName = "其他模型"
+        };
+
+        IReadOnlyList<AiProviderModel> result = await enrichment.EnrichAsync(
+            new AiProviderProfile { BaseUrl = "https://custom.example.com/v1" },
+            [original]);
+
+        Assert.Same(original, Assert.Single(result));
+        Assert.Null(original.ContextLimit);
     }
 
     private sealed class StubHandler(

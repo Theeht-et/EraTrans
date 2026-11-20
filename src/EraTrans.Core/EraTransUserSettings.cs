@@ -3,15 +3,11 @@ using System.Text;
 namespace EraTrans.Core;
 
 /// <summary>
-/// User-configurable application and legacy parser settings.
-/// Defaults retain the legacy parser behavior except for variable-entry output, which is now suppressed by default.
+/// User-configurable application and parser settings.
+/// Variable dictionary entries are suppressed by default; this can be changed in settings.
 /// </summary>
 public sealed class EraTransUserSettings
 {
-    public const int CurrentSettingsVersion = 2;
-
-    public int? SettingsVersion { get; set; }
-
     public string FileEncodingId { get; set; } = "utf8-bom";
     public bool ForceFilterVariableNames { get; set; } = true;
     public bool AutoOpenFolder { get; set; } = true;
@@ -49,10 +45,7 @@ public sealed class EraTransUserSettings
         "+", "-", "*", "/", "%", "++", "--", ",", ":", "TO"
     ];
 
-    public static EraTransUserSettings CreateDefault() => new()
-    {
-        SettingsVersion = CurrentSettingsVersion
-    };
+    public static EraTransUserSettings CreateDefault() => new();
 
     public Encoding CreateFileEncoding()
     {

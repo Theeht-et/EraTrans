@@ -492,19 +492,34 @@ public sealed class ErbTranslationGroupingService
         foreach (var item in targetsByGroup)
         {
             var chunk = new List<DictionaryEditorEntry>();
+            var chunkContextTexts = new HashSet<string>(StringComparer.Ordinal);
             int targetCharacters = 0;
             foreach (DictionaryEditorEntry target in item.Targets)
             {
-                int length = target.Original.Length + target.Context.Length + 96;
+                bool hasUsefulContext =
+                    !string.IsNullOrWhiteSpace(target.Context) &&
+                    !string.Equals(target.Context, target.Original, StringComparison.Ordinal);
+                int length = target.Original.Length + 96 +
+                             (hasUsefulContext && !chunkContextTexts.Contains(target.Context)
+                                 ? target.Context.Length
+                                 : 0);
+
                 if (chunk.Count > 0 && targetCharacters + length > MaxGroupTargetCharacters)
                 {
                     units.Add(CreateBatchUnit(chunk, item.Group, index, groupsById, linksByKey, dictionaryEntries));
                     chunk = [];
+                    chunkContextTexts.Clear();
                     targetCharacters = 0;
+                    length = target.Original.Length + 96 +
+                             (hasUsefulContext ? target.Context.Length : 0);
                 }
 
                 chunk.Add(target);
                 targetCharacters += length;
+                if (hasUsefulContext)
+                {
+                    chunkContextTexts.Add(target.Context);
+                }
             }
 
             if (chunk.Count > 0)
@@ -577,7 +592,7 @@ public sealed class ErbTranslationGroupingService
                         continue;
                     }
 
-                    int length = entry.Key.Length + entry.Original.Length + 24;
+                    int length = entry.Original.Length + 24;
                     if (length > remainingPromptCharacters)
                     {
                         break;
@@ -619,7 +634,7 @@ public sealed class ErbTranslationGroupingService
                 var selected = new List<AiTranslationContextEntry>();
                 foreach (DictionaryEditorEntry entry in entries)
                 {
-                    int length = entry.Original.Length + entry.Key.Length + 24;
+                    int length = entry.Original.Length + 24;
                     if (length > remainingCharacters)
                     {
                         break;
@@ -657,7 +672,7 @@ public sealed class ErbTranslationGroupingService
         var targetKeys = targets.Select(entry => entry.Key).ToHashSet(StringComparer.Ordinal);
 
         int totalCharacters = all.Where(entry => !targetKeys.Contains(entry.Key))
-            .Sum(entry => entry.Original.Length + entry.Key.Length + 24);
+            .Sum(entry => entry.Original.Length + 24);
         if (totalCharacters <= MaxSameGroupContextCharacters)
             return all.Where(entry => !targetKeys.Contains(entry.Key))
                 .Select(entry => new AiTranslationContextEntry(entry.Key, entry.Original)).ToArray();
@@ -678,7 +693,7 @@ public sealed class ErbTranslationGroupingService
             if (targetKeys.Contains(entry.Key))
                 continue;
 
-            int length = entry.Original.Length + entry.Key.Length + 24;
+            int length = entry.Original.Length + 24;
             if (selected.Count > 0 && usedCharacters + length > MaxSameGroupContextCharacters)
             {
                 break;
@@ -728,8 +743,15 @@ public sealed class ErbTranslationGroupingService
     private static int EstimateCharacters(
         IReadOnlyList<DictionaryEditorEntry> targets,
         IReadOnlyList<AiTranslationSemanticContextGroup> contexts) =>
-        targets.Sum(entry => entry.Original.Length + entry.Context.Length + entry.Key.Length + 96) +
-        contexts.Sum(group => group.Entries.Sum(entry => entry.Original.Length + entry.Key.Length + 24));
+        targets.Sum(entry => entry.Original.Length + 96) +
+        targets
+            .Where(entry =>
+                !string.IsNullOrWhiteSpace(entry.Context) &&
+                !string.Equals(entry.Context, entry.Original, StringComparison.Ordinal))
+            .Select(entry => entry.Context)
+            .Distinct(StringComparer.Ordinal)
+            .Sum(context => context.Length) +
+        contexts.Sum(group => group.Entries.Sum(entry => entry.Original.Length + 24));
 
     private static (IReadOnlyList<ErbTranslationGroup> Groups, Dictionary<string, ErbTranslationGroup> GroupsByEntryKey)
         BuildGroups(

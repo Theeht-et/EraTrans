@@ -391,8 +391,12 @@ public sealed class AiModelDiscoveryServiceTests
 
         // A different catalog URL simulates a fresh process with no in-memory entry.
         var secondUri = new Uri("https://models.dev/api.json?test=moonshot-host-alias-after-restart");
+        int secondRequestCount = 0;
         using var secondHandler = new StubHandler(_ =>
-            new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
+        {
+            secondRequestCount++;
+            return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable);
+        });
         using var secondClient = new HttpClient(secondHandler);
         var secondService = new AiModelCatalogEnrichmentService(
             secondClient,
@@ -406,6 +410,7 @@ public sealed class AiModelDiscoveryServiceTests
         AiProviderModel cached = Assert.Single(cachedResult);
         Assert.Equal(262144, cached.ContextLimit);
         Assert.Equal(true, cached.ReasoningSupport);
+        Assert.Equal(0, secondRequestCount);
     }
 
     [Fact]

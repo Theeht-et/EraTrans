@@ -91,6 +91,10 @@ public partial class AiProviderSettingsWindow : Window
         ModelTextBox.IsEnabled = hasProfile && idle;
         FetchModelsButton.IsEnabled = hasProfile && idle;
         TestButton.IsEnabled = hasProfile && idle;
+        RestoreDefaultBaseUrlButton.Visibility = _currentProfile?.IsBuiltIn == true
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        RestoreDefaultBaseUrlButton.IsEnabled = hasProfile && idle && _currentProfile?.IsBuiltIn == true;
         SaveButton.IsEnabled = idle;
         RemoveProviderButton.Content = _currentProfile?.IsBuiltIn == true
             ? "默认服务商不可删除"
@@ -123,6 +127,24 @@ public partial class AiProviderSettingsWindow : Window
             ? "当前翻译服务：未配置"
             : $"当前翻译服务：{active.Name} / {active.Model}";
         SetEditorEnabled(_currentProfile is not null);
+    }
+
+    private void RestoreDefaultBaseUrl_Click(object sender, RoutedEventArgs e)
+    {
+        if (_loadFailed || _isTesting || _isFetchingModels || _currentProfile is not { IsBuiltIn: true })
+            return;
+
+        AiProviderPreset? preset = AiProviderPresets.All.FirstOrDefault(item =>
+            string.Equals(item.Name, _currentProfile.Name, StringComparison.OrdinalIgnoreCase));
+        if (preset is null)
+            return;
+
+        BaseUrlTextBox.Text = preset.BaseUrl;
+        _currentProfile.BaseUrl = preset.BaseUrl;
+        _currentProfile.RequiresEndpointReview = false;
+        LegacyProtocolWarning.Visibility = Visibility.Collapsed;
+        StatusTextBlock.Text = "已恢复该内置服务商的默认 API 地址。";
+        UpdateActiveProviderStatus();
     }
 
     private void SetCurrentProvider_Click(object sender, RoutedEventArgs e)

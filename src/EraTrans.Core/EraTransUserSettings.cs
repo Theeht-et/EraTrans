@@ -14,7 +14,7 @@ public sealed class EraTransUserSettings
     public bool EnableVariableAutoCorrection { get; set; } = true;
     public bool HideEnglishText { get; set; } = true;
     public bool MergeDuplicateEntries { get; set; } = false;
-    public bool HideVariableEntries { get; set; } = false;
+    public bool HideVariableEntries { get; set; } = true;
     public bool MergeConcatenatedStrings { get; set; } = true;
     public bool WriteContext { get; set; } = true;
     public bool EnableErbSemanticGroupingTranslation { get; set; } = false;

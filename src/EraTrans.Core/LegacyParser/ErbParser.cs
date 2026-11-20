@@ -1448,8 +1448,22 @@ public class ERBParser
             .Trim()
             .TrimEnd('+', '-', '*', '/', '&', '|')
             .Trim();
-        return leftValue.Equals("LOCALS", StringComparison.Ordinal) ||
-               leftValue.StartsWith("LOCALS:", StringComparison.Ordinal);
+        string rightValue = sourceLine[(equalsIndex + 1)..].TrimStart();
+        bool isAppend = sourceLine.Contains("+=", StringComparison.Ordinal);
+
+        // Only literal fragments appended to the output buffer (including
+        // indexed LOCALS fragments interpolated into it) belong to the rendered
+        // HTML surface. Numeric/formula assignments such as LOCALS:2 = %...%
+        // remain separate and must not crowd out useful translation context.
+        if (isAppend)
+        {
+            return (leftValue.Equals("LOCALS", StringComparison.Ordinal) ||
+                    leftValue.StartsWith("LOCALS:", StringComparison.Ordinal)) &&
+                   rightValue.Contains('"');
+        }
+
+        return leftValue.Equals("LOCALS", StringComparison.Ordinal) &&
+               (rightValue.StartsWith("<", StringComparison.Ordinal) || rightValue.Contains('"'));
     }
 
     private void PopNearestControl(string type)

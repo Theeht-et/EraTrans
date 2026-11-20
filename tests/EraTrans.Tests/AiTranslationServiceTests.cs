@@ -129,6 +129,55 @@ public sealed class AiTranslationServiceTests
     }
 
 
+
+    [Fact]
+    public async Task TranslateWithSemanticContextAsync_KeepsDifferentTargetScopesSeparateInOneRequest()
+    {
+        var fake = new FakeChatClient(
+            """
+            [
+              { "id": 5, "translation": "甲译文" },
+              { "id": 6, "translation": "乙译文" }
+            ]
+            """);
+        var service = new AiTranslationService(fake);
+        AiTranslationRequest[] requests =
+        [
+            new(5, "文本5", "甲目标", ""),
+            new(6, "文本6", "乙目标", "")
+        ];
+        AiTranslationSemanticContextGroup[] contexts =
+        [
+            new(
+                "group_a",
+                "dialogue",
+                "FUNCTION_A",
+                "IF:0",
+                "same-group",
+                [new AiTranslationContextEntry("文本A", "甲上下文")]) { TargetIds = [5] },
+            new(
+                "group_b",
+                "dialogue",
+                "FUNCTION_B",
+                "IF:1",
+                "alternative-branch",
+                [new AiTranslationContextEntry("文本B", "乙上下文")]) { TargetIds = [6] }
+        ];
+
+        await service.TranslateWithSemanticContextAsync(CreateProfile(), requests, contexts);
+
+        using JsonDocument document = JsonDocument.Parse(fake.LastUserPrompt);
+        JsonElement[] semanticContexts = document.RootElement.GetProperty("semanticContext")
+            .EnumerateArray().ToArray();
+        Assert.Equal(2, semanticContexts.Length);
+        Assert.Equal(new[] { 5 }, semanticContexts[0].GetProperty("targetIds").EnumerateArray()
+            .Select(id => id.GetInt32()));
+        Assert.Equal("甲上下文", semanticContexts[0].GetProperty("texts")[0].GetString());
+        Assert.Equal(new[] { 6 }, semanticContexts[1].GetProperty("targetIds").EnumerateArray()
+            .Select(id => id.GetInt32()));
+        Assert.Equal("乙上下文", semanticContexts[1].GetProperty("texts")[0].GetString());
+    }
+
     [Fact]
     public async Task TranslateWithSemanticContextAsync_RejectsContextScopedToAnotherBatch()
     {

@@ -178,6 +178,11 @@ public partial class AiProviderSettingsWindow : Window
         _currentProfile.BaseUrl = newBaseUrl;
         _currentProfile.Model = ModelTextBox.Text.Trim();
         _currentProfile.ApiKey = ApiKeyPasswordBox.Password;
+
+        // AiProviderProfile is intentionally a simple persistence model (not an
+        // INotifyPropertyChanged view model), so refresh the left-hand summary.
+        ProviderListBox.Items.Refresh();
+        UpdateActiveProviderStatus();
     }
 
     private void AddProvider_Click(object sender, RoutedEventArgs e)

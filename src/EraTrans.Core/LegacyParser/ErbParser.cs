@@ -1181,14 +1181,18 @@ public class ERBParser
     private ErbTranslationSourceMetadata CreateSourceMetadata(int parsedLine, string lineString)
     {
         string commandType = GetCommandType(lineString);
+        ErbControlFrame? menuDispatch = _controlFrames.LastOrDefault(frame => frame.IsMenuDispatch);
+        ErbControlFrame? currentFrame = _controlFrames.LastOrDefault();
+
         return new ErbTranslationSourceMetadata(
             parsedLine,
             _currentFunctionName,
             commandType,
             BuildBranchPath(),
-            _controlFrames.LastOrDefault(frame => frame.IsMenuDispatch)?.Id ??
-                (_controlFrames.Count == 0 ? "" : _controlFrames[^1].Id),
-            _controlFrames.Count == 0 ? "" : _controlFrames[^1].Branch,
+            menuDispatch?.Id ?? currentFrame?.Id ?? "",
+            // Use the outer menu dispatch branch as the alternative-choice identity.
+            // Nested IF/SELECTCASE branches remain distinguished by BranchPath.
+            menuDispatch?.Branch ?? currentFrame?.Branch ?? "",
             GetCallTarget(lineString, commandType));
     }
 
@@ -1207,6 +1211,7 @@ public class ERBParser
             _controlFlowSegment = 0;
             _pendingMenuScopeId = null;
             _pendingMenuDispatchCommand = null;
+            _activeHtmlAccumulatorStartIndex = null;
             return;
         }
 
@@ -1226,6 +1231,7 @@ public class ERBParser
                 _controlFlowSegment++;
                 _pendingMenuScopeId = null;
                 _pendingMenuDispatchCommand = null;
+                _activeHtmlAccumulatorStartIndex = null;
                 _currentFunctionName = "(global)";
                 return;
             case "ENDIF":
@@ -1398,7 +1404,8 @@ public class ERBParser
         for (int index = startIndex; index <= endIndex; index++)
         {
             ErbTranslationSourceMetadata metadata = textList.sourceMetadata[index];
-            if (string.Equals(metadata.FunctionId, _currentFunctionName, StringComparison.Ordinal))
+            if (string.Equals(metadata.FunctionId, _currentFunctionName, StringComparison.Ordinal) &&
+                IsLocalsAccumulatorEntry(metadata.ParsedLine))
             {
                 textList.sourceMetadata[index] = metadata with
                 {
@@ -1416,6 +1423,28 @@ public class ERBParser
         _lastHtmlAccumulatorEndLine = parsedLine;
         _lastHtmlAccumulatorBranchPath = regionPath;
         _activeHtmlAccumulatorStartIndex = null;
+    }
+
+    private bool IsLocalsAccumulatorEntry(int parsedLine)
+    {
+        if (parsedLine <= 0 || parsedLine > lineList.Count)
+        {
+            return false;
+        }
+
+        string sourceLine = lineList[parsedLine - 1].Trim();
+        int equalsIndex = sourceLine.IndexOf('=');
+        if (equalsIndex < 0 || sourceLine.Contains("==", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        string leftValue = sourceLine[..equalsIndex]
+            .Trim()
+            .TrimEnd('+', '-', '*', '/', '&', '|')
+            .Trim();
+        return leftValue.Equals("LOCALS", StringComparison.Ordinal) ||
+               leftValue.StartsWith("LOCALS:", StringComparison.Ordinal);
     }
 
     private void PopNearestControl(string type)

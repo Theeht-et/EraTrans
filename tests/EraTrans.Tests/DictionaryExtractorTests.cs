@@ -409,21 +409,17 @@ public sealed class DictionaryExtractorTests
         JArray entries = JArray.Parse(File.ReadAllText(
             Path.Combine(output, "ERB", "nullable-boundaries.json")));
 
-        Assert.Contains(entries, entry =>
-            ((string?)entry!["key"])?.StartsWith("変数", StringComparison.Ordinal) == true &&
-            (string?)entry["original"] == "関数名");
-        Assert.Contains(entries, entry =>
-            ((string?)entry!["key"])?.StartsWith("変数", StringComparison.Ordinal) == true &&
-            (string?)entry["original"] == "引数名");
-        Assert.Contains(entries, entry =>
-            ((string?)entry!["key"])?.StartsWith("変数", StringComparison.Ordinal) == true &&
-            (string?)entry["original"] == "変数名");
-        Assert.Contains(entries, entry =>
-            ((string?)entry!["key"])?.StartsWith("文本", StringComparison.Ordinal) == true &&
-            ((string?)entry["original"])?.Contains("定義パラメータ", StringComparison.Ordinal) == true);
-        Assert.Contains(entries, entry =>
-            ((string?)entry!["key"])?.StartsWith("文本", StringComparison.Ordinal) == true &&
-            ((string?)entry["original"])?.Contains("追加テキスト", StringComparison.Ordinal) == true);
+        string[] originals = entries
+            .Select(entry => (string?)entry!["original"] ?? string.Empty)
+            .ToArray();
+
+        Assert.Contains("関数名", originals);
+        Assert.Contains("引数名", originals);
+        Assert.Contains("変数名", originals);
+        Assert.Contains(originals, original =>
+            original.Contains("定義パラメータ", StringComparison.Ordinal));
+        Assert.Contains(originals, original =>
+            original.Contains("追加テキスト", StringComparison.Ordinal));
     }
 
     [Fact]

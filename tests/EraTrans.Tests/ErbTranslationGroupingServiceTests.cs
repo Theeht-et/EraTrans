@@ -484,6 +484,8 @@ public sealed class ErbTranslationGroupingServiceTests
             group.Relationship == "alternative-branch" &&
             group.Entries.Any(entry => entry.Original == "第二项"));
         Assert.DoesNotContain(batch.Targets, target => target.Original == "第二项");
+        Assert.All(batch.SemanticContextGroups, context =>
+            Assert.Equal(new[] { batch.Targets[0].Index }, context.TargetIds));
     }
 
     [Fact]

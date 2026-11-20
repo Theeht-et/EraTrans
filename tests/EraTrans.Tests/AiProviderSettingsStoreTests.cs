@@ -383,6 +383,11 @@ public sealed class AiProviderSettingsPortablePersistenceTests
 
         readyA.RequiresEndpointReview = true;
         Assert.Same(readyB, settings.ActiveProvider);
+
+        readyA.RequiresEndpointReview = false;
+        readyA.BaseUrl = "ftp://a.example.com/v1";
+        settings.ActiveProviderId = "ready-a";
+        Assert.Same(readyB, settings.ActiveProvider);
     }
 
     [Fact]

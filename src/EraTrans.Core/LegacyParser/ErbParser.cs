@@ -1206,6 +1206,7 @@ public class ERBParser
             _controlFrames.Clear();
             _controlFlowSegment = 0;
             _pendingMenuScopeId = null;
+            _pendingMenuDispatchCommand = null;
             return;
         }
 
@@ -1224,6 +1225,7 @@ public class ERBParser
                 _controlFrames.Clear();
                 _controlFlowSegment++;
                 _pendingMenuScopeId = null;
+                _pendingMenuDispatchCommand = null;
                 _currentFunctionName = "(global)";
                 return;
             case "ENDIF":
@@ -1375,7 +1377,7 @@ public class ERBParser
 
     private static bool IsHtmlAccumulatorSink(string lineString) =>
         (lineString.StartsWith("HTML_PRINT", StringComparison.Ordinal) &&
-         Regex.IsMatch(lineString, @"^HTML_PRINT\\s+LOCALS(?:\\s|,|$)")) ||
+         Regex.IsMatch(lineString, @"^HTML_PRINT\s+LOCALS(?:\s|,|$)")) ||
         lineString.Contains("= %LOCALS%", StringComparison.Ordinal);
 
     private void CompleteHtmlAccumulator(int parsedLine)

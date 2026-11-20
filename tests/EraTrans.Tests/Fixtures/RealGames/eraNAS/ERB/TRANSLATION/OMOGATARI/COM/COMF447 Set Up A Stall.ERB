@@ -1,0 +1,13 @@
+; EraTrans fixture: curated source excerpt, not a complete upstream file.
+; Source: eraNAS / ERB/TRANSLATION/OMOGATARI/COM/COMF447 Set Up A Stall.ERB
+; Upstream commit: 5b48a05fc10dc461d580fc39db1b4029a04ee3a3
+; Excerpt retained for parser coverage; see the fixture README and LICENSE.
+        ; I was thinking of a rare event where a robber can go to your store and rob you at gunpoint.
+        ; You can fight back but he will often get the first shot.
+        ; If you give the robber the money you lose what you have currently made and ends your stall run.
+        IF !RAND:3 00 && nRyona
+            SETCOLOR C_L_GRAY
+            P = 1000
+            VARSET FactionRaidRankSpawn
+            CALL FactionEnemySpawn(12,P,0)
+            PRINTFORML A robber comes to your stall and points a %GET_STR(FREE_MOB_SLOT(1), "Weapon", EQUIP:(FREE_MOB_SLOT(1)):Weapon, "名前")% at you. %HE_SHE(FREE_MOB_SLOT(1),1)% demands that you forfeit your earnings and give it to %HIM_HER(FREE_MOB_SLOT(1))%...

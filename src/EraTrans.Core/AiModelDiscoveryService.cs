@@ -17,6 +17,16 @@ public sealed class AiProviderModel
     public long? Created { get; set; }
     public bool IsEmbedding { get; set; }
     public bool IsRerank { get; set; }
+    public string? Family { get; set; }
+    public string? Status { get; set; }
+    public bool SupportsTools { get; set; }
+    public bool SupportsReasoning { get; set; }
+    public bool SupportsStructuredOutput { get; set; }
+    public List<string> InputModalities { get; set; } = [];
+    public List<string> OutputModalities { get; set; } = [];
+    public int? ContextLimit { get; set; }
+    public int? InputLimit { get; set; }
+    public int? OutputLimit { get; set; }
 
     public bool IsChatModel => !IsEmbedding && !IsRerank;
 
@@ -44,6 +54,41 @@ public sealed class AiProviderModel
                 }
             }
 
+            if (ContextLimit is > 0)
+            {
+                parts.Add($"上下文 {FormatTokenLimit(ContextLimit.Value)}");
+            }
+
+            if (OutputLimit is > 0)
+            {
+                parts.Add($"最大输出 {FormatTokenLimit(OutputLimit.Value)}");
+            }
+
+            if (InputModalities.Contains("image", StringComparer.OrdinalIgnoreCase))
+            {
+                parts.Add("图像输入");
+            }
+
+            if (OutputModalities.Contains("image", StringComparer.OrdinalIgnoreCase))
+            {
+                parts.Add("图像输出");
+            }
+
+            if (SupportsTools)
+            {
+                parts.Add("工具调用");
+            }
+
+            if (SupportsReasoning)
+            {
+                parts.Add("推理");
+            }
+
+            if (SupportsStructuredOutput)
+            {
+                parts.Add("结构化输出");
+            }
+
             if (IsEmbedding)
             {
                 parts.Add("嵌入模型");
@@ -53,7 +98,22 @@ public sealed class AiProviderModel
                 parts.Add("重排模型");
             }
 
+            if (!string.IsNullOrWhiteSpace(Status) &&
+                !Status.Equals("active", StringComparison.OrdinalIgnoreCase))
+            {
+                parts.Add(Status);
+            }
+
             return string.Join(" · ", parts);
+        }
+    }
+
+    private static string FormatTokenLimit(int value) =>
+        value >= 1_000_000
+            ? $"{value / 1_000_000d:0.#}M"
+            : value >= 1_000
+                ? $"{value / 1_000d:0.#}K"
+                : value.ToString();
         }
     }
 }

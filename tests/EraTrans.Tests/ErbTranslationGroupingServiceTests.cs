@@ -101,6 +101,76 @@ public sealed class ErbTranslationGroupingServiceTests
     }
 
     [Fact]
+    public void BuildTranslationBatches_DoesNotCountSharedTargetContextOncePerTarget()
+    {
+        using var temporary = new TemporaryDirectory();
+        string dictionaryDirectory = Path.Combine(temporary.Path, "字典");
+        string dictionaryPath = Path.Combine(dictionaryDirectory, "ERB/dialogue.json");
+        string candidatePath = Path.Combine(temporary.Path, "candidate.json");
+        string gameDirectory = Path.Combine(temporary.Path, "Game");
+
+        string[] originals = Enumerable.Range(0, 5)
+            .Select(index => new string((char)('A' + index), 1_000))
+            .ToArray();
+        string sourceContent = "@DIALOGUE\\n" +
+                               string.Join("\\n", originals.Select(text => "PRINTFORML " + text));
+        string sourcePath = WriteSource(gameDirectory, "ERB/dialogue.erb", sourceContent);
+        ErbTranslationSourceEntry[] sourceEntries = originals
+            .Select((original, sequence) => Source(
+                $"文本ERB\\dialogue{sequence:D5}",
+                original,
+                sequence,
+                sequence + 2,
+                "DIALOGUE",
+                "flow:0",
+                "",
+                "",
+                null))
+            .ToArray();
+
+        WriteDictionary(dictionaryPath, sourceEntries);
+        WriteDictionary(candidatePath, sourceEntries);
+        var service = new ErbTranslationGroupingService();
+        Assert.True(service.TryWriteOrUpdate(
+            dictionaryDirectory,
+            dictionaryPath,
+            candidatePath,
+            sourcePath,
+            ErbTranslationGroupingService.ComputeSourceFingerprint(sourcePath),
+            "ERB/dialogue.erb",
+            sourceEntries,
+            [],
+            out _,
+            out string? warning), warning);
+
+        JArray dictionary = JArray.Parse(File.ReadAllText(dictionaryPath));
+        string sharedContext = new('C', 2_000);
+        foreach (JObject entry in dictionary.Cast<JObject>())
+        {
+            entry["context"] = sharedContext;
+        }
+        File.WriteAllText(dictionaryPath, dictionary.ToString(Formatting.Indented));
+
+        DictionaryEditorDocument document = new DictionaryEditorService().Load(dictionaryPath);
+        Assert.True(service.TryLoad(
+            dictionaryDirectory,
+            dictionaryPath,
+            document.Entries.ToArray(),
+            gameDirectory,
+            out ErbTranslationGroupingIndex? index,
+            out string? reason), reason);
+
+        IReadOnlyList<ErbTranslationBatch> batches = service.BuildTranslationBatches(
+            document.Entries.ToArray(),
+            document.Entries.ToArray(),
+            index!);
+
+        ErbTranslationBatch batch = Assert.Single(batches);
+        Assert.Equal(5, batch.Targets.Count);
+        Assert.Equal(originals, batch.Targets.Select(target => target.Original));
+    }
+
+    [Fact]
     public void BuildTranslationBatches_KeepsNonTargetDialogueLinesAsReadOnlyContext()
     {
         using var temporary = new TemporaryDirectory();

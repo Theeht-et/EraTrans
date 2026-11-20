@@ -28,6 +28,35 @@ public sealed class DictionaryExtractorTests
     }
 
     [Fact]
+    public void Extract_GameNamedOutputStoresDictionaryAndGroupingSidecarUnderSameGameFolder()
+    {
+        string root = CreateTempDirectory();
+        string game = Path.Combine(root, "Games", "ExampleGame");
+        string output = Path.Combine(root, "Translations");
+        Write(game, "ERB/menu.erb", string.Join(Environment.NewLine,
+        [
+            "@MENU",
+            "PRINTFORML 选择一个项目",
+            "INPUT",
+            "SELECTCASE RESULT",
+            "CASE 0",
+            "PRINTFORML 第一项"
+        ]));
+
+        EraTransOutputLayout layout = EraTransOutputLayout.Create(output, game);
+        DictionaryExtractionResult result =
+            new DictionaryExtractor().Extract(game, layout.DictionaryDirectory);
+
+        string dictionaryPath = Path.Combine(layout.DictionaryDirectory, "ERB", "menu.json");
+        string sidecarPath = Path.Combine(layout.AiContextDirectory, "ERB", "menu.groups.json");
+        Assert.True(File.Exists(dictionaryPath));
+        Assert.True(File.Exists(sidecarPath));
+        Assert.Contains(sidecarPath, result.UpdatedGroupingFiles ?? Array.Empty<string>());
+        Assert.False(Directory.Exists(Path.Combine(output, "字典")));
+        Assert.False(Directory.Exists(Path.Combine(output, "AI上下文")));
+    }
+
+    [Fact]
     public void Extract_UsesLegacyParsers_AndLeavesGameFilesUnchanged()
     {
         string root = CreateTempDirectory();

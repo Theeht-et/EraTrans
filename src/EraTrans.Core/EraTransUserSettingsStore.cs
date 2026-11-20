@@ -57,6 +57,15 @@ public sealed class EraTransUserSettingsStore
             EraTransUserSettings settings = JsonSerializer.Deserialize<EraTransUserSettings>(
                 json,
                 JsonOptions) ?? throw new InvalidDataException("设置文件为空或格式无效。");
+            // Before SettingsVersion existed, HideVariableEntries defaulted to false.
+            // Upgrade once to the new first-run default; subsequent explicit user
+            // choices are preserved by the versioned setting.
+            if (settings.SettingsVersion.GetValueOrDefault() < EraTransUserSettings.CurrentSettingsVersion)
+            {
+                settings.HideVariableEntries = true;
+                settings.SettingsVersion = EraTransUserSettings.CurrentSettingsVersion;
+            }
+
             settings.Validate();
             return settings;
         }
@@ -71,6 +80,7 @@ public sealed class EraTransUserSettingsStore
     public void Save(EraTransUserSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
+        settings.SettingsVersion ??= EraTransUserSettings.CurrentSettingsVersion;
         settings.Validate();
 
         string directory = Path.GetDirectoryName(_filePath)

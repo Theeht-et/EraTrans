@@ -157,8 +157,13 @@ public sealed class AiModelCatalogEnrichmentService
                         string cachedJson = await File.ReadAllTextAsync(
                             _catalogCacheFilePath, cancellationToken);
                         staleCatalog = ParseCatalog(cachedJson);
-                        Cache[cacheKey] = new CatalogCacheEntry(
-                            staleCatalog, DateTimeOffset.MinValue);
+                        DateTimeOffset cacheWrittenAt = new(
+                            File.GetLastWriteTimeUtc(_catalogCacheFilePath),
+                            TimeSpan.Zero);
+                        DateTimeOffset expiresAt = cacheWrittenAt.AddHours(24);
+                        Cache[cacheKey] = new CatalogCacheEntry(staleCatalog, expiresAt);
+                        if (_utcNow() < expiresAt)
+                            return staleCatalog;
                     }
                 }
                 catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)

@@ -201,6 +201,7 @@ public partial class AiProviderSettingsWindow : Window
             LegacyProtocolWarning.Visibility = Visibility.Collapsed;
         }
         _currentProfile.Name = ProviderNameTextBox.Text.Trim();
+        ProviderTitleTextBlock.Text = _currentProfile.Name;
         _currentProfile.BaseUrl = newBaseUrl;
         _currentProfile.Model = ModelTextBox.Text.Trim();
         _currentProfile.ApiKey = ApiKeyPasswordBox.Password;

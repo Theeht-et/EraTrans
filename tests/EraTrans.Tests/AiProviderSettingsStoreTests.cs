@@ -194,6 +194,8 @@ public sealed class AiProviderSettingsPortablePersistenceTests
         store.Save(store.Load());
         JsonObject saved = JsonNode.Parse(File.ReadAllText(path))!.AsObject();
         Assert.Equal(0, (int)saved["Providers"]![0]!["Protocol"]!);
+        Assert.True((bool)saved["Providers"]![0]!["RequiresEndpointReview"]!);
+        Assert.True(Assert.Single(store.Load().Providers).RequiresEndpointReview);
     }
 
     [Fact]

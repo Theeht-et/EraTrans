@@ -828,6 +828,14 @@ public sealed class ErbTranslationGroupingService
             return false;
         }
 
+        if (previous.OutputType == "HTML_ACCUMULATOR" &&
+            current.OutputType == "HTML_ACCUMULATOR")
+        {
+            // Entries accumulated into one LOCALS buffer are one rendered HTML
+            // surface even when loops and conditional blocks separate their source lines.
+            return true;
+        }
+
         int lineGap = current.ParsedLine - previous.ParsedLine;
         bool previousMenuCall = IsMenuCall(previous.CallTarget);
         bool currentMenuCall = IsMenuCall(current.CallTarget);
@@ -860,7 +868,7 @@ public sealed class ErbTranslationGroupingService
     private static bool IsVisibleTextOutput(ErbTranslationSourceEntry entry)
     {
         if (entry.OutputType.StartsWith("PRINT", StringComparison.Ordinal) ||
-            entry.OutputType is "HTML_PRINT" or "DATA" or "REUSELASTLINE" or "PUTFORM")
+            entry.OutputType is "HTML_PRINT" or "HTML_ACCUMULATOR" or "DATA" or "REUSELASTLINE" or "PUTFORM")
         {
             return true;
         }
@@ -886,6 +894,7 @@ public sealed class ErbTranslationGroupingService
         IReadOnlyList<ErbTranslationControlMarker> markers)
     {
         if (entries.Any(entry =>
+                entry.BranchLabel == "MENU_PROMPT" ||
                 entry.OutputType.StartsWith("PRINTBUTTON", StringComparison.Ordinal) ||
                 IsMenuCall(entry.CallTarget)))
         {
@@ -895,7 +904,7 @@ public sealed class ErbTranslationGroupingService
         ErbTranslationSourceEntry first = entries[0];
         ErbTranslationSourceEntry last = entries[^1];
         if (markers.Any(marker =>
-                (marker.Command is "INPUT" or "INPUTS") &&
+                (marker.Command is "INPUT" or "INPUTS" or "BINPUT") &&
                 string.Equals(marker.FunctionId, first.FunctionId, StringComparison.Ordinal) &&
                 string.Equals(marker.BranchPath, first.BranchPath, StringComparison.Ordinal) &&
                 marker.ParsedLine >= first.ParsedLine &&

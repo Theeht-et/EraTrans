@@ -204,6 +204,52 @@ public sealed class ErbTranslationGroupingServiceTests
     }
 
     [Fact]
+    public void TryLoad_AcceptsErbSourceFileDirectlyUnderGameRoot()
+    {
+        using var temporary = new TemporaryDirectory();
+        string dictionaryDirectory = Path.Combine(temporary.Path, "字典");
+        string dictionaryPath = Path.Combine(dictionaryDirectory, "sample.json");
+        string candidatePath = Path.Combine(temporary.Path, "candidate.json");
+        string gameDirectory = Path.Combine(temporary.Path, "Game");
+        string sourcePath = WriteSource(
+            gameDirectory,
+            "sample.erb",
+            "@SAMPLE\\nPRINTFORML 根目录中的对白");
+
+        ErbTranslationSourceEntry[] sourceEntries =
+        [
+            Source("文本sample00000", "根目录中的对白", 0, 2, "SAMPLE", "", "", "", null)
+        ];
+        WriteDictionary(dictionaryPath, sourceEntries);
+        WriteDictionary(candidatePath, sourceEntries);
+
+        var service = new ErbTranslationGroupingService();
+        Assert.True(service.TryWriteOrUpdate(
+            dictionaryDirectory,
+            dictionaryPath,
+            candidatePath,
+            sourcePath,
+            ErbTranslationGroupingService.ComputeSourceFingerprint(sourcePath),
+            "sample.erb",
+            sourceEntries,
+            [],
+            out _,
+            out string? writeWarning), writeWarning);
+
+        DictionaryEditorDocument document = new DictionaryEditorService().Load(dictionaryPath);
+        Assert.True(service.TryLoad(
+            dictionaryDirectory,
+            dictionaryPath,
+            document.Entries.ToArray(),
+            gameDirectory,
+            out ErbTranslationGroupingIndex? index,
+            out string? loadReason), loadReason);
+
+        ErbTranslationGroup group = Assert.Single(index!.Groups);
+        Assert.Equal(new[] { "文本sample00000" }, group.EntryKeys);
+    }
+
+    [Fact]
     public void TryLoad_TranslationEditsDoNotInvalidateSidecar_ButOriginalChangesDo()
     {
         using var temporary = new TemporaryDirectory();

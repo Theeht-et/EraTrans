@@ -8,6 +8,22 @@ namespace EraTrans.Tests;
 public sealed class DictionaryExtractorTests
 {
     [Fact]
+    public void Extract_DefaultOptionsSuppressVariableEntriesButKeepTranslatableText()
+    {
+        string root = CreateTempDirectory();
+        string game = Path.Combine(root, "Game");
+        string output = Path.Combine(root, "Output");
+        Write(game, "ERB/sample.erb",
+            "@SAMPLE\\nCALL 日本語関数(ARG:0)\\nPRINTFORML 可翻译文本");
+
+        new DictionaryExtractor().Extract(game, output);
+
+        JArray entries = JArray.Parse(File.ReadAllText(Path.Combine(output, "ERB", "sample.json")));
+        Assert.Contains(entries, entry => ((string?)entry!["key"])?.StartsWith("文本", StringComparison.Ordinal) == true);
+        Assert.DoesNotContain(entries, entry => ((string?)entry!["key"])?.StartsWith("变量", StringComparison.Ordinal) == true);
+    }
+
+    [Fact]
     public void Extract_UsesLegacyParsers_AndLeavesGameFilesUnchanged()
     {
         string root = CreateTempDirectory();

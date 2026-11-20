@@ -83,8 +83,7 @@ public static class AiProviderProfileValidator
 
 /// <summary>
 /// Stores provider settings in the executable's Config folder. API keys remain
-/// encrypted with Windows DPAPI (CurrentUser). Existing AppData settings are
-/// migrated by decrypting and re-encrypting them for the same Windows user.
+/// encrypted with Windows DPAPI (CurrentUser).
 /// </summary>
 [SupportedOSPlatform("windows")]
 public sealed class AiProviderSettingsStore
@@ -96,37 +95,17 @@ public sealed class AiProviderSettingsStore
     };
 
     private readonly string _filePath;
-    private readonly string? _legacyFilePath;
 
-    public AiProviderSettingsStore(string? filePath = null, string? legacyFilePath = null)
+    public AiProviderSettingsStore(string? filePath = null)
     {
-        bool useDefaultPaths = filePath is null;
         _filePath = filePath ?? EraTransPaths.AiProviderSettingsFilePath;
-        _legacyFilePath = legacyFilePath ??
-            (useDefaultPaths ? EraTransPaths.LegacyAiProviderSettingsFilePath : null);
     }
 
     public AiProviderSettings Load()
     {
-        if (File.Exists(_filePath))
-        {
-            return LoadFrom(_filePath);
-        }
-
-        if (_legacyFilePath is not null &&
-            !Path.GetFullPath(_legacyFilePath).Equals(
-                Path.GetFullPath(_filePath),
-                StringComparison.OrdinalIgnoreCase) &&
-            File.Exists(_legacyFilePath))
-        {
-            // Re-save the successfully decrypted profile into the portable directory.
-            // The original DPAPI-protected AppData file is retained as a backup.
-            AiProviderSettings legacySettings = LoadFrom(_legacyFilePath);
-            Save(legacySettings);
-            return legacySettings;
-        }
-
-        return new AiProviderSettings();
+        return File.Exists(_filePath)
+            ? LoadFrom(_filePath)
+            : new AiProviderSettings();
     }
 
     private static AiProviderSettings LoadFrom(string path)

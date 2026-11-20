@@ -30,7 +30,7 @@ public sealed class AiProviderProfile
         IsEnabled &&
         Protocol == AiProviderProtocol.OpenAiCompatible &&
         !RequiresEndpointReview &&
-        !string.IsNullOrWhiteSpace(BaseUrl) &&
+        AiProviderProfileValidator.IsValidBaseUrl(BaseUrl) &&
         !string.IsNullOrWhiteSpace(Model) &&
         !string.IsNullOrWhiteSpace(ApiKey);
 }
@@ -157,6 +157,23 @@ public static class AiProviderProfileValidator
             Fragment = ""
         };
         return builder.Uri.ToString().TrimEnd('/');
+    }
+
+    public static bool IsValidBaseUrl(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+
+        try
+        {
+            _ = NormalizeBaseUrl(value);
+            return true;
+        }
+        catch (Exception ex) when (
+            ex is ArgumentException or InvalidOperationException or UriFormatException)
+        {
+            return false;
+        }
     }
 
     public static void ValidateForStorage(AiProviderProfile profile)

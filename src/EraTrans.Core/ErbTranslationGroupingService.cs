@@ -799,8 +799,53 @@ public sealed class ErbTranslationGroupingService
             current.Add(entry);
         }
         Flush();
+        MergeHtmlAccumulatorGroups(sourceEntries, groups, groupsByEntryKey);
 
         return (groups, groupsByEntryKey);
+    }
+
+    private static void MergeHtmlAccumulatorGroups(
+        IReadOnlyList<ErbTranslationSourceEntry> sourceEntries,
+        List<ErbTranslationGroup> groups,
+        Dictionary<string, ErbTranslationGroup> groupsByEntryKey)
+    {
+        var sourceByKey = sourceEntries.ToDictionary(entry => entry.Key, StringComparer.Ordinal);
+        var mergeCandidates = groups
+            .Where(group => group.Type == "html")
+            .GroupBy(group => (group.FunctionId, group.BranchPath, group.ControlScopeId, group.BranchLabel))
+            .Where(group => group.Count() > 1)
+            .ToArray();
+
+        foreach (var candidate in mergeCandidates)
+        {
+            ErbTranslationGroup[] fragments = candidate
+                .OrderBy(group => group.FirstSequence)
+                .ToArray();
+            string[] keys = fragments
+                .SelectMany(group => group.EntryKeys)
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(key => sourceByKey[key].Sequence)
+                .ToArray();
+            ErbTranslationGroup first = fragments[0];
+            var merged = first with
+            {
+                FirstSequence = sourceByKey[keys[0]].Sequence,
+                LastSequence = sourceByKey[keys[^1]].Sequence,
+                EntryKeys = keys
+            };
+
+            int insertAt = groups.IndexOf(first);
+            var fragmentIds = fragments.Select(group => group.Id).ToHashSet(StringComparer.Ordinal);
+            groups.RemoveAll(group => fragmentIds.Contains(group.Id));
+            groups.Insert(Math.Min(insertAt, groups.Count), merged);
+
+            foreach (string key in keys)
+            {
+                groupsByEntryKey[key] = merged;
+            }
+        }
+
+        groups.Sort((left, right) => left.FirstSequence.CompareTo(right.FirstSequence));
     }
 
     private static bool CanJoinGroup(
@@ -893,10 +938,17 @@ public sealed class ErbTranslationGroupingService
         IReadOnlyList<ErbTranslationSourceEntry> entries,
         IReadOnlyList<ErbTranslationControlMarker> markers)
     {
+        if (entries.All(entry => entry.OutputType == "HTML_ACCUMULATOR"))
+        {
+            return "html";
+        }
+
         if (entries.Any(entry =>
                 entry.BranchLabel == "MENU_PROMPT" ||
                 entry.OutputType.StartsWith("PRINTBUTTON", StringComparison.Ordinal) ||
-                IsMenuCall(entry.CallTarget)))
+                IsMenuCall(entry.CallTarget) ||
+                (entry.ControlScopeId.StartsWith("menu_", StringComparison.Ordinal) &&
+                 !string.IsNullOrWhiteSpace(entry.BranchLabel))))
         {
             return "menu";
         }

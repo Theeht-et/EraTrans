@@ -654,7 +654,10 @@ public sealed class ErbTranslationGroupingService
             }
         }
 
-        return new ErbTranslationBatch(targets.ToArray(), contexts);
+        int[] targetIds = targets.Select(target => target.Index).Distinct().Order().ToArray();
+        return new ErbTranslationBatch(
+            targets.ToArray(),
+            contexts.Select(context => context with { TargetIds = targetIds }).ToArray());
     }
 
     private static IReadOnlyList<AiTranslationContextEntry> SelectSameGroupContext(
@@ -722,21 +725,34 @@ public sealed class ErbTranslationGroupingService
         IReadOnlyList<DictionaryEditorEntry> targets)
     {
         var targetKeys = targets.Select(entry => entry.Key).ToHashSet(StringComparer.Ordinal);
+        var targetIds = targets.Select(entry => entry.Index).ToHashSet();
         var merged = new Dictionary<string, AiTranslationSemanticContextGroup>(StringComparer.Ordinal);
         foreach (AiTranslationSemanticContextGroup group in existing.Concat(incoming))
         {
             string key = group.GroupId + "|" + group.Relationship;
+            merged.TryGetValue(key, out AiTranslationSemanticContextGroup? previous);
             IEnumerable<AiTranslationContextEntry> entries =
-                (merged.TryGetValue(key, out AiTranslationSemanticContextGroup? previous)
-                    ? previous.Entries.Concat(group.Entries)
-                    : group.Entries)
+                (previous is not null ? previous.Entries.Concat(group.Entries) : group.Entries)
                 .Where(entry => !targetKeys.Contains(entry.Key))
                 .GroupBy(entry => entry.Key, StringComparer.Ordinal)
                 .Select(items => items.First());
-            merged[key] = group with { Entries = entries.ToArray() };
+            int[] scopedTargetIds = (previous is not null
+                    ? previous.TargetIds.Concat(group.TargetIds)
+                    : group.TargetIds)
+                .Where(targetIds.Contains)
+                .Distinct()
+                .Order()
+                .ToArray();
+            merged[key] = group with
+            {
+                Entries = entries.ToArray(),
+                TargetIds = scopedTargetIds
+            };
         }
 
-        return merged.Values.Where(group => group.Entries.Count > 0).ToArray();
+        return merged.Values
+            .Where(group => group.Entries.Count > 0 && group.TargetIds.Count > 0)
+            .ToArray();
     }
 
     private static int EstimateCharacters(

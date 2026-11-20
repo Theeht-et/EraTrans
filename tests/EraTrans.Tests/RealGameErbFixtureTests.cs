@@ -286,6 +286,9 @@ public sealed class RealGameErbFixtureTests
             entry.Original.Contains("メニューのコンボ効果", StringComparison.Ordinal));
         Assert.Contains(foodMenuContext.Entries, entry =>
             entry.Original.Contains("システムの説明", StringComparison.Ordinal));
+        Assert.DoesNotContain(foodMenuContext.Entries, entry =>
+            entry.Original.Contains("増加ZP / 1000", StringComparison.Ordinal) ||
+            entry.Original.Contains("属性数値文字色変換_HTML", StringComparison.Ordinal));
 
         // Item detail: LOCALS copied into the detail-text variable is also a
         // rendered HTML/text region, not a set of unrelated string fragments.

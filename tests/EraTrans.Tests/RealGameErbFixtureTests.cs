@@ -197,6 +197,92 @@ public sealed class RealGameErbFixtureTests
             entry.Original.Contains("少し考えさせて欲しいと言う", StringComparison.Ordinal));
         Assert.Contains(choiceContext.Entries, entry =>
             entry.Original.Contains("想いに、", StringComparison.Ordinal));
+
+        // BINPUT dispatches into IF/ELSE rather than SELECTCASE. Its result
+        // branches must remain read-only alternatives associated with this menu.
+        AiTranslationSemanticContextGroup[] confessionAlternatives = choiceBatch.SemanticContextGroups
+            .Where(group => group.Relationship == "alternative-branch")
+            .ToArray();
+        Assert.NotEmpty(confessionAlternatives);
+        Assert.Contains(confessionAlternatives.SelectMany(group => group.Entries), entry =>
+            entry.Original.Contains("笑顔を浮かべて喜んだ", StringComparison.Ordinal));
+        Assert.Contains(confessionAlternatives.SelectMany(group => group.Entries), entry =>
+            entry.Original.Contains("少し考えさせて欲しいと返す", StringComparison.Ordinal));
+
+        // INPUT menu: the prompt and every visible option on the screen are one menu.
+        const string movementPath = "ERB/コマンド/COMF400_移動.ERB";
+        DictionaryEditorDocument movementDocument = documentsBySource[movementPath];
+        ErbTranslationGroupingIndex movementIndex = indexesBySource[movementPath];
+        DictionaryEditorEntry movementPrompt = movementDocument.Entries.First(entry =>
+            entry.Original.Contains("どうしますか？", StringComparison.Ordinal));
+        ErbTranslationBatch movementBatch = Assert.Single(groupingService.BuildTranslationBatches(
+            [movementPrompt], movementDocument.Entries.ToArray(), movementIndex));
+        AiTranslationSemanticContextGroup movementContext = Assert.Single(
+            movementBatch.SemanticContextGroups,
+            group => group.Relationship == "same-group");
+        Assert.Contains(movementContext.Entries, entry =>
+            entry.Original.Contains("そのまま移動する", StringComparison.Ordinal));
+        Assert.Contains(movementContext.Entries, entry =>
+            entry.Original.Contains("立ち止まる", StringComparison.Ordinal));
+        Assert.Contains(movementContext.Entries, entry =>
+            entry.Original.Contains("移動が終わるまで立ち止まらない", StringComparison.Ordinal));
+
+        // HTML menu: LOCALS fragments accumulated across loops/conditions and
+        // emitted by HTML_PRINT must be one read-only context surface.
+        const string foodMenuPath = "ERB/起床前メニュー関連処理/料理レシピ/食堂メニュー設定処理.ERB";
+        DictionaryEditorDocument foodMenuDocument = documentsBySource[foodMenuPath];
+        ErbTranslationGroupingIndex foodMenuIndex = indexesBySource[foodMenuPath];
+        DictionaryEditorEntry foodMenuTarget = foodMenuDocument.Entries.First(entry =>
+            entry.Original.Contains("現在のメニュー一覧", StringComparison.Ordinal));
+        ErbTranslationBatch foodMenuBatch = Assert.Single(groupingService.BuildTranslationBatches(
+            [foodMenuTarget], foodMenuDocument.Entries.ToArray(), foodMenuIndex));
+        AiTranslationSemanticContextGroup foodMenuContext = Assert.Single(
+            foodMenuBatch.SemanticContextGroups,
+            group => group.Relationship == "same-group");
+        Assert.Contains(foodMenuContext.Entries, entry =>
+            entry.Original.Contains("ルピ収入目安", StringComparison.Ordinal));
+        Assert.Contains(foodMenuContext.Entries, entry =>
+            entry.Original.Contains("メニューのコンボ効果", StringComparison.Ordinal));
+        Assert.Contains(foodMenuContext.Entries, entry =>
+            entry.Original.Contains("システムの説明", StringComparison.Ordinal));
+
+        // Item detail: LOCALS copied into the detail-text variable is also a
+        // rendered HTML/text region, not a set of unrelated string fragments.
+        const string herbPath = "ERB/探索/アイテムデータ/ITEM_薬草.ERB";
+        DictionaryEditorDocument herbDocument = documentsBySource[herbPath];
+        ErbTranslationGroupingIndex herbIndex = indexesBySource[herbPath];
+        DictionaryEditorEntry herbEffectTarget = herbDocument.Entries.First(entry =>
+            entry.Original.Contains("味方単体のＨＰを[１００]回復する。", StringComparison.Ordinal));
+        ErbTranslationBatch herbBatch = Assert.Single(groupingService.BuildTranslationBatches(
+            [herbEffectTarget], herbDocument.Entries.ToArray(), herbIndex));
+        AiTranslationSemanticContextGroup herbContext = Assert.Single(
+            herbBatch.SemanticContextGroups,
+            group => group.Relationship == "same-group");
+        Assert.Contains(herbContext.Entries, entry =>
+            entry.Original.Contains("■薬草", StringComparison.Ordinal));
+        Assert.Contains(herbContext.Entries, entry =>
+            entry.Original.Contains("様々な傷に効く植物群", StringComparison.Ordinal));
+        Assert.Contains(herbContext.Entries, entry =>
+            entry.Original.Contains("【効果】", StringComparison.Ordinal));
+
+        // Main-story passage: the selected line must retain the route problem,
+        // proposed solution, and the following quest context.
+        const string routePath = "ERB/シナリオ/メインシナリオ/メインシナリオ_航路開拓計画.ERB";
+        DictionaryEditorDocument routeDocument = documentsBySource[routePath];
+        ErbTranslationGroupingIndex routeIndex = indexesBySource[routePath];
+        DictionaryEditorEntry routeTarget = routeDocument.Entries.First(entry =>
+            entry.Original.Contains("島の立地が不便に過ぎる", StringComparison.Ordinal));
+        ErbTranslationBatch routeBatch = Assert.Single(groupingService.BuildTranslationBatches(
+            [routeTarget], routeDocument.Entries.ToArray(), routeIndex));
+        AiTranslationSemanticContextGroup routeContext = Assert.Single(
+            routeBatch.SemanticContextGroups,
+            group => group.Relationship == "same-group");
+        Assert.Contains(routeContext.Entries, entry =>
+            entry.Original.Contains("主要な航路から外れて", StringComparison.Ordinal));
+        Assert.Contains(routeContext.Entries, entry =>
+            entry.Original.Contains("人食い鳥", StringComparison.Ordinal));
+        Assert.Contains(routeContext.Entries, entry =>
+            entry.Original.Contains("討伐", StringComparison.Ordinal));
     }
 
     private static string NormalizePath(string path) =>

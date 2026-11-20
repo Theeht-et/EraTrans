@@ -350,7 +350,7 @@ public sealed class AiTranslationServiceTests
 
 
     [Fact]
-    public async Task TranslateAsync_LogsActualGeminiRequestShapeAndProtocol()
+    public async Task TranslateAsync_LogsActualOpenAiCompatibleRequestShape()
     {
         string root = Path.Combine(Path.GetTempPath(), "EraTransAiLogTests", Guid.NewGuid().ToString("N"));
         var store = new AiTranslationLogStore(Path.Combine(root, "logs"));
@@ -359,11 +359,10 @@ public sealed class AiTranslationServiceTests
             store);
         var profile = new AiProviderProfile
         {
-            Name = "Gemini test",
-            BaseUrl = "https://generativelanguage.googleapis.com/v1beta",
-            Model = "gemini-2.5-flash",
-            ApiKey = "gemini-private-key",
-            Protocol = AiProviderProtocol.GoogleGemini
+            Name = "Compatible test",
+            BaseUrl = "https://api.example.com/v1",
+            Model = "translation-model",
+            ApiKey = "private-key"
         };
 
         await service.TranslateAsync(
@@ -371,14 +370,12 @@ public sealed class AiTranslationServiceTests
             [new AiTranslationRequest(1, "key", "原文", "上下文")]);
 
         AiTranslationLogEntry log = Assert.Single(store.LoadAll());
-        Assert.Equal("GoogleGemini", log.Protocol);
-        Assert.Equal(
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
-            log.Endpoint);
-        Assert.Contains("systemInstruction", log.RequestJson);
-        Assert.Contains("generationConfig", log.RequestJson);
+        Assert.Equal("OpenAI-compatible", log.Protocol);
+        Assert.Equal("POST", log.RequestMethod);
+        Assert.Equal("https://api.example.com/v1/chat/completions", log.Endpoint);
+        Assert.Contains("\"messages\"", log.RequestJson);
         Assert.Contains("原文", log.RequestJson);
-        Assert.DoesNotContain("gemini-private-key", log.RequestJson);
+        Assert.DoesNotContain("private-key", log.RequestJson);
         Assert.Contains("测试译文", log.RawResponse);
     }
 

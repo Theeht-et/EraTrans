@@ -1,10 +1,7 @@
-using System.ClientModel;
 using System.Diagnostics;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
-using OpenAI;
-using OpenAI.Chat;
 
 namespace EraTrans.Core;
 
@@ -32,56 +29,6 @@ public interface IAiChatCompletionClient
         string systemPrompt,
         string userPrompt,
         CancellationToken cancellationToken);
-}
-
-/// <summary>
-/// Thin adapter over the official OpenAI .NET SDK. The SDK handles compatible
-/// Chat Completions HTTP requests, authentication, retries, and cancellation.
-/// </summary>
-public sealed class OpenAiCompatibleChatCompletionClient : IAiChatCompletionClient
-{
-    private readonly NativeAiProviderClient _nativeClient;
-
-    public OpenAiCompatibleChatCompletionClient(HttpClient? nativeHttpClient = null)
-    {
-        _nativeClient = new NativeAiProviderClient(nativeHttpClient);
-    }
-
-    public async Task<string> CompleteAsync(
-        AiProviderProfile profile,
-        string systemPrompt,
-        string userPrompt,
-        CancellationToken cancellationToken)
-    {
-        AiProviderProfileValidator.Validate(profile);
-        if (profile.Protocol != AiProviderProtocol.OpenAiCompatible)
-        {
-            return await _nativeClient.CompleteAsync(
-                profile, systemPrompt, userPrompt, cancellationToken);
-        }
-
-        var client = new ChatClient(
-            model: profile.Model,
-            credential: new ApiKeyCredential(profile.ApiKey),
-            options: new OpenAIClientOptions
-            {
-                Endpoint = new Uri(profile.BaseUrl)
-            });
-
-        ChatCompletion completion = await client.CompleteChatAsync(
-            [
-                new SystemChatMessage(systemPrompt),
-                new UserChatMessage(userPrompt)
-            ],
-            cancellationToken: cancellationToken);
-
-        string response = string.Concat(
-            completion.Content
-                .Where(part => !string.IsNullOrWhiteSpace(part.Text))
-                .Select(part => part.Text));
-
-        return response;
-    }
 }
 
 /// <summary>
@@ -213,7 +160,7 @@ public sealed class AiTranslationService
                 StartedAtUtc = DateTimeOffset.UtcNow,
                 RequestKind = requestKind,
                 ProviderName = RedactSecret(profile.Name, apiKey),
-                Protocol = profile.Protocol.ToString(),
+                Protocol = "OpenAI-compatible",
                 RequestMethod = requestDetails.Method,
                 Endpoint = endpoint,
                 Model = RedactSecret(profile.Model, apiKey),

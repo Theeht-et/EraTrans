@@ -159,6 +159,66 @@ public sealed class AiProviderSettingsPortablePersistenceTests
         Assert.Equal("legacy-secret", loaded.ApiKey);
     }
 
+
+    [Fact]
+    public void Store_MigratesLegacyNativeProtocolNumbersToOpenAiCompatibleAndFlagsEndpoint()
+    {
+        using var temporary = new TemporaryDirectory();
+        string path = Path.Combine(temporary.Path, "Config", "ai-providers.json");
+        var store = new AiProviderSettingsStore(path);
+        store.Save(new AiProviderSettings
+        {
+            ActiveProviderId = "legacy-native",
+            Providers =
+            [
+                new AiProviderProfile
+                {
+                    Id = "legacy-native",
+                    Name = "Legacy Gemini",
+                    BaseUrl = "https://generativelanguage.googleapis.com/v1beta",
+                    Model = "gemini-model",
+                    ApiKey = "legacy-secret"
+                }
+            ]
+        });
+
+        JsonObject root = JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+        root["Providers"]![0]!.AsObject()["Protocol"] = 1;
+        File.WriteAllText(path, root.ToJsonString());
+
+        AiProviderProfile loaded = Assert.Single(store.Load().Providers);
+        Assert.Equal(AiProviderProtocol.OpenAiCompatible, loaded.Protocol);
+        Assert.True(loaded.RequiresEndpointReview);
+        Assert.Equal("legacy-secret", loaded.ApiKey);
+
+        store.Save(store.Load());
+        JsonObject saved = JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+        Assert.Equal(0, (int)saved["Providers"]![0]!["Protocol"]!);
+    }
+
+    [Fact]
+    public void Store_AllowsSavingMultipleIncompleteProviderProfiles()
+    {
+        using var temporary = new TemporaryDirectory();
+        string path = Path.Combine(temporary.Path, "Config", "ai-providers.json");
+        var store = new AiProviderSettingsStore(path);
+
+        store.Save(new AiProviderSettings
+        {
+            ActiveProviderId = "openai",
+            Providers =
+            [
+                new AiProviderProfile { Id = "openai", Name = "OpenAI", BaseUrl = "https://api.openai.com/v1" },
+                new AiProviderProfile { Id = "custom", Name = "Custom", BaseUrl = "" }
+            ]
+        });
+
+        AiProviderSettings loaded = store.Load();
+        Assert.Equal(2, loaded.Providers.Count);
+        Assert.All(loaded.Providers, provider => Assert.Empty(provider.ApiKey));
+        Assert.Equal("", loaded.Providers.Single(provider => provider.Id == "custom").BaseUrl);
+    }
+
     private sealed class TemporaryDirectory : IDisposable
     {
         public string Path { get; } = System.IO.Path.Combine(

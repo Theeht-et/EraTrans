@@ -2,14 +2,13 @@ using System.Runtime.Versioning;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace EraTrans.Core;
 
 public enum AiProviderProtocol
 {
-    OpenAiCompatible,
-    GoogleGemini,
-    AnthropicClaude
+    OpenAiCompatible = 0
 }
 
 public sealed class AiProviderProfile
@@ -20,6 +19,8 @@ public sealed class AiProviderProfile
     public string Model { get; set; } = "";
     public string ApiKey { get; set; } = "";
     public AiProviderProtocol Protocol { get; set; } = AiProviderProtocol.OpenAiCompatible;
+    [JsonIgnore]
+    public bool RequiresEndpointReview { get; set; }
     public List<AiProviderModel> AvailableModels { get; set; } = [];
 }
 
@@ -74,6 +75,15 @@ public static class AiProviderProfileValidator
             Fragment = ""
         };
         return builder.Uri.ToString().TrimEnd('/');
+    }
+
+    public static void ValidateForStorage(AiProviderProfile profile)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+        if (string.IsNullOrWhiteSpace(profile.Name))
+            throw new InvalidOperationException("请填写服务商名称。");
+        if (!string.IsNullOrWhiteSpace(profile.BaseUrl))
+            profile.BaseUrl = NormalizeBaseUrl(profile.BaseUrl);
     }
 
     public static void ValidateForModelDiscovery(AiProviderProfile profile)
@@ -141,11 +151,12 @@ public sealed class AiProviderSettingsStore
 
             foreach (StoredProvider item in stored.Providers)
             {
-                byte[] protectedKey = Convert.FromBase64String(item.ProtectedApiKey);
-                byte[] keyBytes = ProtectedData.Unprotect(
-                    protectedKey,
-                    optionalEntropy: null,
-                    DataProtectionScope.CurrentUser);
+                byte[] keyBytes = string.IsNullOrEmpty(item.ProtectedApiKey)
+                    ? []
+                    : ProtectedData.Unprotect(
+                        Convert.FromBase64String(item.ProtectedApiKey),
+                        optionalEntropy: null,
+                        DataProtectionScope.CurrentUser);
                 try
                 {
                     settings.Providers.Add(new AiProviderProfile
@@ -155,7 +166,8 @@ public sealed class AiProviderSettingsStore
                         BaseUrl = item.BaseUrl,
                         Model = item.Model,
                         ApiKey = Encoding.UTF8.GetString(keyBytes),
-                        Protocol = item.Protocol,
+                        Protocol = AiProviderProtocol.OpenAiCompatible,
+                        RequiresEndpointReview = item.Protocol != (int)AiProviderProtocol.OpenAiCompatible,
                         AvailableModels = (item.Models ?? [])
                             .Where(model => !string.IsNullOrWhiteSpace(model.Id))
                             .Select(model => new AiProviderModel
@@ -228,15 +240,18 @@ public sealed class AiProviderSettingsStore
             ActiveProviderId = settings.ActiveProviderId,
             Providers = settings.Providers.Select(profile =>
             {
-                AiProviderProfileValidator.Validate(profile);
+                AiProviderProfileValidator.ValidateForStorage(profile);
                 byte[] keyBytes = Encoding.UTF8.GetBytes(profile.ApiKey);
-                byte[] protectedKey;
+                byte[] protectedKey = [];
                 try
                 {
-                    protectedKey = ProtectedData.Protect(
-                        keyBytes,
-                        optionalEntropy: null,
-                        DataProtectionScope.CurrentUser);
+                    if (keyBytes.Length > 0)
+                    {
+                        protectedKey = ProtectedData.Protect(
+                            keyBytes,
+                            optionalEntropy: null,
+                            DataProtectionScope.CurrentUser);
+                    }
                 }
                 finally
                 {
@@ -249,8 +264,8 @@ public sealed class AiProviderSettingsStore
                     Name = profile.Name,
                     BaseUrl = profile.BaseUrl,
                     Model = profile.Model,
-                    Protocol = profile.Protocol,
-                    ProtectedApiKey = Convert.ToBase64String(protectedKey),
+                    Protocol = (int)AiProviderProtocol.OpenAiCompatible,
+                    ProtectedApiKey = protectedKey.Length == 0 ? "" : Convert.ToBase64String(protectedKey),
                     Models = (profile.AvailableModels ?? [])
                         .Where(model => !string.IsNullOrWhiteSpace(model.Id))
                         .Select(model => new StoredModel
@@ -342,7 +357,7 @@ public sealed class AiProviderSettingsStore
         public string Name { get; set; } = "";
         public string BaseUrl { get; set; } = "";
         public string Model { get; set; } = "";
-        public AiProviderProtocol Protocol { get; set; } = AiProviderProtocol.OpenAiCompatible;
+        public int Protocol { get; set; } = (int)AiProviderProtocol.OpenAiCompatible;
         public string ProtectedApiKey { get; set; } = "";
         public List<StoredModel>? Models { get; set; } = [];
     }

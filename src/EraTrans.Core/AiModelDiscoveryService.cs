@@ -115,11 +115,6 @@ public sealed class AiProviderModel
                 parts.Add("PDF 输入");
             }
 
-            if (SupportsTools)
-            {
-                parts.Add("工具调用");
-            }
-
             if (SupportsStructuredOutput)
             {
                 parts.Add("结构化输出");
@@ -225,8 +220,8 @@ public sealed class AiProviderModel
 }
 
 /// <summary>
-/// Fetches model inventories using the selected provider's native or compatible API.
-/// Unsupported or unavailable model-list endpoints leave manual model entry available.
+/// Fetches model inventories through the OpenAI-compatible GET /models endpoint.
+/// Unsupported model-list endpoints leave manual model entry available.
 /// </summary>
 public sealed class AiModelDiscoveryService
 {
@@ -243,54 +238,23 @@ public sealed class AiModelDiscoveryService
         CancellationToken cancellationToken = default)
     {
         AiProviderProfileValidator.ValidateForModelDiscovery(profile);
-        if (profile.Protocol != AiProviderProtocol.OpenAiCompatible &&
-            string.IsNullOrWhiteSpace(profile.ApiKey))
-            throw new InvalidOperationException("请先填写 API Key。");
-
         string baseUrl = AiProviderProfileValidator.NormalizeBaseUrl(profile.BaseUrl);
-        Uri endpoint;
-        using var request = new HttpRequestMessage(
-            HttpMethod.Get,
-            new Uri($"{baseUrl.TrimEnd('/')}/models", UriKind.Absolute));
+        var endpoint = new Uri($"{baseUrl.TrimEnd('/')}/models", UriKind.Absolute);
+        using var request = new HttpRequestMessage(HttpMethod.Get, endpoint);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        if (!string.IsNullOrWhiteSpace(profile.ApiKey))
+            request.Headers.Authorization =
+                new AuthenticationHeaderValue("Bearer", profile.ApiKey.Trim());
 
-        switch (profile.Protocol)
-        {
-            case AiProviderProtocol.OpenAiCompatible:
-                endpoint = new Uri($"{baseUrl.TrimEnd('/')}/models", UriKind.Absolute);
-                if (!string.IsNullOrWhiteSpace(profile.ApiKey))
-                {
-                    request.Headers.Authorization =
-                        new AuthenticationHeaderValue("Bearer", profile.ApiKey.Trim());
-                }
-                break;
-            case AiProviderProtocol.GoogleGemini:
-                endpoint = new Uri($"{baseUrl.TrimEnd('/')}/models", UriKind.Absolute);
-                request.Headers.TryAddWithoutValidation("x-goog-api-key", profile.ApiKey.Trim());
-                break;
-            case AiProviderProtocol.AnthropicClaude:
-                string claudeBase = baseUrl.TrimEnd('/');
-                if (claudeBase.EndsWith("/v1", StringComparison.OrdinalIgnoreCase))
-                    claudeBase = claudeBase[..^3];
-                endpoint = new Uri($"{claudeBase}/v1/models", UriKind.Absolute);
-                request.Headers.TryAddWithoutValidation("x-api-key", profile.ApiKey.Trim());
-                request.Headers.TryAddWithoutValidation("anthropic-version", "2023-06-01");
-                break;
-            default:
-                throw new InvalidOperationException("不支持的 AI 服务商协议类型。");
-        }
-
-        request.RequestUri = endpoint;
         using HttpResponseMessage response = await _httpClient.SendAsync(
             request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-
         if (!response.IsSuccessStatusCode)
         {
             string detail = response.StatusCode switch
             {
                 HttpStatusCode.Unauthorized => "API Key 无效或没有访问模型列表的权限。",
                 HttpStatusCode.Forbidden => "当前 API Key 没有访问模型列表的权限。",
-                HttpStatusCode.NotFound => "服务商未提供对应的模型列表接口。请检查协议和 API 地址，也可以手动填写模型 ID。",
+                HttpStatusCode.NotFound => "服务商未提供 OpenAI 兼容的 GET /models 接口。请检查 API 地址，也可以手动填写模型 ID。",
                 HttpStatusCode.TooManyRequests => "请求过于频繁，请稍后重试。",
                 _ => "请检查 Base URL、API Key 和服务商接口兼容性。"
             };
@@ -301,12 +265,7 @@ public sealed class AiModelDiscoveryService
         }
 
         string content = await response.Content.ReadAsStringAsync(cancellationToken);
-        return profile.Protocol switch
-        {
-            AiProviderProtocol.GoogleGemini => ParseGeminiModelsResponse(content),
-            AiProviderProtocol.AnthropicClaude => ParseAnthropicModelsResponse(content),
-            _ => ParseModelsResponse(content)
-        };
+        return ParseModelsResponse(content);
     }
 
     public static IReadOnlyList<AiProviderModel> ParseModelsResponse(string json)
@@ -384,139 +343,6 @@ public sealed class AiModelDiscoveryService
             .ToArray();
     }
 
-
-    public static IReadOnlyList<AiProviderModel> ParseGeminiModelsResponse(string json)
-    {
-        using JsonDocument document = JsonDocument.Parse(json);
-        if (!TryGetProperty(document.RootElement, "models", out JsonElement rows) ||
-            rows.ValueKind != JsonValueKind.Array)
-            throw new InvalidDataException("Gemini 模型列表响应中没有 models 数组。");
-
-        var models = new List<AiProviderModel>();
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (JsonElement row in rows.EnumerateArray())
-        {
-            if (row.ValueKind != JsonValueKind.Object)
-                continue;
-
-            string? fullName = ReadString(row, "name");
-            if (string.IsNullOrWhiteSpace(fullName))
-                continue;
-
-            string id = fullName.StartsWith("models/", StringComparison.OrdinalIgnoreCase)
-                ? fullName["models/".Length..]
-                : fullName;
-            if (id.Length == 0 || !seen.Add(id))
-                continue;
-
-            IReadOnlyList<string> methods = ReadStringArray(row, "supportedGenerationMethods");
-            bool supportsGenerate = methods.Contains("generateContent", StringComparer.OrdinalIgnoreCase);
-            bool isEmbedding = methods.Contains("embedContent", StringComparer.OrdinalIgnoreCase) &&
-                               !supportsGenerate;
-            int? inputLimit = ReadInt32(row, "inputTokenLimit");
-            int? outputLimit = ReadInt32(row, "outputTokenLimit");
-            bool? reasoning = ReadNullableBoolean(row, "thinking")
-                ?? ReadNullableBoolean(row, "supportsReasoning");
-
-            models.Add(new AiProviderModel
-            {
-                Id = id,
-                DisplayName = ReadString(row, "displayName") ?? id,
-                GroupName = GetGroupName(id, "google", isEmbedding, false),
-                OwnedBy = "Google",
-                IsEmbedding = isEmbedding,
-                ContextLimit = inputLimit,
-                InputLimit = inputLimit,
-                OutputLimit = outputLimit,
-                ReasoningSupport = reasoning,
-                SupportsReasoning = reasoning == true
-            });
-        }
-
-        return models
-            .OrderBy(model => model.IsEmbedding ? 1 : 0)
-            .ThenBy(model => model.GroupName, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(model => model.Id, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-    }
-
-    public static IReadOnlyList<AiProviderModel> ParseAnthropicModelsResponse(string json)
-    {
-        using JsonDocument document = JsonDocument.Parse(json);
-        if (!TryGetProperty(document.RootElement, "data", out JsonElement rows) ||
-            rows.ValueKind != JsonValueKind.Array)
-            throw new InvalidDataException("Claude 模型列表响应中没有 data 数组。");
-
-        var models = new List<AiProviderModel>();
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (JsonElement row in rows.EnumerateArray())
-        {
-            if (row.ValueKind != JsonValueKind.Object)
-                continue;
-
-            string? id = ReadString(row, "id");
-            if (string.IsNullOrWhiteSpace(id) || !seen.Add(id))
-                continue;
-
-            bool? reasoning = ReadNestedCapabilityBoolean(row, "thinking");
-            bool? tools = ReadNestedCapabilityBoolean(row, "tool_use");
-            int? inputLimit = ReadInt32(row, "max_input_tokens");
-            int? outputLimit = ReadInt32(row, "max_tokens");
-
-            models.Add(new AiProviderModel
-            {
-                Id = id,
-                DisplayName = ReadString(row, "display_name") ?? id,
-                GroupName = GetGroupName(id, "anthropic", false, false),
-                OwnedBy = "Anthropic",
-                ContextLimit = inputLimit,
-                InputLimit = inputLimit,
-                OutputLimit = outputLimit,
-                Status = ReadString(row, "lifecycle"),
-                ReasoningSupport = reasoning,
-                SupportsReasoning = reasoning == true,
-                SupportsTools = tools == true
-            });
-        }
-
-        return models
-            .OrderBy(model => model.GroupName, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(model => model.Id, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-    }
-
-    private static bool? ReadNestedCapabilityBoolean(JsonElement row, string name)
-    {
-        if (!TryGetProperty(row, "capabilities", out JsonElement capabilities) ||
-            capabilities.ValueKind != JsonValueKind.Object ||
-            !TryGetProperty(capabilities, name, out JsonElement capability))
-            return null;
-
-        if (capability.ValueKind == JsonValueKind.True) return true;
-        if (capability.ValueKind == JsonValueKind.False) return false;
-        return capability.ValueKind == JsonValueKind.Object
-            ? ReadNullableBoolean(capability, "supported")
-            : null;
-    }
-
-    private static IReadOnlyList<string> ReadStringArray(JsonElement element, string name)
-    {
-        if (!TryGetProperty(element, name, out JsonElement array) ||
-            array.ValueKind != JsonValueKind.Array)
-            return [];
-
-        return array.EnumerateArray()
-            .Where(item => item.ValueKind == JsonValueKind.String)
-            .Select(item => item.GetString() ?? "")
-            .Where(item => item.Length > 0)
-            .ToArray();
-    }
-
-    private static int? ReadInt32(JsonElement element, string name)
-    {
-        long? value = ReadInt64(element, name);
-        return value is > 0 and <= int.MaxValue ? (int)value.Value : null;
-    }
 
     private static JsonElement FindModelRows(JsonElement root)
     {

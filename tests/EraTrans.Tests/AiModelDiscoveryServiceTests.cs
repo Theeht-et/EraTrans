@@ -239,7 +239,6 @@ public sealed class AiModelDiscoveryServiceTests
         Assert.Equal(80.0, model.OutputAudioCostPerMillion);
         Assert.Equal("上下文：128K", model.ContextLimitLabel);
         Assert.True(model.ReasoningSupport == true);
-        Assert.Contains("工具调用", model.MetadataSummary);
         Assert.Contains("输入 $2.5/1M", model.MetadataSummary);
         Assert.Contains("输出 $10/1M", model.MetadataSummary);
     }

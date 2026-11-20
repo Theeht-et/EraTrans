@@ -2,6 +2,7 @@ using EraTrans.Core;
 using System.Collections.ObjectModel;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 
 namespace EraTrans.App;
 
@@ -17,20 +18,9 @@ public partial class AiProviderSettingsWindow : Window
     private bool _isTesting;
     private bool _isFetchingModels;
 
-    private sealed record ProtocolOption(string Name, AiProviderProtocol Value);
-
     public AiProviderSettingsWindow()
     {
         InitializeComponent();
-
-        ProtocolComboBox.ItemsSource = new[]
-        {
-            new ProtocolOption("OpenAI 兼容（Chat Completions）", AiProviderProtocol.OpenAiCompatible),
-            new ProtocolOption("Google Gemini 原生 API", AiProviderProtocol.GoogleGemini),
-            new ProtocolOption("Anthropic Claude 原生 API", AiProviderProtocol.AnthropicClaude)
-        };
-        ProviderPresetComboBox.ItemsSource = AiProviderPresets.All;
-
         try
         {
             _settings = _store.Load();
@@ -44,27 +34,34 @@ public partial class AiProviderSettingsWindow : Window
 
         foreach (AiProviderProfile provider in _settings.Providers)
             _providers.Add(provider);
-        ProviderComboBox.ItemsSource = _providers;
 
         if (_providers.Count == 0)
         {
-            AddProvider();
+            foreach (AiProviderPreset preset in AiProviderPresets.All)
+            {
+                _providers.Add(new AiProviderProfile
+                {
+                    Name = preset.Name,
+                    BaseUrl = preset.BaseUrl,
+                    Protocol = AiProviderProtocol.OpenAiCompatible
+                });
+            }
         }
-        else
-        {
-            ProviderComboBox.SelectedItem =
-                _providers.FirstOrDefault(provider => provider.Id == _settings.ActiveProviderId)
-                ?? _providers[0];
-            LoadSelectedProfile();
-        }
+
+        ProviderListBox.ItemsSource = _providers;
+        AiProviderProfile? initial = _providers.FirstOrDefault(provider =>
+            string.Equals(provider.Id, _settings.ActiveProviderId, StringComparison.Ordinal))
+            ?? _providers.FirstOrDefault(provider =>
+                provider.Name.Contains("OpenAI", StringComparison.OrdinalIgnoreCase))
+            ?? _providers.FirstOrDefault();
+        ProviderListBox.SelectedItem = initial;
+        LoadSelectedProfile();
     }
 
-    private void ProviderComboBox_SelectionChanged(
-        object sender, SelectionChangedEventArgs e)
+    private void ProviderListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (_loadingProfile)
+        if (_loadingProfile || _isTesting || _isFetchingModels)
             return;
-
         SaveFieldsToCurrentProfile();
         LoadSelectedProfile();
     }
@@ -72,117 +69,116 @@ public partial class AiProviderSettingsWindow : Window
     private void LoadSelectedProfile()
     {
         _loadingProfile = true;
-        _currentProfile = ProviderComboBox.SelectedItem as AiProviderProfile;
-
-        NameTextBox.Text = _currentProfile?.Name ?? "";
+        _currentProfile = ProviderListBox.SelectedItem as AiProviderProfile;
+        bool hasProfile = _currentProfile is not null;
+        ProviderTitleTextBlock.Text = hasProfile ? _currentProfile!.Name : "服务商配置";
+        ProviderNameTextBox.Text = _currentProfile?.Name ?? "";
         BaseUrlTextBox.Text = _currentProfile?.BaseUrl ?? "";
-        ModelTextBox.Text = _currentProfile?.Model ?? "";
         ApiKeyPasswordBox.Password = _currentProfile?.ApiKey ?? "";
-        ProtocolComboBox.SelectedValue =
-            _currentProfile?.Protocol ?? AiProviderProtocol.OpenAiCompatible;
-        ProviderPresetComboBox.SelectedItem = null;
-
+        ModelTextBox.Text = _currentProfile?.Model ?? "";
+        LegacyProtocolWarning.Visibility = _currentProfile?.RequiresEndpointReview == true
+            ? Visibility.Visible : Visibility.Collapsed;
         int cachedCount = _currentProfile?.AvailableModels.Count ?? 0;
         ModelCountTextBlock.Text = cachedCount == 0
-            ? "模型列表尚未获取。可以获取模型，也可以直接填写模型 ID。"
-            : $"已缓存 {cachedCount} 个模型。点击“获取模型列表”可刷新并打开模型选择窗口。";
+            ? "模型列表尚未获取，可直接填写模型 ID。"
+            : $"已缓存 {cachedCount} 个模型。点击“获取模型”刷新并选择。";
         StatusTextBlock.Text = "";
-        UpdateProtocolHint();
         _loadingProfile = false;
+        SetEditorEnabled(hasProfile);
+    }
+
+    private void SetEditorEnabled(bool enabled)
+    {
+        bool idle = !_isFetchingModels && !_isTesting;
+        ProviderListBox.IsEnabled = enabled && idle;
+        ProviderNameTextBox.IsEnabled = enabled && idle;
+        BaseUrlTextBox.IsEnabled = enabled && idle;
+        ApiKeyPasswordBox.IsEnabled = enabled && idle;
+        ModelTextBox.IsEnabled = enabled && idle;
+        FetchModelsButton.IsEnabled = enabled && idle;
+        TestButton.IsEnabled = enabled && idle;
+        RemoveProviderButton.IsEnabled = enabled && idle && _providers.Count > 1;
+        AddProviderButton.IsEnabled = idle;
     }
 
     private void SaveFieldsToCurrentProfile()
     {
         if (_currentProfile is null || _loadingProfile)
             return;
-
-        _currentProfile.Name = NameTextBox.Text.Trim();
-        _currentProfile.BaseUrl = BaseUrlTextBox.Text.Trim();
+        string newBaseUrl = BaseUrlTextBox.Text.Trim();
+        if (_currentProfile.RequiresEndpointReview &&
+            !string.Equals(_currentProfile.BaseUrl, newBaseUrl, StringComparison.Ordinal))
+        {
+            _currentProfile.RequiresEndpointReview = false;
+            LegacyProtocolWarning.Visibility = Visibility.Collapsed;
+        }
+        _currentProfile.Name = ProviderNameTextBox.Text.Trim();
+        _currentProfile.BaseUrl = newBaseUrl;
         _currentProfile.Model = ModelTextBox.Text.Trim();
         _currentProfile.ApiKey = ApiKeyPasswordBox.Password;
-        if (ProtocolComboBox.SelectedValue is AiProviderProtocol protocol)
-            _currentProfile.Protocol = protocol;
     }
 
-    private void AddProvider_Click(object sender, RoutedEventArgs e) => AddProvider();
+    private void AddProvider_Click(object sender, RoutedEventArgs e)
+    {
+        if (_isTesting || _isFetchingModels)
+            return;
+        var menu = new ContextMenu();
+        foreach (AiProviderPreset preset in AiProviderPresets.All)
+        {
+            var item = new MenuItem { Header = preset.Name, Tag = preset };
+            item.Click += (_, _) => AddProvider((AiProviderPreset)item.Tag);
+            menu.Items.Add(item);
+        }
+        menu.Items.Add(new Separator());
+        var custom = new MenuItem { Header = "自定义 OpenAI 兼容服务" };
+        custom.Click += (_, _) => AddCustomProvider();
+        menu.Items.Add(custom);
+        menu.PlacementTarget = AddProviderButton;
+        menu.Placement = PlacementMode.Bottom;
+        menu.IsOpen = true;
+    }
 
-    private void AddProvider()
+    private void AddProvider(AiProviderPreset preset)
     {
         SaveFieldsToCurrentProfile();
-        var provider = new AiProviderProfile
+        var profile = new AiProviderProfile
         {
-            Name = $"新服务商 {_providers.Count + 1}",
+            Name = preset.Name,
+            BaseUrl = preset.BaseUrl,
             Protocol = AiProviderProtocol.OpenAiCompatible
         };
-        _providers.Add(provider);
-        ProviderComboBox.SelectedItem = provider;
+        _providers.Add(profile);
+        ProviderListBox.SelectedItem = profile;
+        LoadSelectedProfile();
+    }
+
+    private void AddCustomProvider()
+    {
+        SaveFieldsToCurrentProfile();
+        var profile = new AiProviderProfile
+        {
+            Name = "自定义服务商",
+            BaseUrl = "",
+            Protocol = AiProviderProtocol.OpenAiCompatible
+        };
+        _providers.Add(profile);
+        ProviderListBox.SelectedItem = profile;
         LoadSelectedProfile();
     }
 
     private void RemoveProvider_Click(object sender, RoutedEventArgs e)
     {
-        SaveFieldsToCurrentProfile();
-        if (_currentProfile is null)
+        if (_currentProfile is null || _providers.Count <= 1 || _isTesting || _isFetchingModels)
             return;
-
+        MessageBoxResult result = MessageBox.Show(this,
+            $"确定删除“{_currentProfile.Name}”配置吗？此操作不会影响其他服务商。",
+            "删除服务商", MessageBoxButton.YesNo, MessageBoxImage.Question);
+        if (result != MessageBoxResult.Yes)
+            return;
         int index = _providers.IndexOf(_currentProfile);
         _providers.Remove(_currentProfile);
-        if (_providers.Count == 0)
-        {
-            AddProvider();
-            return;
-        }
-
-        ProviderComboBox.SelectedIndex = Math.Min(index, _providers.Count - 1);
-    }
-
-    private void ProviderPresetComboBox_SelectionChanged(
-        object sender, SelectionChangedEventArgs e)
-    {
-        if (_loadingProfile ||
-            ProviderPresetComboBox.SelectedItem is not AiProviderPreset preset ||
-            _currentProfile is null)
-            return;
-
-        SaveFieldsToCurrentProfile();
-        _loadingProfile = true;
-        _currentProfile.Name = preset.Name;
-        _currentProfile.BaseUrl = preset.BaseUrl;
-        _currentProfile.Protocol = preset.Protocol;
-        NameTextBox.Text = preset.Name;
-        BaseUrlTextBox.Text = preset.BaseUrl;
-        ProtocolComboBox.SelectedValue = preset.Protocol;
-        ModelTextBox.Text = "";
-        _currentProfile.Model = "";
-        UpdateProtocolHint();
-        StatusTextBlock.Text = "已应用服务商模板。请填写此平台对应的 API Key，再获取模型列表。";
-        _loadingProfile = false;
-    }
-
-    private void ProtocolComboBox_SelectionChanged(
-        object sender, SelectionChangedEventArgs e)
-    {
-        if (_loadingProfile)
-            return;
-
-        SaveFieldsToCurrentProfile();
-        UpdateProtocolHint();
-    }
-
-    private void UpdateProtocolHint()
-    {
-        AiProviderProtocol protocol = ProtocolComboBox.SelectedValue is AiProviderProtocol value
-            ? value
-            : AiProviderProtocol.OpenAiCompatible;
-        ProtocolHintTextBlock.Text = protocol switch
-        {
-            AiProviderProtocol.GoogleGemini =>
-                "Google Gemini：使用原生 generateContent 与 /models 接口，API Key 通过 x-goog-api-key 请求头发送。",
-            AiProviderProtocol.AnthropicClaude =>
-                "Anthropic Claude：使用原生 Messages 与 /v1/models 接口，鉴权使用 x-api-key。",
-            _ =>
-                "OpenAI 兼容协议：使用 Bearer API Key、GET /models 和 Chat Completions。DeepSeek、通义千问、智谱、Kimi、火山方舟、硅基流动等可使用对应模板。"
-        };
+        ProviderListBox.SelectedIndex = Math.Min(index, _providers.Count - 1);
+        LoadSelectedProfile();
     }
 
     private async void FetchModels_Click(object sender, RoutedEventArgs e)
@@ -191,36 +187,22 @@ public partial class AiProviderSettingsWindow : Window
         AiProviderProfile? profile = _currentProfile;
         if (profile is null || _isFetchingModels || _isTesting)
             return;
-
         try
         {
             AiProviderProfileValidator.ValidateForModelDiscovery(profile);
-            if (profile.Protocol != AiProviderProtocol.OpenAiCompatible &&
-                string.IsNullOrWhiteSpace(profile.ApiKey))
-                throw new InvalidOperationException("请先填写 API Key。");
-
             _isFetchingModels = true;
-            FetchModelsButton.IsEnabled = false;
-            TestButton.IsEnabled = false;
-            StatusTextBlock.Text = "正在获取服务商模型列表……";
-            ModelCountTextBlock.Text = "正在获取模型信息……";
-
-            IReadOnlyList<AiProviderModel> discovered =
-                await _modelDiscovery.FetchModelsAsync(profile);
-            IReadOnlyList<AiProviderModel> models =
-                await _modelCatalogEnrichment.EnrichAsync(profile, discovered);
+            SetEditorEnabled(true);
+            StatusTextBlock.Text = "正在获取模型列表……";
+            ModelCountTextBlock.Text = "正在读取服务商模型信息……";
+            IReadOnlyList<AiProviderModel> discovered = await _modelDiscovery.FetchModelsAsync(profile);
+            IReadOnlyList<AiProviderModel> models = await _modelCatalogEnrichment.EnrichAsync(profile, discovered);
             profile.AvailableModels = models.ToList();
-
-            if (!ReferenceEquals(_currentProfile, profile))
-                return;
-
             ModelCountTextBlock.Text = models.Count == 0
-                ? "接口请求成功，但没有返回模型。仍可手动填写模型 ID。"
+                ? "请求成功，但没有返回模型；可以手动填写模型 ID。"
                 : $"获取成功：发现 {models.Count} 个模型。";
             StatusTextBlock.Text = models.Count == 0
                 ? "当前账号未返回可用模型。"
-                : "已打开模型列表。选择模型后即可回填模型 ID。";
-
+                : "已打开模型列表。选择一个对话模型后回填模型 ID。";
             if (models.Count > 0)
             {
                 var picker = new AiModelPickerWindow(models, profile.Model) { Owner = this };
@@ -228,23 +210,19 @@ public partial class AiProviderSettingsWindow : Window
                 {
                     ModelTextBox.Text = selected.Id;
                     profile.Model = selected.Id;
-                    StatusTextBlock.Text = $"已选择模型：{selected.Id}。保存服务商配置后生效。";
+                    StatusTextBlock.Text = $"已选择模型：{selected.Id}。保存后生效。";
                 }
             }
         }
         catch (Exception ex)
         {
-            if (ReferenceEquals(_currentProfile, profile))
-            {
-                ModelCountTextBlock.Text = "模型列表获取失败。可检查协议、地址和 Key，或继续手动填写模型 ID。";
-                StatusTextBlock.Text = "获取模型失败：" + ex.Message;
-            }
+            ModelCountTextBlock.Text = "模型列表获取失败。可以检查接口地址和 API Key，或手动填写模型 ID。";
+            StatusTextBlock.Text = "获取模型失败：" + ex.Message;
         }
         finally
         {
             _isFetchingModels = false;
-            FetchModelsButton.IsEnabled = true;
-            TestButton.IsEnabled = true;
+            SetEditorEnabled(_currentProfile is not null);
         }
     }
 
@@ -253,19 +231,15 @@ public partial class AiProviderSettingsWindow : Window
         SaveFieldsToCurrentProfile();
         if (_currentProfile is null || _isTesting || _isFetchingModels)
             return;
-
         try
         {
             AiProviderProfileValidator.Validate(_currentProfile);
             _isTesting = true;
-            TestButton.IsEnabled = false;
-            FetchModelsButton.IsEnabled = false;
-            StatusTextBlock.Text = "正在测试当前协议的模型请求……";
-
+            SetEditorEnabled(true);
+            StatusTextBlock.Text = "正在通过 OpenAI Chat Completions 接口测试连接……";
             await new AiTranslationService(logStore: new AiTranslationLogStore())
                 .TestConnectionAsync(_currentProfile);
-
-            StatusTextBlock.Text = "连接成功，模型已返回响应。测试请求已写入 AI 翻译记录。";
+            StatusTextBlock.Text = "连接成功。测试请求已写入 AI 翻译记录。";
         }
         catch (Exception ex)
         {
@@ -274,8 +248,7 @@ public partial class AiProviderSettingsWindow : Window
         finally
         {
             _isTesting = false;
-            TestButton.IsEnabled = true;
-            FetchModelsButton.IsEnabled = true;
+            SetEditorEnabled(_currentProfile is not null);
         }
     }
 
@@ -285,19 +258,14 @@ public partial class AiProviderSettingsWindow : Window
         {
             if (_isFetchingModels || _isTesting)
                 throw new InvalidOperationException("请等待当前 API 请求完成后再保存。");
-
             SaveFieldsToCurrentProfile();
             if (_providers.Count == 0)
                 throw new InvalidOperationException("至少需要保留一个服务商配置。");
-
             foreach (AiProviderProfile provider in _providers)
-                AiProviderProfileValidator.Validate(provider);
-
+                AiProviderProfileValidator.ValidateForStorage(provider);
             _settings.Providers = _providers.ToList();
             _settings.ActiveProviderId = _currentProfile?.Id;
             _store.Save(_settings);
-
-            StatusTextBlock.Text = "服务商配置和模型缓存已保存。";
             DialogResult = true;
         }
         catch (Exception ex)

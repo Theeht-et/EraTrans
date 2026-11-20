@@ -301,10 +301,9 @@ public partial class MainWindow : Window
             return;
         }
 
-        string gameDirectory = GameDirectoryTextBox.Text.Trim();
         var editor = new DictionaryEditorWindow(
             dictionaryDirectory,
-            gameDirectory,
+            layout.GameDirectory,
             _settings)
         {
             Owner = this

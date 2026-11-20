@@ -324,7 +324,7 @@ public sealed class AiModelDiscoveryService
                 Created = created,
                 ContextLimit =
                     ReadFirstInt32(row, "context_length", "context_window", "context_limit",
-                        "max_context_length", "max_context_window", "inputTokenLimit", "input_token_limit")
+                        "max_context_length", "max_context_window")
                     ?? ReadNestedInt(row, "top_provider", "context_length")
                     ?? ReadNestedInt(row, "limit", "context"),
                 // top_provider.context_length is the model's total context window,

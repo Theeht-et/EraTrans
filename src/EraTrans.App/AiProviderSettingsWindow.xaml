@@ -160,6 +160,7 @@
                           Background="#FCFCFD"
                           ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                           ScrollViewer.VerticalScrollBarVisibility="Auto"
+                          SelectionChanged="ModelsListView_SelectionChanged"
                           VirtualizingPanel.IsVirtualizing="True"
                           VirtualizingPanel.IsVirtualizingWhenGrouping="True"
                           MouseDoubleClick="ModelsListView_MouseDoubleClick">

@@ -188,10 +188,17 @@
                               SelectionChanged="EntriesDataGrid_SelectionChanged"
                               CurrentCellChanged="EntriesDataGrid_CurrentCellChanged">
                         <DataGrid.Columns>
-                            <DataGridTextColumn Header="Key"
-                                                Binding="{Binding Key}"
-                                                IsReadOnly="True"
-                                                Width="190" />
+                            <DataGridTemplateColumn Header="编号" Width="82" IsReadOnly="True">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding DisplayKey}"
+                                                   ToolTip="{Binding Key}"
+                                                   HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center"
+                                                   Padding="4,2" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
                             <DataGridTextColumn Header="语义组"
                                                 Binding="{Binding SemanticGroupLabel}"
                                                 IsReadOnly="True"

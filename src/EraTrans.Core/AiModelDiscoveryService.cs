@@ -308,45 +308,115 @@ public sealed class AiModelDiscoveryService
         if (slash > 0)
         {
             string vendor = normalized[..slash];
-            return vendor switch
+            string modelId = normalized[(slash + 1)..];
+            string? vendorGroup = vendor switch
             {
-                "x-ai" => "Grok",
-                "meta-llama" => "Llama",
+                "openai" => "OpenAI",
+                "anthropic" => "Claude",
+                "google" => "Gemini",
+                "deepseek" => "DeepSeek",
+                "moonshotai" => "Kimi",
+                "alibaba" or "qwen" => "Qwen",
+                "z-ai" or "zai" => "GLM",
                 "mistralai" => "Mistral",
-                "qwen" => "Qwen",
-                _ => vendor
+                "meta-llama" => "Llama",
+                "x-ai" => "Grok",
+                "bytedance" or "volcengine" => "Doubao",
+                "cohere" => "Cohere",
+                _ => null
             };
+
+            return vendorGroup is null
+                ? vendor
+                : GetFamilyGroup(modelId, vendorGroup);
         }
 
-        if (normalized.StartsWith("gpt-", StringComparison.Ordinal) ||
-            normalized.StartsWith("chatgpt", StringComparison.Ordinal) ||
-            normalized.StartsWith("o1", StringComparison.Ordinal) ||
-            normalized.StartsWith("o3", StringComparison.Ordinal) ||
-            normalized.StartsWith("o4", StringComparison.Ordinal))
+        string? knownGroup = normalized.StartsWith("gpt-", StringComparison.Ordinal) ||
+                             normalized.StartsWith("chatgpt", StringComparison.Ordinal) ||
+                             normalized.StartsWith("o1", StringComparison.Ordinal) ||
+                             normalized.StartsWith("o3", StringComparison.Ordinal) ||
+                             normalized.StartsWith("o4", StringComparison.Ordinal)
+            ? "OpenAI"
+            : normalized.StartsWith("claude", StringComparison.Ordinal) ? "Claude"
+            : normalized.StartsWith("gemini", StringComparison.Ordinal) ? "Gemini"
+            : normalized.StartsWith("deepseek", StringComparison.Ordinal) ? "DeepSeek"
+            : normalized.StartsWith("qwen", StringComparison.Ordinal) ||
+              normalized.StartsWith("qwq", StringComparison.Ordinal) ||
+              normalized.StartsWith("qvq", StringComparison.Ordinal) ? "Qwen"
+            : normalized.StartsWith("glm", StringComparison.Ordinal) ||
+              normalized.StartsWith("chatglm", StringComparison.Ordinal) ? "GLM"
+            : normalized.StartsWith("doubao", StringComparison.Ordinal) ||
+              normalized.StartsWith("ark", StringComparison.Ordinal) ? "Doubao"
+            : normalized.StartsWith("kimi", StringComparison.Ordinal) ||
+              normalized.StartsWith("moonshot", StringComparison.Ordinal) ? "Kimi"
+            : normalized.StartsWith("llama", StringComparison.Ordinal) ? "Llama"
+            : normalized.StartsWith("mistral", StringComparison.Ordinal) ||
+              normalized.StartsWith("mixtral", StringComparison.Ordinal) ? "Mistral"
+            : normalized.StartsWith("grok", StringComparison.Ordinal) ? "Grok"
+            : normalized.StartsWith("command", StringComparison.Ordinal) ? "Cohere"
+            : normalized.StartsWith("ernie", StringComparison.Ordinal) ? "ERNIE"
+            : normalized.StartsWith("yi-", StringComparison.Ordinal) ? "Yi"
+            : null;
+
+        if (knownGroup is not null)
         {
-            return "OpenAI";
+            return GetFamilyGroup(normalized, knownGroup);
         }
 
-        if (normalized.StartsWith("claude", StringComparison.Ordinal)) return "Claude";
-        if (normalized.StartsWith("gemini", StringComparison.Ordinal)) return "Gemini";
-        if (normalized.StartsWith("deepseek", StringComparison.Ordinal)) return "DeepSeek";
-        if (normalized.StartsWith("qwen", StringComparison.Ordinal) ||
-            normalized.StartsWith("qwq", StringComparison.Ordinal) ||
-            normalized.StartsWith("qvq", StringComparison.Ordinal)) return "Qwen";
-        if (normalized.StartsWith("glm", StringComparison.Ordinal) ||
-            normalized.StartsWith("chatglm", StringComparison.Ordinal)) return "GLM";
-        if (normalized.StartsWith("doubao", StringComparison.Ordinal) ||
-            normalized.StartsWith("ark", StringComparison.Ordinal)) return "Doubao";
-        if (normalized.StartsWith("kimi", StringComparison.Ordinal) ||
-            normalized.StartsWith("moonshot", StringComparison.Ordinal)) return "Kimi";
-        if (normalized.StartsWith("llama", StringComparison.Ordinal)) return "Llama";
-        if (normalized.StartsWith("mistral", StringComparison.Ordinal) ||
-            normalized.StartsWith("mixtral", StringComparison.Ordinal)) return "Mistral";
-        if (normalized.StartsWith("grok", StringComparison.Ordinal)) return "Grok";
-        if (normalized.StartsWith("command", StringComparison.Ordinal)) return "Cohere";
-        if (normalized.StartsWith("ernie", StringComparison.Ordinal)) return "ERNIE";
-        if (normalized.StartsWith("yi-", StringComparison.Ordinal)) return "Yi";
+        return string.IsNullOrWhiteSpace(ownedBy)
+            ? "其他模型"
+            : NormalizeOwnerGroup(ownedBy);
+    }
 
-        return string.IsNullOrWhiteSpace(ownedBy) ? "其他模型" : ownedBy.Trim();
+    private static string GetFamilyGroup(string modelId, string vendor)
+    {
+        string model = modelId.ToLowerInvariant();
+        return vendor switch
+        {
+            "OpenAI" when model.StartsWith("gpt-5", StringComparison.Ordinal) => "OpenAI · GPT-5",
+            "OpenAI" when model.StartsWith("gpt-4.1", StringComparison.Ordinal) => "OpenAI · GPT-4.1",
+            "OpenAI" when model.StartsWith("gpt-4o", StringComparison.Ordinal) => "OpenAI · GPT-4o",
+            "OpenAI" when model.StartsWith("o1", StringComparison.Ordinal) => "OpenAI · O1",
+            "OpenAI" when model.StartsWith("o3", StringComparison.Ordinal) => "OpenAI · O3",
+            "OpenAI" when model.StartsWith("o4", StringComparison.Ordinal) => "OpenAI · O4",
+            "Claude" when model.Contains("opus", StringComparison.Ordinal) => "Claude · Opus",
+            "Claude" when model.Contains("sonnet", StringComparison.Ordinal) => "Claude · Sonnet",
+            "Claude" when model.Contains("haiku", StringComparison.Ordinal) => "Claude · Haiku",
+            "Claude" when model.Contains("claude-4", StringComparison.Ordinal) => "Claude 4",
+            "Claude" when model.Contains("claude-3.7", StringComparison.Ordinal) => "Claude 3.7",
+            "Claude" when model.Contains("claude-3.5", StringComparison.Ordinal) ||
+                          model.Contains("claude-3-5", StringComparison.Ordinal) => "Claude 3.5",
+            "Gemini" when model.Contains("gemini-3", StringComparison.Ordinal) => "Gemini 3",
+            "Gemini" when model.Contains("gemini-2.5", StringComparison.Ordinal) => "Gemini 2.5",
+            "Gemini" when model.Contains("gemini-2.0", StringComparison.Ordinal) => "Gemini 2.0",
+            "DeepSeek" when model.Contains("r1", StringComparison.Ordinal) => "DeepSeek · R1",
+            "DeepSeek" when model.Contains("v3", StringComparison.Ordinal) => "DeepSeek · V3",
+            "Qwen" when model.Contains("qwen3", StringComparison.Ordinal) => "Qwen 3",
+            "Qwen" when model.Contains("qwen2.5", StringComparison.Ordinal) => "Qwen 2.5",
+            "Grok" when model.Contains("grok-4", StringComparison.Ordinal) => "Grok 4",
+            "Grok" when model.Contains("grok-3", StringComparison.Ordinal) => "Grok 3",
+            _ => vendor
+        };
+    }
+
+    private static string NormalizeOwnerGroup(string owner)
+    {
+        string value = owner.Trim().ToLowerInvariant();
+        return value switch
+        {
+            "openai" => "OpenAI",
+            "anthropic" => "Claude",
+            "google" or "google-ai" => "Gemini",
+            "deepseek" => "DeepSeek",
+            "qwen" or "alibaba" => "Qwen",
+            "zhipu" or "zhipuai" or "z-ai" => "GLM",
+            "bytedance" or "volcengine" => "Doubao",
+            "moonshot" or "moonshotai" => "Kimi",
+            "meta" or "meta-llama" => "Llama",
+            "mistral" or "mistralai" => "Mistral",
+            "xai" or "x-ai" => "Grok",
+            "cohere" => "Cohere",
+            _ => owner.Trim()
+        };
     }
 }

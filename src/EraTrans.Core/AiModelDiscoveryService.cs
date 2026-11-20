@@ -114,8 +114,6 @@ public sealed class AiProviderModel
             : value >= 1_000
                 ? $"{value / 1_000d:0.#}K"
                 : value.ToString();
-        }
-    }
 }
 
 /// <summary>

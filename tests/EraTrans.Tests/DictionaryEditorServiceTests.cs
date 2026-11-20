@@ -141,7 +141,7 @@ public sealed class DictionaryEditorServiceTests
         var document = new DictionaryEditorService().Load(path);
         DictionaryEditorEntry entry = Assert.Single(document.Entries);
         string longTranslation = string.Join(
-            "\\n\\n",
+            Environment.NewLine + Environment.NewLine,
             Enumerable.Range(1, 240).Select(index =>
                 $"第 {index} 段：這是一段用于验证长篇译文编辑和保存完整性的测试文本，必须保留所有字符、标点与换行。{new string('译', 80)}"));
 

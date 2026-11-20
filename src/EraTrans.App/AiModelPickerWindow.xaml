@@ -106,7 +106,7 @@
                                         VerticalAlignment="Center"
                                         HorizontalAlignment="Right"
                                         Margin="14,0,4,0">
-                                <TextBlock Text="{Binding ContextLimitDescription, StringFormat=上下文：{0}}"
+                                <TextBlock Text="{Binding ContextLimitLabel}"
                                            HorizontalAlignment="Right"
                                            FontSize="11"
                                            FontWeight="SemiBold"
@@ -116,8 +116,6 @@
                                            HorizontalAlignment="Right"
                                            FontSize="11"
                                            Foreground="#68717D" />
-                                <TextBlock Text="{Binding IsChatModel, StringFormat={}{0}}"
-                                           Visibility="Collapsed" />
                             </StackPanel>
                         </Grid>
                     </DataTemplate>

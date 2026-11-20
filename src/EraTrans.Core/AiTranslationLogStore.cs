@@ -14,7 +14,7 @@ public enum AiTranslationLogStatus
 }
 
 /// <summary>
-/// One logical Chat Completions call. Credentials are deliberately not part of
+/// One logical AI provider request. Credentials are deliberately not part of
 /// this model; request messages and the model reply are stored for diagnosis.
 /// </summary>
 public sealed class AiTranslationLogEntry
@@ -75,7 +75,7 @@ public interface IAiTranslationLogStore
 }
 
 /// <summary>
-/// Stores one JSON file per logical request under Config/ai-translation-logs.
+/// Stores one JSON file per AI provider request under Config/ai-translation-logs.
 /// A record is first written as InProgress and then atomically replaced on finish.
 /// </summary>
 public sealed class AiTranslationLogStore : IAiTranslationLogStore

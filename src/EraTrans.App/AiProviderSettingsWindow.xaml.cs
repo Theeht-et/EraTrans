@@ -1,4 +1,5 @@
 using EraTrans.Core;
+using System.Collections.ObjectModel;
 using System.Windows;
 using System.Windows.Controls;
 
@@ -10,7 +11,7 @@ public partial class AiProviderSettingsWindow : Window
     private readonly AiModelDiscoveryService _modelDiscovery = new();
     private readonly AiModelCatalogEnrichmentService _modelCatalogEnrichment = new();
     private readonly AiProviderSettings _settings;
-    private readonly List<AiProviderProfile> _providers = [];
+    private readonly ObservableCollection<AiProviderProfile> _providers = [];
     private AiProviderProfile? _currentProfile;
     private bool _loadingProfile;
     private bool _isTesting;
@@ -41,7 +42,8 @@ public partial class AiProviderSettingsWindow : Window
                 "读取 AI 配置失败", MessageBoxButton.OK, MessageBoxImage.Error);
         }
 
-        _providers.AddRange(_settings.Providers);
+        foreach (AiProviderProfile provider in _settings.Providers)
+            _providers.Add(provider);
         ProviderComboBox.ItemsSource = _providers;
 
         if (_providers.Count == 0)
@@ -193,7 +195,8 @@ public partial class AiProviderSettingsWindow : Window
         try
         {
             AiProviderProfileValidator.ValidateForModelDiscovery(profile);
-            if (string.IsNullOrWhiteSpace(profile.ApiKey))
+            if (profile.Protocol != AiProviderProtocol.OpenAiCompatible &&
+                string.IsNullOrWhiteSpace(profile.ApiKey))
                 throw new InvalidOperationException("请先填写 API Key。");
 
             _isFetchingModels = true;

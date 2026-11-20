@@ -348,6 +348,40 @@ public sealed class AiTranslationServiceTests
         Assert.NotNull(log.CompletedAtUtc);
     }
 
+
+    [Fact]
+    public async Task TranslateAsync_LogsActualGeminiRequestShapeAndProtocol()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "EraTransAiLogTests", Guid.NewGuid().ToString("N"));
+        var store = new AiTranslationLogStore(Path.Combine(root, "logs"));
+        var service = new AiTranslationService(
+            new FakeChatClient("""[{ "id": 1, "translation": "测试译文" }]"""),
+            store);
+        var profile = new AiProviderProfile
+        {
+            Name = "Gemini test",
+            BaseUrl = "https://generativelanguage.googleapis.com/v1beta",
+            Model = "gemini-2.5-flash",
+            ApiKey = "gemini-private-key",
+            Protocol = AiProviderProtocol.GoogleGemini
+        };
+
+        await service.TranslateAsync(
+            profile,
+            [new AiTranslationRequest(1, "key", "原文", "上下文")]);
+
+        AiTranslationLogEntry log = Assert.Single(store.LoadAll());
+        Assert.Equal("GoogleGemini", log.Protocol);
+        Assert.Equal(
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+            log.Endpoint);
+        Assert.Contains("systemInstruction", log.RequestJson);
+        Assert.Contains("generationConfig", log.RequestJson);
+        Assert.Contains("原文", log.RequestJson);
+        Assert.DoesNotContain("gemini-private-key", log.RequestJson);
+        Assert.Contains("测试译文", log.RawResponse);
+    }
+
     [Fact]
     public void NormalizeBaseUrl_AddsHttpsAndRemovesChatCompletionSuffix()
     {

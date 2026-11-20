@@ -26,7 +26,7 @@
                            FontWeight="SemiBold"
                            Foreground="#20242A" />
                 <TextBlock Margin="0,5,0,0"
-                           Text="每次 Chat Completions 请求单独保存，包括请求提示词、AI 原始回复和失败信息。API Key 不会写入记录。"
+                           Text="每次 AI 接口请求单独保存，包括完整请求内容、AI 原始回复和失败信息。API Key 不会写入记录。"
                            FontSize="12"
                            Foreground="#68717D" />
             </StackPanel>

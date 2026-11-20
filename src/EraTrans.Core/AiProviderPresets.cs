@@ -10,7 +10,7 @@ public static class AiProviderPresets
     public static IReadOnlyList<AiProviderPreset> All { get; } =
     [
         new("OpenAI 官方", "https://api.openai.com/v1", AiProviderProtocol.OpenAiCompatible),
-        new("DeepSeek 深度求索", "https://api.deepseek.com/v1", AiProviderProtocol.OpenAiCompatible),
+        new("DeepSeek 深度求索", "https://api.deepseek.com", AiProviderProtocol.OpenAiCompatible),
         new("通义千问（中国大陆）", "https://dashscope.aliyuncs.com/compatible-mode/v1", AiProviderProtocol.OpenAiCompatible),
         new("通义千问（国际站）", "https://dashscope-intl.aliyuncs.com/compatible-mode/v1", AiProviderProtocol.OpenAiCompatible),
         new("智谱 GLM", "https://open.bigmodel.cn/api/paas/v4", AiProviderProtocol.OpenAiCompatible),

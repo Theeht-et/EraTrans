@@ -60,7 +60,7 @@ public static class AiProviderHttpRequestFactory
         int? outputLimit = profile.AvailableModels
             .FirstOrDefault(model => string.Equals(model.Id, profile.Model, StringComparison.Ordinal))
             ?.OutputLimit;
-        int maxTokens = Math.Clamp(outputLimit ?? 8192, 1, 8192);
+        int maxTokens = Math.Max(outputLimit ?? 8192, 1);
         string json = JsonSerializer.Serialize(new
         {
             model = profile.Model,
@@ -81,7 +81,7 @@ public static class AiProviderHttpRequestFactory
         int? outputLimit = profile.AvailableModels
             .FirstOrDefault(model => string.Equals(model.Id, profile.Model, StringComparison.Ordinal))
             ?.OutputLimit;
-        int maxOutputTokens = Math.Clamp(outputLimit ?? 8192, 1, 8192);
+        int maxOutputTokens = Math.Max(outputLimit ?? 8192, 1);
         string json = JsonSerializer.Serialize(new
         {
             systemInstruction = new { parts = new[] { new { text = systemPrompt } } },

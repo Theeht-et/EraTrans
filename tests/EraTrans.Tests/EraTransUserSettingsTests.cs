@@ -88,14 +88,14 @@ public sealed class EraTransUserSettingsTests
     }
 
     [Fact]
-    public void Store_LoadPartialSettings_UsesCurrentDefaults()
+    public void Store_LoadMissingFile_UsesCurrentDefaultsWithoutCreatingAFile()
     {
         using var temporary = new TemporaryDirectory();
         string path = Path.Combine(temporary.Path, "settings.json");
-        File.WriteAllText(path, """{ "FileEncodingId": "utf8" }""");
 
         EraTransUserSettings settings = new EraTransUserSettingsStore(path).Load();
 
+        Assert.False(File.Exists(path));
         Assert.False(settings.EnableErbSemanticGroupingTranslation);
         Assert.True(settings.HideVariableEntries);
     }

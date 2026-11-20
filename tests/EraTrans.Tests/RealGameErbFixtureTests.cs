@@ -212,7 +212,8 @@ public sealed class RealGameErbFixtureTests
         // Verify the final serialized request, not only the in-memory batch:
         // the two menu choices and the IF/ELSE outcomes must reach the AI as
         // read-only semanticContext while only the selected choice is a target.
-        var capturingClient = new CapturingChatClient("""[{ "id": 1, "translation": "测试译文" }]""");
+        var capturingClient = new CapturingChatClient(
+            $"""[{ "id": {choiceTarget.Index}, "translation": "测试译文" }]""");
         var aiService = new AiTranslationService(capturingClient);
         await aiService.TranslateWithSemanticContextAsync(
             new AiProviderProfile
@@ -222,7 +223,7 @@ public sealed class RealGameErbFixtureTests
                 Model = "fixture-test",
                 ApiKey = "fixture-test-key"
             },
-            [new AiTranslationRequest(1, choiceTarget.Key, choiceTarget.Original, choiceTarget.Context)],
+            [new AiTranslationRequest(choiceTarget.Index, choiceTarget.Key, choiceTarget.Original, choiceTarget.Context)],
             choiceBatch.SemanticContextGroups);
 
         using (System.Text.Json.JsonDocument sentRequest =
@@ -231,7 +232,7 @@ public sealed class RealGameErbFixtureTests
             System.Text.Json.JsonElement root = sentRequest.RootElement;
             System.Text.Json.JsonElement sentTarget = Assert.Single(root.GetProperty("targets").EnumerateArray());
             Assert.Equal(choiceTarget.Original, sentTarget.GetProperty("original").GetString());
-            Assert.Equal(1, sentTarget.GetProperty("id").GetInt32());
+            Assert.Equal(choiceTarget.Index, sentTarget.GetProperty("id").GetInt32());
 
             System.Text.Json.JsonElement[] sentContexts = root.GetProperty("semanticContext")
                 .EnumerateArray()

@@ -45,19 +45,19 @@ public sealed class AiProviderModel
 
     public bool IsChatModel => !IsEmbedding && !IsRerank;
 
-    public string ReasoningSupportDescription => ReasoningSupport switch
+    public string ReasoningSupportDescription => $"推理能力：{(ReasoningSupport switch
     {
-        true => "支持推理",
-        false => "不支持推理",
-        null when SupportsReasoning => "支持推理",
-        _ => "推理能力未知"
-    };
+        true => "支持",
+        false => "不支持",
+        null when SupportsReasoning => "支持",
+        _ => "未知"
+    })}";
 
     public string ContextLimitDescription => ContextLimit is > 0
         ? FormatTokenLimit(ContextLimit.Value)
         : "未知";
 
-    public string ContextLimitLabel => $"上下文：{ContextLimitDescription}";
+    public string ContextLimitLabel => $"上下文大小：{ContextLimitDescription}";
 
     public string MetadataSummary
     {

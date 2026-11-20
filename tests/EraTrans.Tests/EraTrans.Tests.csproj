@@ -17,4 +17,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\EraTrans.Core\EraTrans.Core.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <Content Include="Fixtures\RealGames\eraNAS\**\*.ERB" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

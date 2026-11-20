@@ -1,5 +1,6 @@
 using EraTrans.Core;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 
@@ -83,7 +84,9 @@ public partial class AiProviderSettingsWindow : Window
 
     private void SetEditorEnabled(bool hasProfile)
     {
-        bool idle = !_isFetchingModels && !_isTesting && !_loadFailed;
+        bool requestIdle = !_isFetchingModels && !_isTesting;
+        bool idle = requestIdle && !_loadFailed;
+        CancelWindowButton.IsEnabled = requestIdle;
         ProviderListBox.IsEnabled = idle;
         ProviderNameTextBox.IsEnabled = hasProfile && idle;
         BaseUrlTextBox.IsEnabled = hasProfile && idle;
@@ -400,5 +403,19 @@ public partial class AiProviderSettingsWindow : Window
         }
     }
 
-    private void Cancel_Click(object sender, RoutedEventArgs e) => DialogResult = false;
+    private void Cancel_Click(object sender, RoutedEventArgs e)
+    {
+        if (_isTesting || _isFetchingModels)
+            return;
+        DialogResult = false;
+    }
+
+    private void Window_Closing(object? sender, CancelEventArgs e)
+    {
+        if (!_isTesting && !_isFetchingModels)
+            return;
+
+        e.Cancel = true;
+        StatusTextBlock.Text = "当前 API 请求尚未结束，请等待请求完成后再关闭设置窗口。";
+    }
 }

@@ -33,11 +33,171 @@ public partial class MainWindow : Window
         }
     }
 
-    private void BrowseGameDirectory_Click(object sender, RoutedEventArgs e) =>
+    private void BrowseGameDirectory_Click(object sender, RoutedEventArgs e)
+    {
         BrowseFolder(GameDirectoryTextBox, "选择原 ERA 游戏目录");
+        UpdateOutputLayoutPreview();
+    }
 
-    private void BrowseOutputDirectory_Click(object sender, RoutedEventArgs e) =>
+    private void BrowseOutputDirectory_Click(object sender, RoutedEventArgs e)
+    {
         BrowseFolder(OutputDirectoryTextBox, "选择统一输出目录");
+        UpdateOutputLayoutPreview();
+    }
+
+    private void UpdateOutputLayoutPreview()
+    {
+        string gameDirectory = GameDirectoryTextBox.Text.Trim();
+        string outputRoot = OutputDirectoryTextBox.Text.Trim();
+        if (string.IsNullOrWhiteSpace(gameDirectory) ||
+            string.IsNullOrWhiteSpace(outputRoot) ||
+            !Directory.Exists(gameDirectory))
+        {
+            OutputLayoutPreviewTextBlock.Text =
+                "选择原游戏目录和统一输出目录后，这里会显示本游戏的分类输出位置。";
+            return;
+        }
+
+        try
+        {
+            EraTransOutputLayout layout = EraTransOutputLayout.Create(outputRoot, gameDirectory);
+            OutputLayoutPreviewTextBlock.Text =
+                $"本次游戏：{layout.GameDirectoryName}\n" +
+                $"字典：{layout.DictionaryDirectory}\n" +
+                $"AI 上下文：{layout.AiContextDirectory}\n" +
+                $"游戏副本：{layout.GameCopyDirectory}";
+        }
+        catch (Exception ex)
+        {
+            OutputLayoutPreviewTextBlock.Text = "输出路径无效：" + ex.Message;
+        }
+    }
+
+    private bool TryGetGameOutputLayout(out EraTransOutputLayout layout)
+    {
+        layout = null!;
+        string gameDirectory = GameDirectoryTextBox.Text.Trim();
+        string outputRoot = OutputDirectoryTextBox.Text.Trim();
+
+        if (string.IsNullOrWhiteSpace(outputRoot))
+        {
+            MessageBox.Show(this, "请选择统一输出目录。", "目录无效", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return false;
+        }
+
+        if (!Directory.Exists(gameDirectory))
+        {
+            MessageBox.Show(this, "请选择有效的原游戏目录。", "目录无效", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return false;
+        }
+
+        try
+        {
+            layout = EraTransOutputLayout.Create(outputRoot, gameDirectory);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, ex.Message, "输出目录无效", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return false;
+        }
+
+        return PrepareLegacyOutputLayout(layout);
+    }
+
+    private bool PrepareLegacyOutputLayout(EraTransOutputLayout layout)
+    {
+        // The old app wrote these folders directly under the unified output root.
+        // Only migrate them after an explicit confirmation, because they may contain
+        // dictionaries from more than one game and cannot be safely attributed.
+        if (Directory.Exists(layout.GameOutputRoot) || File.Exists(layout.GameOutputRoot))
+        {
+            return true;
+        }
+
+        (string Legacy, string Destination)[] candidates =
+        [
+            (Path.Combine(layout.OutputRoot, "字典"), layout.DictionaryDirectory),
+            (Path.Combine(layout.OutputRoot, "AI上下文"), layout.AiContextDirectory),
+            (Path.Combine(layout.OutputRoot, "游戏副本"), layout.GameCopyDirectory)
+        ];
+        var existing = candidates.Where(pair => Directory.Exists(pair.Legacy)).ToArray();
+        if (existing.Length == 0)
+        {
+            return true;
+        }
+
+        var collision = existing.FirstOrDefault(pair =>
+            Directory.Exists(pair.Destination) || File.Exists(pair.Destination));
+        if (collision != default)
+        {
+            MessageBox.Show(
+                this,
+                $"检测到旧版输出目录与新游戏目录存在路径冲突，未移动任何文件。\n\n旧目录：{collision.Legacy}\n新目录：{collision.Destination}\n\n请先手动检查并整理这两个目录。",
+                "旧版输出目录冲突",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return false;
+        }
+
+        MessageBoxResult choice = MessageBox.Show(
+            this,
+            $"检测到旧版未按游戏名称分类的输出目录。\n\n" +
+            $"如果这些旧文件夹确定只属于当前游戏“{layout.GameDirectoryName}”，选择“是”可将它们移动到：\n{layout.GameOutputRoot}\n\n" +
+            "如果旧目录可能混有其他游戏的数据，选择“否”保留旧目录，并为当前游戏使用新的分类目录。取消则不执行本次操作。\n\n" +
+            "移动只改变文件夹位置，不会修改字典内容。",
+            "发现旧版输出目录",
+            MessageBoxButton.YesNoCancel,
+            MessageBoxImage.Warning);
+
+        if (choice == MessageBoxResult.Cancel)
+        {
+            return false;
+        }
+
+        if (choice == MessageBoxResult.No)
+        {
+            return true;
+        }
+
+        var moved = new List<(string Legacy, string Destination)>();
+        try
+        {
+            Directory.CreateDirectory(layout.GameOutputRoot);
+            foreach ((string legacy, string destination) in existing)
+            {
+                Directory.Move(legacy, destination);
+                moved.Add((legacy, destination));
+            }
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            foreach ((string legacy, string destination) in moved.AsEnumerable().Reverse())
+            {
+                try
+                {
+                    if (Directory.Exists(destination) && !Directory.Exists(legacy))
+                    {
+                        Directory.Move(destination, legacy);
+                    }
+                }
+                catch
+                {
+                    // Keep the original exception visible; any failed rollback remains
+                    // recoverable in the displayed source and destination paths.
+                }
+            }
+
+            MessageBox.Show(
+                this,
+                $"迁移旧版输出目录失败：{ex.Message}\n\n请检查旧目录和新目录，确认文件没有丢失后再重试。",
+                "迁移失败",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+            return false;
+        }
+    }
 
     private void BrowseFolder(System.Windows.Controls.TextBox target, string title)
     {
@@ -69,21 +229,13 @@ public partial class MainWindow : Window
 
     private async void Extract_Click(object sender, RoutedEventArgs e)
     {
-        string gameDirectory = GameDirectoryTextBox.Text.Trim();
-        string outputRoot = OutputDirectoryTextBox.Text.Trim();
-        if (string.IsNullOrWhiteSpace(outputRoot))
+        if (!TryGetGameOutputLayout(out EraTransOutputLayout layout))
         {
-            MessageBox.Show(this, "请选择统一输出目录。", "目录无效", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
-        string dictionaryDirectory = Path.Combine(outputRoot, "字典");
-
-        if (!Directory.Exists(gameDirectory))
-        {
-            MessageBox.Show(this, "请选择有效的原游戏目录。", "目录无效", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
+        string gameDirectory = layout.GameDirectory;
+        string dictionaryDirectory = layout.DictionaryDirectory;
 
         ExtractButton.IsEnabled = false;
         ApplyTranslationsButton.IsEnabled = false;
@@ -132,14 +284,12 @@ public partial class MainWindow : Window
 
     private void EditDictionary_Click(object sender, RoutedEventArgs e)
     {
-        string outputRoot = OutputDirectoryTextBox.Text.Trim();
-        if (string.IsNullOrWhiteSpace(outputRoot))
+        if (!TryGetGameOutputLayout(out EraTransOutputLayout layout))
         {
-            MessageBox.Show(this, "请选择统一输出目录。", "目录无效", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
-        string dictionaryDirectory = Path.Combine(outputRoot, "字典");
+        string dictionaryDirectory = layout.DictionaryDirectory;
         if (!Directory.Exists(dictionaryDirectory))
         {
             MessageBox.Show(
@@ -164,22 +314,14 @@ public partial class MainWindow : Window
 
     private async void ApplyTranslations_Click(object sender, RoutedEventArgs e)
     {
-        string gameDirectory = GameDirectoryTextBox.Text.Trim();
-        string outputRoot = OutputDirectoryTextBox.Text.Trim();
-        if (string.IsNullOrWhiteSpace(outputRoot))
+        if (!TryGetGameOutputLayout(out EraTransOutputLayout layout))
         {
-            MessageBox.Show(this, "请选择统一输出目录。", "目录无效", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
-        string dictionaryDirectory = Path.Combine(outputRoot, "字典");
-        string workingCopyDirectory = Path.Combine(outputRoot, "游戏副本");
-
-        if (!Directory.Exists(gameDirectory))
-        {
-            MessageBox.Show(this, "请选择有效的原游戏目录。", "目录无效", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
+        string gameDirectory = layout.GameDirectory;
+        string dictionaryDirectory = layout.DictionaryDirectory;
+        string workingCopyDirectory = layout.GameCopyDirectory;
 
         if (!Directory.Exists(dictionaryDirectory))
         {

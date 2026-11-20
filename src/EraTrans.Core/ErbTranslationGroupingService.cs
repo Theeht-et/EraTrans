@@ -314,7 +314,6 @@ public sealed class ErbTranslationGroupingService
             string sourceRelativeDirectory = Path.GetDirectoryName(
                 NormalizeRelativePath(sourceRelativePath).Replace('/', Path.DirectorySeparatorChar)) ?? "";
             if (!sourceFilePath.StartsWith(gameRootWithSeparator, StringComparison.OrdinalIgnoreCase) ||
-                !Path.GetDirectoryName(sourceFilePath)!.StartsWith(gameRootWithSeparator, StringComparison.OrdinalIgnoreCase) ||
                 !string.Equals(
                     Path.GetFileNameWithoutExtension(sourceFilePath),
                     Path.GetFileNameWithoutExtension(dictionaryFilePath),

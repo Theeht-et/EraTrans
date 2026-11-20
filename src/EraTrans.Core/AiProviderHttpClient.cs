@@ -62,7 +62,7 @@ public sealed class OpenAiCompatibleChatCompletionClient : IAiChatCompletionClie
         AiProviderProfile profile,
         string systemPrompt,
         string userPrompt,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken = default)
     {
         AiProviderProfileValidator.Validate(profile);
         AiProviderHttpRequestDetails details =

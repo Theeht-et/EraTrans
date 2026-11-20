@@ -54,6 +54,12 @@ public sealed class AiProviderModel
                 }
             }
 
+            if (!string.IsNullOrWhiteSpace(Family) &&
+                !Family.Equals(GroupName, StringComparison.OrdinalIgnoreCase))
+            {
+                parts.Add(Family);
+            }
+
             if (ContextLimit is > 0)
             {
                 parts.Add($"上下文 {FormatTokenLimit(ContextLimit.Value)}");
@@ -72,6 +78,26 @@ public sealed class AiProviderModel
             if (OutputModalities.Contains("image", StringComparer.OrdinalIgnoreCase))
             {
                 parts.Add("图像输出");
+            }
+
+            if (InputModalities.Contains("audio", StringComparer.OrdinalIgnoreCase))
+            {
+                parts.Add("音频输入");
+            }
+
+            if (OutputModalities.Contains("audio", StringComparer.OrdinalIgnoreCase))
+            {
+                parts.Add("音频输出");
+            }
+
+            if (InputModalities.Contains("video", StringComparer.OrdinalIgnoreCase))
+            {
+                parts.Add("视频输入");
+            }
+
+            if (InputModalities.Contains("pdf", StringComparer.OrdinalIgnoreCase))
+            {
+                parts.Add("PDF 输入");
             }
 
             if (SupportsTools)

@@ -1,4 +1,5 @@
 using EraTrans.Core;
+using Newtonsoft.Json.Linq;
 using Xunit;
 
 namespace EraTrans.Tests;

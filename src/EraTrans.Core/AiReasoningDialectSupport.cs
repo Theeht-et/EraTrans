@@ -17,6 +17,7 @@ public static class AiReasoningDialectSupport
     private const string DashScopeGlmEffort = "dashScopeGlmEffort";
     private const string DashScopeDeepSeekEffort = "dashScopeDeepSeekEffort";
     private const string DashScopeKimiEffort = "dashScopeKimiEffort";
+    private const string DashScopeKimiToggle = "dashScopeKimiToggle";
     private const string SiliconFlowReasoningEffort = "siliconFlowReasoningEffort";
     private const string ThinkingType = "thinkingType";
     private const string VolcanoThinkingType = "volcanoThinkingType";
@@ -71,6 +72,7 @@ public static class AiReasoningDialectSupport
                 case DashScopeGlmEffort:
                 case DashScopeDeepSeekEffort:
                 case DashScopeKimiEffort:
+                case DashScopeKimiToggle:
                 case SiliconFlowReasoningEffort:
                     payload["enable_thinking"] = false;
                     break;
@@ -273,6 +275,9 @@ public static class AiReasoningDialectSupport
                 return Qwen;
             if (IsAliyunDeepSeekV4Model(normalizedModelId))
                 return DashScopeDeepSeekEffort;
+            if (IsAliyunKimiHybridModel(normalizedModelId) ||
+                IsAliyunKimiThinkingOnlyModel(normalizedModelId))
+                return DashScopeKimiToggle;
             if (IsAliyunKimiModel(normalizedModelId))
                 return DashScopeKimiEffort;
             if (IsGlmModel(normalizedModelId))
@@ -689,6 +694,12 @@ public static class AiReasoningDialectSupport
 
     private static bool IsAliyunKimiModel(string id) =>
         Regex.IsMatch(id, @"^kimi-k3(?:\.1-pro)?(?:$|[-._:@])", RegexOptions.IgnoreCase);
+
+    private static bool IsAliyunKimiHybridModel(string id) =>
+        Regex.IsMatch(id, @"^kimi-k2\.(?:5|6)(?:$|[-._:@])", RegexOptions.IgnoreCase);
+
+    private static bool IsAliyunKimiThinkingOnlyModel(string id) =>
+        Regex.IsMatch(id, @"^kimi-k2\.7-code(?:$|[-._:@])", RegexOptions.IgnoreCase);
 
     private static bool IsKimiK31Pro(string id) =>
         Regex.IsMatch(id, @"^kimi-k3\.1-pro(?:$|[-._:@])", RegexOptions.IgnoreCase);

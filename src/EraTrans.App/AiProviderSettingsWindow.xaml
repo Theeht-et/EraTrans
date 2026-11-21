@@ -38,12 +38,8 @@
                         <Grid>
                             <TextBlock Text="已添加的服务商" VerticalAlignment="Center"
                                        FontWeight="SemiBold" Foreground="#303740"/>
-                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                                <TextBlock Text="拖动项目可排序" VerticalAlignment="Center"
-                                           Margin="0,0,10,0" FontSize="10" Foreground="#7A8490"/>
-                                <Button x:Name="AddProviderButton" Content="＋ 添加" Width="72" Height="30"
-                                        Click="AddProvider_Click"/>
-                            </StackPanel>
+                            <Button x:Name="AddProviderButton" Content="＋ 添加" Width="72" Height="30"
+                                    Click="AddProvider_Click"/>
                         </Grid>
                         <TextBlock x:Name="ActiveProviderStatusTextBlock" Grid.Row="1"
                                    Text="当前翻译服务：未配置" Margin="0,8,0,0"
@@ -165,8 +161,6 @@
                     <StackPanel Margin="0,0,0,18">
                         <TextBlock x:Name="ProviderTitleTextBlock" Text="服务商配置" FontSize="19"
                                    FontWeight="SemiBold" Foreground="#20242A"/>
-                        <TextBlock Text="仅需填写 API 地址、密钥和模型 ID，不提供工具调用、自定义请求体或其他高级选项。"
-                                   Margin="0,5,0,0" FontSize="11" Foreground="#7A8490" TextWrapping="Wrap"/>
                     </StackPanel>
                     <Border x:Name="LegacyProtocolWarning" Grid.Row="1" Visibility="Collapsed"
                             Background="#FFF7E8" BorderBrush="#F1D8A8" BorderThickness="1"
@@ -250,9 +244,6 @@
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        <TextBlock Text="模型上下文与推理能力会在模型列表中展示；未知信息不会被猜测。"
-                                   VerticalAlignment="Center" FontSize="10" Foreground="#7A8490"
-                                   TextWrapping="Wrap"/>
                         <StackPanel Grid.Column="1" Orientation="Horizontal">
                             <Button x:Name="SetCurrentProviderButton" Content="设为翻译服务"
                                     Width="112" Height="36" Margin="0,0,8,0"

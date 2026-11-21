@@ -207,6 +207,58 @@ public sealed class AiReasoningDialectSupportTests
         Assert.False(unknownEndpointBody.RootElement.TryGetProperty("reasoning", out _));
     }
 
+    [Fact]
+    public void QwenWithoutCatalogEffortLevels_UsesKelivoBudgetPresets()
+    {
+        AiProviderModel model = new() { Id = "qwen3.7-plus" };
+        const string endpoint = "https://dashscope.aliyuncs.com/compatible-mode/v1";
+        AiReasoningDialectSupport.ApplyKnownModelDefaults(model, endpoint);
+        Assert.Empty(model.ReasoningLevels);
+
+        using JsonDocument body = CreateBody(
+            endpoint, model, new AiModelReasoningSettings { Enabled = true, Effort = "high" });
+        Assert.True(body.RootElement.GetProperty("enable_thinking").GetBoolean());
+        Assert.Equal(8192, body.RootElement.GetProperty("thinking_budget").GetInt32());
+    }
+
+    [Fact]
+    public void OpenRouterWithoutEffortLevels_UsesMaxTokensBudget()
+    {
+        AiProviderModel model = new()
+        {
+            Id = "vendor/reasoner",
+            ReasoningSupport = true,
+            ReasoningCanDisable = true
+        };
+        const string endpoint = "https://openrouter.ai/api/v1";
+        AiReasoningDialectSupport.ApplyKnownModelDefaults(model, endpoint);
+
+        using JsonDocument body = CreateBody(
+            endpoint, model, new AiModelReasoningSettings { Enabled = true, Effort = "high" });
+        JsonElement reasoning = body.RootElement.GetProperty("reasoning");
+        Assert.True(reasoning.GetProperty("enabled").GetBoolean());
+        Assert.Equal(8192, reasoning.GetProperty("max_tokens").GetInt32());
+        Assert.False(reasoning.TryGetProperty("effort", out _));
+    }
+
+    [Fact]
+    public void SiliconFlowWithoutEffortLevels_UsesThinkingBudget()
+    {
+        AiProviderModel model = new()
+        {
+            Id = "Qwen/Qwen3-8B",
+            ReasoningSupport = true,
+            ReasoningCanDisable = true
+        };
+        const string endpoint = "https://api.siliconflow.cn/v1";
+        AiReasoningDialectSupport.ApplyKnownModelDefaults(model, endpoint);
+
+        using JsonDocument body = CreateBody(
+            endpoint, model, new AiModelReasoningSettings { Enabled = true, Effort = "medium" });
+        Assert.Equal(4096, body.RootElement.GetProperty("thinking_budget").GetInt32());
+        Assert.False(body.RootElement.TryGetProperty("enable_thinking", out _));
+    }
+
     private static JsonDocument CreateBody(
         string baseUrl,
         AiProviderModel model,

@@ -575,6 +575,125 @@ public sealed class AiReasoningDialectSupportTests
             .GetProperty("enable_thinking").GetBoolean());
     }
 
+    [Fact]
+    public void AliyunDeepSeekV4Pro_UsesOnlyHighAndMaxEffort()
+    {
+        AiProviderModel model = new() { Id = "deepseek-v4-pro" };
+        const string endpoint = "https://dashscope.aliyuncs.com/compatible-mode/v1";
+        AiReasoningDialectSupport.ApplyKnownModelDefaults(model, endpoint);
+
+        Assert.Equal("dashScopeDeepSeekEffort", model.ReasoningDialect);
+        Assert.True(model.ReasoningCanDisable);
+        Assert.Equal(new[] { "high", "max" }, model.ReasoningLevels);
+
+        using JsonDocument body = CreateBody(
+            endpoint, model, new AiModelReasoningSettings { Enabled = true, Effort = "max" });
+        Assert.Equal("max", body.RootElement.GetProperty("reasoning_effort").GetString());
+        Assert.False(body.RootElement.TryGetProperty("thinking", out _));
+
+        using JsonDocument offBody = CreateBody(
+            endpoint, model, new AiModelReasoningSettings { Disabled = true });
+        Assert.False(offBody.RootElement.GetProperty("enable_thinking").GetBoolean());
+        Assert.False(offBody.RootElement.TryGetProperty("reasoning_effort", out _));
+    }
+
+    [Fact]
+    public void AliyunDeepSeekV4Flash0731_UsesLowHighAndMaxEffort()
+    {
+        AiProviderModel model = new() { Id = "deepseek-v4-flash-0731" };
+        const string endpoint = "https://dashscope.aliyuncs.com/compatible-mode/v1";
+        AiReasoningDialectSupport.ApplyKnownModelDefaults(model, endpoint);
+
+        Assert.Equal("dashScopeDeepSeekEffort", model.ReasoningDialect);
+        Assert.Equal(new[] { "low", "high", "max" }, model.ReasoningLevels);
+        using JsonDocument body = CreateBody(
+            endpoint, model, new AiModelReasoningSettings { Enabled = true, Effort = "low" });
+        Assert.Equal("low", body.RootElement.GetProperty("reasoning_effort").GetString());
+    }
+
+    [Fact]
+    public void AliyunKimiK3AndK31Pro_UseTheirDistinctEffortLaddersAndOffSwitch()
+    {
+        const string endpoint = "https://llm-workspace.cn-beijing.maas.aliyuncs.com/compatible-mode/v1";
+        AiProviderModel k3 = new() { Id = "kimi/kimi-k3" };
+        AiReasoningDialectSupport.ApplyKnownModelDefaults(k3, endpoint);
+        Assert.Equal("dashScopeKimiEffort", k3.ReasoningDialect);
+        Assert.True(k3.ReasoningCanDisable);
+        Assert.Equal(new[] { "low", "high", "max" }, k3.ReasoningLevels);
+
+        using JsonDocument k3Body = CreateBody(
+            endpoint, k3, new AiModelReasoningSettings { Enabled = true, Effort = "low" });
+        Assert.Equal("low", k3Body.RootElement.GetProperty("reasoning_effort").GetString());
+        using JsonDocument k3Off = CreateBody(
+            endpoint, k3, new AiModelReasoningSettings { Disabled = true });
+        Assert.False(k3Off.RootElement.GetProperty("enable_thinking").GetBoolean());
+
+        AiProviderModel k31 = new() { Id = "kimi-k3.1-pro" };
+        AiReasoningDialectSupport.ApplyKnownModelDefaults(k31, endpoint);
+        Assert.Equal("dashScopeKimiEffort", k31.ReasoningDialect);
+        Assert.True(k31.ReasoningCanDisable);
+        Assert.Equal(new[] { "low", "medium", "high", "max" }, k31.ReasoningLevels);
+
+        using JsonDocument k31Body = CreateBody(
+            endpoint, k31, new AiModelReasoningSettings { Enabled = true, Effort = "medium" });
+        Assert.Equal("medium", k31Body.RootElement.GetProperty("reasoning_effort").GetString());
+        using JsonDocument k31Off = CreateBody(
+            endpoint, k31, new AiModelReasoningSettings { Disabled = true });
+        Assert.False(k31Off.RootElement.GetProperty("enable_thinking").GetBoolean());
+    }
+
+    [Theory]
+    [InlineData("Pro/deepseek-ai/DeepSeek-V4")]
+    [InlineData("deepseek-ai/DeepSeek-V4-Flash")]
+    [InlineData("Pro/zai-org/GLM-5.2")]
+    public void SiliconFlowSpecialReasoningModels_UseTopLevelReasoningEffort(string modelId)
+    {
+        AiProviderModel model = new() { Id = modelId };
+        const string endpoint = "https://api.siliconflow.cn/v1";
+        AiReasoningDialectSupport.ApplyKnownModelDefaults(model, endpoint);
+
+        Assert.Equal("siliconFlowReasoningEffort", model.ReasoningDialect);
+        Assert.True(model.ReasoningCanDisable);
+        Assert.Equal(new[] { "high", "max" }, model.ReasoningLevels);
+
+        using JsonDocument effortBody = CreateBody(
+            endpoint, model, new AiModelReasoningSettings { Enabled = true, Effort = "high" });
+        Assert.Equal("high", effortBody.RootElement.GetProperty("reasoning_effort").GetString());
+        Assert.False(effortBody.RootElement.TryGetProperty("thinking_budget", out _));
+
+        using JsonDocument offBody = CreateBody(
+            endpoint, model, new AiModelReasoningSettings { Disabled = true });
+        Assert.False(offBody.RootElement.GetProperty("enable_thinking").GetBoolean());
+        Assert.False(offBody.RootElement.TryGetProperty("reasoning_effort", out _));
+    }
+
+    [Fact]
+    public void UnlistedSiliconFlowModel_DoesNotReceiveSpecialReasoningEffortDialect()
+    {
+        AiProviderModel model = new() { Id = "deepseek-v4-pro" };
+        const string endpoint = "https://api.siliconflow.cn/v1";
+        AiReasoningDialectSupport.ApplyKnownModelDefaults(model, endpoint);
+
+        Assert.Equal("siliconflowEnableThinking", model.ReasoningDialect);
+        Assert.NotEqual("siliconFlowReasoningEffort", model.ReasoningDialect);
+        using JsonDocument body = CreateBody(
+            endpoint, model, new AiModelReasoningSettings { Enabled = true, Effort = "high" });
+        Assert.False(body.RootElement.TryGetProperty("reasoning_effort", out _));
+        Assert.True(body.RootElement.TryGetProperty("thinking_budget", out _));
+    }
+
+    [Fact]
+    public void DirectZhipuGlm52_PreservesKelivoModelEffortLadder()
+    {
+        AiProviderModel model = new() { Id = "glm-5.2" };
+        const string endpoint = "https://open.bigmodel.cn/api/paas/v4";
+        AiReasoningDialectSupport.ApplyKnownModelDefaults(model, endpoint);
+
+        Assert.Equal("thinkingType", model.ReasoningDialect);
+        Assert.Equal(new[] { "low", "medium", "high", "xhigh", "max" }, model.ReasoningLevels);
+        Assert.True(model.ReasoningCanDisable);
+    }
+
     private static JsonDocument CreateBody(
         string baseUrl,
         AiProviderModel model,

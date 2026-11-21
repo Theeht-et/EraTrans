@@ -25,9 +25,10 @@ public partial class DictionaryEditorControl
         if (_loadingReasoningSelection || _isTranslating)
             return;
 
-        AiProviderProfile? profile = TryGetActiveProvider();
+        AiProviderProfile? profile = TryGetEditingProvider();
         if (profile is null)
         {
+            StatusTextBlock.Text = "还没有 AI 服务：请先在“AI 服务设置”里添加或启用一个服务商。";
             SyncReasoningSelection();
             return;
         }
@@ -42,16 +43,20 @@ public partial class DictionaryEditorControl
             settings[profile.Id] = current with { Mode = mode };
             _reasoningStore.Save(settings);
 
-            StatusTextBlock.Text = mode == AiReasoningMode.Auto
-                ? "推理设置：自动（不附加任何推理字段）。"
-                : $"推理设置：{DescribeReasoningMode(mode)}（{AiReasoning.PresetLabel(profile.BaseUrl)}）。";
+            StatusTextBlock.Text = mode switch
+            {
+                AiReasoningMode.On => $"推理设置：开启（{AiReasoning.PresetLabel(profile.BaseUrl)}）。",
+                AiReasoningMode.Off => $"推理设置：关闭（{AiReasoning.PresetLabel(profile.BaseUrl)}）。",
+                _ => "推理设置：自动（不附加任何推理字段）。"
+            };
         }
         catch (Exception ex)
         {
-            StatusTextBlock.Text = "推理设置保存失败。";
-            MessageBox.Show(
-                OwnerWindow, ex.Message, "推理设置保存失败",
-                MessageBoxButton.OK, MessageBoxImage.Error);
+            // Keep the selection the user just made instead of silently snapping
+            // it back to the stored value.
+            AiReasoningComboBox.ToolTip = "推理设置保存失败：" + ex.Message;
+            StatusTextBlock.Text = "推理设置保存失败，本次选择未写入配置。";
+            return;
         }
 
         SyncReasoningSelection();
@@ -68,10 +73,10 @@ public partial class DictionaryEditorControl
         _loadingReasoningSelection = true;
         try
         {
-            AiProviderProfile? profile = TryGetActiveProvider();
+            AiProviderProfile? profile = TryGetEditingProvider();
             AiReasoningMode mode = profile is null
                 ? AiReasoningMode.Auto
-                : ResolveStoredReasoningOptions(profile).Mode;
+                : ResolveStoredOptions(profile.Id).Mode;
 
             foreach (ComboBoxItem item in AiReasoningComboBox.Items.OfType<ComboBoxItem>())
             {
@@ -83,9 +88,18 @@ public partial class DictionaryEditorControl
             }
 
             AiReasoningComboBox.IsEnabled = profile is not null && !_isTranslating;
-            AiReasoningComboBox.ToolTip = profile is null
-                ? "尚未配置 AI 服务商。"
-                : $"自动：使用服务商默认设置，不附加推理字段。开启/关闭：向请求附加 {AiReasoning.PresetLabel(profile.BaseUrl)}。";
+
+            if (profile is null)
+            {
+                AiReasoningComboBox.ToolTip = "还没有 AI 服务：请先在“AI 服务设置”里添加或启用一个服务商。";
+                return;
+            }
+
+            string preset = AiReasoning.PresetLabel(profile.BaseUrl);
+            AiReasoningComboBox.ToolTip =
+                $"当前服务：{profile.Name}" +
+                $"\n自动：使用服务商默认设置，不附加推理字段。" +
+                $"\n开启 / 关闭：向请求附加 {preset}。";
         }
         finally
         {
@@ -109,12 +123,12 @@ public partial class DictionaryEditorControl
             _ => AiReasoningMode.Auto
         };
 
-    private AiReasoningOptions ResolveStoredReasoningOptions(AiProviderProfile profile)
+    private AiReasoningOptions ResolveStoredOptions(string providerId)
     {
         try
         {
             Dictionary<string, AiReasoningOptions> settings = _reasoningStore.Load();
-            return settings.TryGetValue(profile.Id, out AiReasoningOptions? options)
+            return settings.TryGetValue(providerId, out AiReasoningOptions? options)
                 ? options
                 : AiReasoningOptions.Auto;
         }
@@ -124,22 +138,32 @@ public partial class DictionaryEditorControl
         }
     }
 
-    private AiProviderProfile? TryGetActiveProvider()
+    /// <summary>
+    /// The provider this switch belongs to. It must not require a complete
+    /// configuration: reasoning can be chosen while the API key or model is
+    /// still being filled in, otherwise the switch reverts to Auto on click.
+    /// </summary>
+    private AiProviderProfile? TryGetEditingProvider()
     {
+        AiProviderSettings settings;
         try
         {
-            return _providerStore.Load().ActiveProvider;
+            settings = _providerStore.Load();
         }
         catch
         {
             return null;
         }
-    }
 
-    private static string DescribeReasoningMode(AiReasoningMode mode) => mode switch
-    {
-        AiReasoningMode.On => "开启",
-        AiReasoningMode.Off => "关闭",
-        _ => "自动"
-    };
+        if (settings.ActiveProvider is not null)
+            return settings.ActiveProvider;
+
+        AiProviderProfile? byId = settings.Providers.FirstOrDefault(provider =>
+            string.Equals(provider.Id, settings.ActiveProviderId, StringComparison.Ordinal));
+        if (byId is not null)
+            return byId;
+
+        return settings.Providers.FirstOrDefault(provider => provider.IsEnabled)
+            ?? settings.Providers.FirstOrDefault();
+    }
 }

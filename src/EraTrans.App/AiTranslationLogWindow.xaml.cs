@@ -1,5 +1,6 @@
 using EraTrans.Core;
 using System.IO;
+using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Collections.ObjectModel;
@@ -10,7 +11,14 @@ namespace EraTrans.App;
 
 public partial class AiTranslationLogWindow : Window
 {
+    private static readonly JsonSerializerOptions DisplayJsonOptions = new()
+    {
+        WriteIndented = true,
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+    };
+
     private readonly AiTranslationLogStore _store;
+    private AiTranslationLogEntry? _selectedLogEntry;
     private readonly ObservableCollection<AiTranslationLogEntry> _logs = [];
 
     public AiTranslationLogWindow(AiTranslationLogStore? store = null)
@@ -54,6 +62,7 @@ public partial class AiTranslationLogWindow : Window
             return;
         }
 
+        _selectedLogEntry = entry;
         SelectedLogSummaryTextBlock.Text = string.Join(
             Environment.NewLine,
             $"{entry.DisplayTime}  |  {entry.RequestKindDescription}  |  {entry.StatusDescription}",
@@ -62,10 +71,10 @@ public partial class AiTranslationLogWindow : Window
         EndpointTextBlock.Text =
             $"请求地址：{entry.RequestMethod} {entry.Endpoint}{Environment.NewLine}协议：{entry.Protocol}";
 
-        RequestTextBox.Text = FormatJsonForDisplay(entry.RequestJson);
+        RequestTextBox.Text = FormatRequestForDisplay(entry);
         ResponseTextBox.Text = string.IsNullOrWhiteSpace(entry.RawResponse)
             ? "没有收到可显示的文本回复。"
-            : FormatJsonForDisplay(entry.RawResponse);
+            : FormatResponseForDisplay(entry.RawResponse);
 
         var errorLines = new List<string>
         {
@@ -97,6 +106,143 @@ public partial class AiTranslationLogWindow : Window
         CopyResponseButton.IsEnabled = !string.IsNullOrWhiteSpace(entry.RawResponse);
     }
 
+    private static string FormatRequestForDisplay(AiTranslationLogEntry entry)
+    {
+        try
+        {
+            using JsonDocument document = JsonDocument.Parse(entry.RequestJson);
+            JsonElement root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object ||
+                !root.TryGetProperty("messages", out JsonElement messages) ||
+                messages.ValueKind != JsonValueKind.Array)
+            {
+                return FormatJsonForDisplay(entry.RequestJson);
+            }
+
+            var builder = new StringBuilder();
+            var requestParameters = root.EnumerateObject()
+                .Where(property => property.Name != "messages")
+                .ToDictionary(property => property.Name, property => property.Value);
+
+            AppendJsonSection(builder, "请求参数", requestParameters);
+
+            foreach (JsonElement message in messages.EnumerateArray())
+            {
+                string role = message.ValueKind == JsonValueKind.Object &&
+                              message.TryGetProperty("role", out JsonElement roleElement)
+                    ? roleElement.GetString() ?? "message"
+                    : "message";
+                string heading = role switch
+                {
+                    "system" => "系统提示词",
+                    "user" => "用户内容",
+                    "assistant" => "附加消息",
+                    _ => role
+                };
+
+                if (builder.Length > 0)
+                    builder.AppendLine().AppendLine();
+                builder.Append('【').Append(heading).AppendLine("】");
+
+                if (message.ValueKind == JsonValueKind.Object &&
+                    message.TryGetProperty("content", out JsonElement content))
+                {
+                    string contentText = content.ValueKind == JsonValueKind.String
+                        ? content.GetString() ?? string.Empty
+                        : content.GetRawText();
+                    builder.Append(FormatJsonForDisplay(contentText));
+                }
+                else
+                {
+                    builder.Append(JsonSerializer.Serialize(message, DisplayJsonOptions));
+                }
+            }
+
+            return builder.ToString();
+        }
+        catch (JsonException)
+        {
+            return FormatJsonForDisplay(entry.RequestJson);
+        }
+    }
+
+    private static string FormatResponseForDisplay(string content)
+    {
+        try
+        {
+            using JsonDocument document = JsonDocument.Parse(content);
+            JsonElement root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object ||
+                !root.TryGetProperty("choices", out JsonElement choices) ||
+                choices.ValueKind != JsonValueKind.Array)
+            {
+                return FormatJsonForDisplay(content);
+            }
+
+            var builder = new StringBuilder();
+            var responseMetadata = root.EnumerateObject()
+                .Where(property => property.Name != "choices")
+                .ToDictionary(property => property.Name, property => property.Value);
+            AppendJsonSection(builder, "响应信息", responseMetadata);
+
+            foreach (JsonElement choice in choices.EnumerateArray())
+            {
+                if (choice.ValueKind != JsonValueKind.Object ||
+                    !choice.TryGetProperty("message", out JsonElement message) ||
+                    message.ValueKind != JsonValueKind.Object)
+                {
+                    if (builder.Length > 0)
+                        builder.AppendLine().AppendLine();
+                    builder.AppendLine("【回复选项】");
+                    builder.Append(JsonSerializer.Serialize(choice, DisplayJsonOptions));
+                    continue;
+                }
+
+                var choiceMetadata = choice.EnumerateObject()
+                    .Where(property => property.Name != "message")
+                    .ToDictionary(property => property.Name, property => property.Value);
+                AppendJsonSection(builder, "回复选项信息", choiceMetadata);
+
+                var messageMetadata = message.EnumerateObject()
+                    .Where(property => property.Name != "content")
+                    .ToDictionary(property => property.Name, property => property.Value);
+                AppendJsonSection(builder, "消息信息", messageMetadata);
+
+                if (message.TryGetProperty("content", out JsonElement messageContent))
+                {
+                    if (builder.Length > 0)
+                        builder.AppendLine().AppendLine();
+                    builder.AppendLine("【AI 回复正文】");
+                    string replyText = messageContent.ValueKind == JsonValueKind.String
+                        ? messageContent.GetString() ?? string.Empty
+                        : messageContent.GetRawText();
+                    builder.Append(FormatJsonForDisplay(replyText));
+                }
+            }
+
+            return builder.ToString();
+        }
+        catch (JsonException)
+        {
+            return FormatJsonForDisplay(content);
+        }
+    }
+
+    private static void AppendJsonSection(
+        StringBuilder builder,
+        string title,
+        Dictionary<string, JsonElement> values)
+    {
+        if (values.Count == 0)
+            return;
+
+        if (builder.Length > 0)
+            builder.AppendLine().AppendLine();
+
+        builder.AppendLine(title);
+        builder.Append(JsonSerializer.Serialize(values, DisplayJsonOptions));
+    }
+
     private static string FormatJsonForDisplay(string content)
     {
         if (string.IsNullOrWhiteSpace(content))
@@ -108,13 +254,7 @@ public partial class AiTranslationLogWindow : Window
             if (document.RootElement.ValueKind == JsonValueKind.String)
                 return document.RootElement.GetString() ?? string.Empty;
 
-            return JsonSerializer.Serialize(
-                document.RootElement,
-                new JsonSerializerOptions
-                {
-                    WriteIndented = true,
-                    Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-                });
+            return JsonSerializer.Serialize(document.RootElement, DisplayJsonOptions);
         }
         catch (JsonException)
         {
@@ -125,6 +265,7 @@ public partial class AiTranslationLogWindow : Window
 
     private void ShowEmptySelection()
     {
+        _selectedLogEntry = null;
         SelectedLogSummaryTextBlock.Text = _logs.Count == 0
             ? "暂无 AI 请求记录。"
             : "选择一条记录查看详情。";
@@ -190,9 +331,11 @@ public partial class AiTranslationLogWindow : Window
         }
     }
 
-    private void CopyRequest_Click(object sender, RoutedEventArgs e) => CopyText(RequestTextBox.Text);
+    private void CopyRequest_Click(object sender, RoutedEventArgs e) =>
+        CopyText(_selectedLogEntry?.RequestJson ?? RequestTextBox.Text);
 
-    private void CopyResponse_Click(object sender, RoutedEventArgs e) => CopyText(ResponseTextBox.Text);
+    private void CopyResponse_Click(object sender, RoutedEventArgs e) =>
+        CopyText(_selectedLogEntry?.RawResponse ?? ResponseTextBox.Text);
 
     private void CopyText(string value)
     {

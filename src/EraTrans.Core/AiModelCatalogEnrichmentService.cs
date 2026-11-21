@@ -26,6 +26,25 @@ public sealed class AiModelCatalogEnrichmentService
         new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
         {
             ["api.openai.com"] = ["openai"],
+            ["api.anthropic.com"] = ["anthropic"],
+            ["generativelanguage.googleapis.com"] = ["google"],
+            ["api.x.ai"] = ["xai"],
+            ["api.mistral.ai"] = ["mistral"],
+            ["api.groq.com"] = ["groq"],
+            ["api.cerebras.ai"] = ["cerebras"],
+            ["api.cohere.com"] = ["cohere"],
+            ["api.cohere.ai"] = ["cohere"],
+            ["api.deepinfra.com"] = ["deepinfra"],
+            ["api.together.xyz"] = ["togetherai"],
+            ["api.perplexity.ai"] = ["perplexity"],
+            ["aihubmix.com"] = ["aihubmix"],
+            ["api.venice.ai"] = ["venice"],
+            ["ai-gateway.vercel.sh"] = ["vercel"],
+            ["gateway.ai.cloudflare.com"] = ["cloudflare-ai-gateway"],
+            ["api.v0.dev"] = ["v0"],
+            ["gitlab.com"] = ["gitlab"],
+            ["cloud.gitlab.com"] = ["gitlab"],
+            ["ai.salad.cloud"] = ["salad-cloud"],
             ["api.deepseek.com"] = ["deepseek"],
             ["dashscope.aliyuncs.com"] = ["alibaba", "alibaba-cn"],
             ["dashscope-intl.aliyuncs.com"] = ["alibaba"],
@@ -97,39 +116,46 @@ public sealed class AiModelCatalogEnrichmentService
         {
             foreach (CatalogModel model in provider.Models.Values)
             {
-                if (ambiguousModelIds.Contains(model.Id))
+                string normalizedId = NormalizeModelId(model.Id);
+                if (ambiguousModelIds.Contains(normalizedId))
                     continue;
 
-                if (globalMatches.Remove(model.Id))
-                    ambiguousModelIds.Add(model.Id);
+                if (globalMatches.Remove(normalizedId))
+                    ambiguousModelIds.Add(normalizedId);
                 else
-                    globalMatches[model.Id] = model;
+                    globalMatches[normalizedId] = model;
             }
         }
 
         return models.Select(model =>
         {
             CatalogModel? metadata = null;
-            IReadOnlyList<string> candidates = GetProviderCandidates(providerIds, model.Id);
+            (string lookupId, int? contextHint) = StripContextWindowSuffix(model.Id);
+            IReadOnlyList<string> candidates = GetProviderCandidates(providerIds, lookupId);
             foreach (string providerId in candidates)
             {
                 if (catalog.Providers.TryGetValue(providerId, out CatalogProvider? provider) &&
-                    TryFindModel(provider, model.Id, out metadata))
+                    TryFindModel(provider, lookupId, out metadata))
                     break;
             }
 
             if (metadata is null)
             {
-                globalMatches.TryGetValue(model.Id, out metadata);
+                globalMatches.TryGetValue(NormalizeModelId(lookupId), out metadata);
                 if (metadata is null)
                 {
-                    int slash = model.Id.IndexOf('/');
+                    int slash = lookupId.IndexOf('/');
                     if (slash > 0)
-                        globalMatches.TryGetValue(model.Id[(slash + 1)..], out metadata);
+                        globalMatches.TryGetValue(
+                            NormalizeModelId(lookupId[(slash + 1)..]), out metadata);
                 }
             }
 
-            AiProviderModel enriched = metadata is null ? model : ApplyMetadata(model, metadata);
+            if (metadata is null && contextHint is null)
+                return ApplyKnownReasoningHint(model);
+
+            metadata ??= new CatalogModel { Id = lookupId, Name = model.DisplayName };
+            AiProviderModel enriched = ApplyMetadata(model, metadata, contextHint);
             return ApplyKnownReasoningHint(enriched);
         }).ToArray();
     }
@@ -290,9 +316,13 @@ public sealed class AiModelCatalogEnrichmentService
                     Family = ReadString(row, "family"),
                     Status = ReadString(row, "status"),
                     SupportsTools = ReadBoolean(row, "tool_call") || ReadBoolean(row, "tool"),
-                    SupportsReasoning = ReadBoolean(row, "reasoning") || ReadBoolean(row, "rsn"),
+                    ReasoningLevels = ReadCatalogReasoningLevels(row),
                     ReasoningSupport = ReadNullableBoolean(row, "reasoning")
-                        ?? ReadNullableBoolean(row, "rsn"),
+                        ?? ReadNullableBoolean(row, "rsn")
+                        ?? (HasCatalogReasoningOptions(row) ? true : null),
+                    SupportsReasoning = ReadNullableBoolean(row, "reasoning")
+                        ?? ReadNullableBoolean(row, "rsn")
+                        ?? HasCatalogReasoningOptions(row),
                     SupportsStructuredOutput = ReadBoolean(row, "structured_output") || ReadBoolean(row, "so"),
                     SupportsAttachments = ReadBoolean(row, "attachment"),
                     SupportsTemperature = ReadBoolean(row, "temperature"),
@@ -327,6 +357,94 @@ public sealed class AiModelCatalogEnrichmentService
         }
 
         return new CatalogSnapshot(providers);
+    }
+
+    private static List<string> ReadCatalogReasoningLevels(JsonElement row)
+    {
+        var levels = new List<string>();
+        foreach (string propertyName in new[] { "reasoning_options", "reasoningOptions", "ro" })
+        {
+            if (!TryGetProperty(row, propertyName, out JsonElement options) ||
+                options.ValueKind != JsonValueKind.Array)
+                continue;
+
+            foreach (JsonElement option in options.EnumerateArray())
+            {
+                if (option.ValueKind != JsonValueKind.Object ||
+                    !string.Equals(ReadString(option, "type"), "effort", StringComparison.OrdinalIgnoreCase) ||
+                    !TryGetProperty(option, "values", out JsonElement values) ||
+                    values.ValueKind != JsonValueKind.Array)
+                    continue;
+
+                foreach (JsonElement value in values.EnumerateArray())
+                {
+                    if (value.ValueKind == JsonValueKind.String &&
+                        !string.IsNullOrWhiteSpace(value.GetString()))
+                        levels.Add(value.GetString()!);
+                }
+            }
+        }
+
+        return levels
+            .Select(value => value.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static bool HasCatalogReasoningOptions(JsonElement row)
+    {
+        foreach (string propertyName in new[] { "reasoning_options", "reasoningOptions", "ro" })
+        {
+            if (!TryGetProperty(row, propertyName, out JsonElement options) ||
+                options.ValueKind != JsonValueKind.Array)
+                continue;
+
+            foreach (JsonElement option in options.EnumerateArray())
+            {
+                if (option.ValueKind != JsonValueKind.Object)
+                    continue;
+                string? type = ReadString(option, "type");
+                if (type is not null &&
+                    (type.Equals("effort", StringComparison.OrdinalIgnoreCase) ||
+                     type.Equals("budget_tokens", StringComparison.OrdinalIgnoreCase) ||
+                     type.Equals("toggle", StringComparison.OrdinalIgnoreCase)))
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static (string ModelId, int? ContextWindow) StripContextWindowSuffix(string modelId)
+    {
+        string value = modelId.Trim();
+        int slash = value.LastIndexOf('/');
+        int prefixLength = slash + 1;
+        int separator = value.LastIndexOfAny(['-', '_', '.']);
+        if (separator < prefixLength || separator == value.Length - 1)
+            return (value, null);
+
+        string suffix = value[(separator + 1)..];
+        if (suffix.Length < 2)
+            return (value, null);
+
+        char unit = char.ToLowerInvariant(suffix[^1]);
+        if (unit is not ('k' or 'm'))
+            return (value, null);
+
+        if (!double.TryParse(
+                suffix[..^1],
+                System.Globalization.NumberStyles.AllowDecimalPoint,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out double amount) ||
+            amount <= 0)
+            return (value, null);
+
+        double tokens = amount * (unit == 'k' ? 1_000 : 1_000_000);
+        if (tokens < 1_024 || tokens > 10_000_000 || tokens != Math.Truncate(tokens))
+            return (value, null);
+
+        return (value[..separator], (int)tokens);
     }
 
     private static IReadOnlyList<string> ResolveProviderIds(
@@ -412,8 +530,8 @@ public sealed class AiModelCatalogEnrichmentService
 
     private static AiProviderModel ApplyKnownReasoningHint(AiProviderModel model)
     {
-        // Follow Kelivo's conservative model-id defaults only when neither the provider
-        // nor the public catalog supplied an explicit true/false capability.
+        // Match Kelivo's order: explicit provider/catalog metadata is authoritative;
+        // infer only well-known reasoning families. Everything else stays unknown.
         if (model.ReasoningSupport is not null || model.SupportsReasoning)
             return model;
 
@@ -423,32 +541,31 @@ public sealed class AiModelCatalogEnrichmentService
             id = id[(slash + 1)..];
 
         bool supportsReasoning =
-            id.StartsWith("o1", StringComparison.Ordinal) ||
-            id.StartsWith("o3", StringComparison.Ordinal) ||
-            id.StartsWith("o4", StringComparison.Ordinal) ||
-            id.StartsWith("gpt-5", StringComparison.Ordinal) ||
-            id.StartsWith("gpt-6", StringComparison.Ordinal) ||
-            id.StartsWith("deepseek-reasoner", StringComparison.Ordinal) ||
-            id.StartsWith("deepseek-r1", StringComparison.Ordinal) ||
-            id.StartsWith("deepseek-v3.1", StringComparison.Ordinal) ||
-            id.StartsWith("deepseek-v3.2", StringComparison.Ordinal) ||
-            id.StartsWith("deepseek-v4", StringComparison.Ordinal) ||
-            id.StartsWith("qwq", StringComparison.Ordinal) ||
-            id.StartsWith("qwen3", StringComparison.Ordinal) ||
-            id.StartsWith("qwen-3", StringComparison.Ordinal) ||
-            id.StartsWith("kimi-k2-thinking", StringComparison.Ordinal) ||
-            id.StartsWith("kimi-k2.5", StringComparison.Ordinal) ||
-            id.StartsWith("kimi-k2.6", StringComparison.Ordinal) ||
-            id.StartsWith("kimi-k2.7", StringComparison.Ordinal) ||
-            id.StartsWith("kimi-k3", StringComparison.Ordinal) ||
-            id.StartsWith("grok-4", StringComparison.Ordinal) ||
-            id.StartsWith("gemini-2.5", StringComparison.Ordinal) ||
-            id.StartsWith("gemini-3", StringComparison.Ordinal) ||
-            id.StartsWith("claude-3-7", StringComparison.Ordinal) ||
-            id.StartsWith("claude-3.7", StringComparison.Ordinal) ||
-            id.StartsWith("claude-sonnet-4", StringComparison.Ordinal) ||
-            id.StartsWith("claude-opus-4", StringComparison.Ordinal) ||
-            id.StartsWith("claude-haiku-4", StringComparison.Ordinal);
+            System.Text.RegularExpressions.Regex.IsMatch(
+                id, @"(^|[/_:@])(?:o[134]|gpt-[56](?:[.-][a-z0-9]+)?)(?:$|[-._:@])") ||
+            System.Text.RegularExpressions.Regex.IsMatch(
+                id, @"(^|[/_:@])deepseek-(?:reasoner|r1|v3\.1|v3\.2|v4)(?:$|[-._:@])") ||
+            System.Text.RegularExpressions.Regex.IsMatch(
+                id, @"(^|[/_:@])(?:qwq|qwen-?3)(?:$|[-._:@])") ||
+            System.Text.RegularExpressions.Regex.IsMatch(
+                id, @"(^|[/_:@])kimi-k2-thinking(?:$|[-._:@])") ||
+            System.Text.RegularExpressions.Regex.IsMatch(
+                id, @"(^|[/_:@])kimi-k2\.[567](?:$|[-._:@])") ||
+            System.Text.RegularExpressions.Regex.IsMatch(
+                id, @"(^|[/_:@])kimi-k3(?:$|[-._:@])") ||
+            System.Text.RegularExpressions.Regex.IsMatch(
+                id, @"(^|[/_:@])grok-4\.[567](?:$|[-._:@])") ||
+            System.Text.RegularExpressions.Regex.IsMatch(
+                id, @"(^|[/_:@])gemini-(?:2\.5|3|4)(?:$|[-._:@])") ||
+            System.Text.RegularExpressions.Regex.IsMatch(
+                id, @"(^|[/_:@])claude-(?:(?:3[-.]7)|(?:opus|sonnet|haiku|fable|mythos)-[45])(?:$|[-._:@])") ||
+            System.Text.RegularExpressions.Regex.IsMatch(
+                id, @"(^|[/_:@])glm-(?:4[.-][567]|5)(?:$|[-._:@])") ||
+            System.Text.RegularExpressions.Regex.IsMatch(
+                id, @"(^|[/_:@])(?:minimax-m[23]|mimo-v2|step-3|intern-s1|laguna)(?:$|[-._:@])") ||
+            id.Contains("doubao", StringComparison.Ordinal) &&
+                (id.Contains("seed-", StringComparison.Ordinal) ||
+                 id.Contains("thinking", StringComparison.Ordinal));
 
         if (supportsReasoning)
         {
@@ -459,7 +576,10 @@ public sealed class AiModelCatalogEnrichmentService
         return model;
     }
 
-    private static AiProviderModel ApplyMetadata(AiProviderModel source, CatalogModel metadata)
+    private static AiProviderModel ApplyMetadata(
+        AiProviderModel source,
+        CatalogModel metadata,
+        int? contextHint = null)
     {
         var inputModalities = metadata.InputModalities.Count > 0
             ? metadata.InputModalities.ToList()
@@ -487,6 +607,9 @@ public sealed class AiModelCatalogEnrichmentService
                 ?? metadata.ReasoningSupport
                 ?? (source.SupportsReasoning || metadata.SupportsReasoning),
             ReasoningSupport = source.ReasoningSupport ?? metadata.ReasoningSupport,
+            ReasoningLevels = source.ReasoningLevels.Count > 0
+                ? source.ReasoningLevels.ToList()
+                : metadata.ReasoningLevels.ToList(),
             SupportsStructuredOutput = metadata.SupportsStructuredOutput || source.SupportsStructuredOutput,
             SupportsAttachments = metadata.SupportsAttachments || source.SupportsAttachments,
             SupportsTemperature = metadata.SupportsTemperature || source.SupportsTemperature,
@@ -496,7 +619,7 @@ public sealed class AiModelCatalogEnrichmentService
             LastUpdated = metadata.LastUpdated ?? source.LastUpdated,
             InputModalities = inputModalities,
             OutputModalities = outputModalities,
-            ContextLimit = source.ContextLimit ?? metadata.ContextLimit,
+            ContextLimit = source.ContextLimit ?? metadata.ContextLimit ?? contextHint,
             InputLimit = source.InputLimit ?? metadata.InputLimit,
             OutputLimit = source.OutputLimit ?? metadata.OutputLimit,
             InputCostPerMillion = metadata.InputCostPerMillion ?? source.InputCostPerMillion,
@@ -635,6 +758,7 @@ public sealed class AiModelCatalogEnrichmentService
         public bool SupportsTools { get; init; }
         public bool SupportsReasoning { get; init; }
         public bool? ReasoningSupport { get; init; }
+        public List<string> ReasoningLevels { get; init; } = [];
         public bool SupportsStructuredOutput { get; init; }
         public bool SupportsAttachments { get; init; }
         public bool SupportsTemperature { get; init; }

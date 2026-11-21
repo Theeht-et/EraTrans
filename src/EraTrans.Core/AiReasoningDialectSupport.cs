@@ -601,7 +601,7 @@ public static class AiReasoningDialectSupport
 
     private static bool IsZhipuGlm53Model(string modelId) =>
         Regex.IsMatch(modelId.Trim(),
-            @"^zhipu/glm-5\\.3(?:-flash(?:x)?|$)(?:$|[-._:@])",
+            @"^zhipu/glm-5\.3(?:-flash(?:x)?|$)(?:$|[-._:@])",
             RegexOptions.IgnoreCase);
 
     private static bool IsAliyunModelStudioHost(string host)

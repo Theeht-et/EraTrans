@@ -49,7 +49,7 @@ public sealed class SequentialTranslationPlannerTests
     }
 
     [Fact]
-    public void OversizedFunction_IsSplitOnBranchBoundaries_AndNumbered()
+    public void OversizedFunction_IsSplitAndNumbered()
     {
         var sources = new List<WindowSourceLine>();
         var links = new List<ErbTranslationGroupEntry>();
@@ -57,7 +57,12 @@ public sealed class SequentialTranslationPlannerTests
         {
             string key = "k" + index;
             sources.Add(new WindowSourceLine(index, key, new string('あ', 300), true));
-            links.Add(Link(key, index, "@A", branch: index < 4 ? "F:IF:0" : "F:IF:1", label: index < 4 ? "IF" : "ELSE"));
+            links.Add(Link(
+                key,
+                index,
+                "@A",
+                branch: index < 4 ? "F:IF:0" : "F:IF:1",
+                label: index < 4 ? "IF" : "ELSE"));
         }
 
         WindowPlan plan = new SequentialTranslationPlanner().Build(
@@ -72,8 +77,7 @@ public sealed class SequentialTranslationPlannerTests
             plan.Windows.Select(window => window.Part));
         Assert.All(plan.Windows, window => Assert.Equal("@A", window.FunctionId));
 
-        // The branch switch must not be cut apart twice: every window stays inside
-        // one branch of the IF/ELSE pair.
+        // No window may contain lines from more than one side of the branch.
         foreach (TranslationWindow window in plan.Windows)
         {
             string[] branches = window.Lines
@@ -81,7 +85,7 @@ public sealed class SequentialTranslationPlannerTests
                 .Select(line => links.First(link => link.Key == line.Key).BranchPath)
                 .Distinct(StringComparer.Ordinal)
                 .ToArray();
-            Assert.True(branches.Length <= 2, string.Join(",", branches));
+            Assert.Single(branches);
         }
     }
 
@@ -103,8 +107,7 @@ public sealed class SequentialTranslationPlannerTests
             maxCharacters: 1000,
             overlapLines: 2);
 
-        TranslationWindow second = plan.Windows[1];
-        WindowLine[] references = second.Lines.Where(line => line.Reference).ToArray();
+        WindowLine[] references = plan.Windows[1].Lines.Where(line => line.Reference).ToArray();
         Assert.Equal(2, references.Length);
         Assert.All(references, line => Assert.False(line.Translate));
         Assert.Equal(
@@ -142,7 +145,8 @@ public sealed class SequentialTranslationPlannerTests
         Assert.Equal(2, lines[3].Join);   // ideographic-space indent
         Assert.Equal(2, lines[4].Join);   // previous line lacks sentence-final punctuation
         Assert.Equal(0, lines[5].Join);
-        Assert.Equal(2, plan.JoinedLineCount);
+        Assert.Equal(1, plan.JoinedLineCount);
+        Assert.Equal(3, lines.Count(line => line.Join == 2));
     }
 
     [Fact]
@@ -165,7 +169,7 @@ public sealed class SequentialTranslationPlannerTests
     }
 
     [Fact]
-    public void AlternativeBranches_GetOneSharedGroup_OnlyWhenThereIsMoreThanOne()
+    public void AlternativeBranches_ShareOneGroupOnlyWhenThereIsMoreThanOne()
     {
         var sources = new List<WindowSourceLine>
         {

@@ -339,11 +339,12 @@ public sealed class AiModelDiscoveryServiceTests
     }
 
     [Fact]
-    public void ModelCapabilityLabels_AlwaysShowUnknownWhenMetadataIsMissing()
+    public void ModelCapabilityLabels_HideUnknownAndShowOnlyKnownSupportState()
     {
         var unknown = new AiProviderModel { Id = "provider-model" };
         Assert.Equal("上下文大小：未知", unknown.ContextLimitLabel);
-        Assert.Equal("推理能力：未知", unknown.ReasoningSupportDescription);
+        Assert.False(unknown.HasKnownReasoningSupport);
+        Assert.Equal("", unknown.ReasoningSupportDescription);
 
         var supported = new AiProviderModel
         {
@@ -352,14 +353,14 @@ public sealed class AiModelDiscoveryServiceTests
             ReasoningSupport = true
         };
         Assert.Equal("上下文大小：128K", supported.ContextLimitLabel);
-        Assert.Equal("推理能力：支持", supported.ReasoningSupportDescription);
+        Assert.Equal("推理支持", supported.ReasoningSupportDescription);
 
         var unsupported = new AiProviderModel
         {
             Id = "standard-model",
             ReasoningSupport = false
         };
-        Assert.Equal("推理能力：不支持", unsupported.ReasoningSupportDescription);
+        Assert.Equal("不支持推理", unsupported.ReasoningSupportDescription);
     }
 
     [Fact]
@@ -509,9 +510,8 @@ public sealed class AiModelDiscoveryServiceTests
         Assert.Equal(131072, model.ContextLimit);
         Assert.Equal(false, model.ReasoningSupport);
         Assert.Equal(new[] { "low", "medium", "high" }, model.ReasoningLevels);
-        Assert.Equal("推理能力：不支持", model.ReasoningSupportDescription);
+        Assert.Equal("不支持推理", model.ReasoningSupportDescription);
         Assert.Equal(new[] { "low", "medium", "high" }, model.ReasoningLevels);
-        Assert.Equal("推理能力：不支持", model.ReasoningSupportDescription);
     }
 
     [Fact]
@@ -610,7 +610,7 @@ public sealed class AiModelDiscoveryServiceTests
         AiProviderModel nested = Assert.Single(models, model => model.Id == "model-with-levels");
         Assert.Equal(true, nested.ReasoningSupport);
         Assert.Equal(new[] { "low", "high" }, nested.ReasoningLevels);
-        Assert.Contains("low", nested.ReasoningSupportDescription);
+        Assert.Equal("推理支持", nested.ReasoningSupportDescription);
 
         AiProviderModel direct = Assert.Single(models, model => model.Id == "model-with-level-list");
         Assert.Equal(true, direct.ReasoningSupport);

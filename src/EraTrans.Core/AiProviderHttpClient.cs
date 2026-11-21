@@ -22,6 +22,11 @@ public static class AiProviderHttpRequestFactory
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     };
 
+    /// <summary>
+    /// Builds a Chat Completions request. The reasoning argument overrides the
+    /// provider's saved choice; omitting it uses whatever the user selected in
+    /// the dictionary editor (Auto by default, which writes nothing).
+    /// </summary>
     public static AiProviderHttpRequestDetails Create(
         AiProviderProfile profile,
         string systemPrompt,
@@ -42,7 +47,10 @@ public static class AiProviderHttpRequestFactory
             }
         };
 
-        AiReasoning.Apply(payload, profile.BaseUrl, reasoning);
+        AiReasoning.Apply(
+            payload,
+            profile.BaseUrl,
+            reasoning ?? AiReasoningSettingsStore.ResolveForProvider(profile.Id));
 
         string json = JsonSerializer.Serialize(payload, JsonOptions);
 

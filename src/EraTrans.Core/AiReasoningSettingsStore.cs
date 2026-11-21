@@ -28,6 +28,29 @@ public sealed class AiReasoningSettingsStore
 
     public string FilePath => _filePath;
 
+    /// <summary>
+    /// Reads the saved choice of one provider for request building. A missing or
+    /// unreadable file simply means Auto, so translation never depends on it.
+    /// </summary>
+    public static AiReasoningOptions ResolveForProvider(string? providerId)
+    {
+        if (string.IsNullOrWhiteSpace(providerId))
+            return AiReasoningOptions.Auto;
+
+        try
+        {
+            Dictionary<string, AiReasoningOptions> settings =
+                new AiReasoningSettingsStore().Load();
+            return settings.TryGetValue(providerId, out AiReasoningOptions? options)
+                ? options
+                : AiReasoningOptions.Auto;
+        }
+        catch
+        {
+            return AiReasoningOptions.Auto;
+        }
+    }
+
     public Dictionary<string, AiReasoningOptions> Load()
     {
         var result = new Dictionary<string, AiReasoningOptions>(StringComparer.Ordinal);
@@ -47,7 +70,8 @@ public sealed class AiReasoningSettingsStore
             return result;
         }
 
-        foreach (KeyValuePair<string, StoredReasoning> pair in stored?.Providers ?? [])
+        foreach (KeyValuePair<string, StoredReasoning> pair in stored?.Providers
+                     ?? new Dictionary<string, StoredReasoning>())
         {
             if (string.IsNullOrWhiteSpace(pair.Key) || pair.Value is null)
                 continue;

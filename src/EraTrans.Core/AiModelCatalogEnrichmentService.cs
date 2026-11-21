@@ -308,6 +308,7 @@ public sealed class AiModelCatalogEnrichmentService
                     continue;
                 }
 
+                (int? reasoningBudgetMin, int? reasoningBudgetMax) = ReadCatalogReasoningBudget(row);
                 models[id] = new CatalogModel
                 {
                     Id = id,
@@ -316,6 +317,8 @@ public sealed class AiModelCatalogEnrichmentService
                     Status = ReadString(row, "status"),
                     SupportsTools = ReadBoolean(row, "tool_call") || ReadBoolean(row, "tool"),
                     ReasoningLevels = ReadCatalogReasoningLevels(row),
+                    ReasoningBudgetMin = reasoningBudgetMin,
+                    ReasoningBudgetMax = reasoningBudgetMax,
                     ReasoningCanDisable = ReadNullableBoolean(row, "reasoning_can_disable")
                         ?? ReadNestedNullableBoolean(row, "reasoning", "can_disable")
                         ?? ReadNestedNullableBoolean(row, "reasoning", "canDisable")
@@ -424,6 +427,33 @@ public sealed class AiModelCatalogEnrichmentService
             .Where(value => !value.Equals("none", StringComparison.OrdinalIgnoreCase))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    private static (int? Min, int? Max) ReadCatalogReasoningBudget(JsonElement row)
+    {
+        foreach (string propertyName in new[] { "reasoning_options", "reasoningOptions", "ro" })
+        {
+            if (!TryGetProperty(row, propertyName, out JsonElement options) ||
+                options.ValueKind != JsonValueKind.Array)
+                continue;
+
+            foreach (JsonElement option in options.EnumerateArray())
+            {
+                if (option.ValueKind != JsonValueKind.Object ||
+                    !string.Equals(ReadString(option, "type"), "budget_tokens", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                return (
+                    TryGetProperty(option, "min", out JsonElement min) &&
+                    min.ValueKind == JsonValueKind.Number && min.TryGetInt32(out int minValue)
+                        ? minValue : null,
+                    TryGetProperty(option, "max", out JsonElement max) &&
+                    max.ValueKind == JsonValueKind.Number && max.TryGetInt32(out int maxValue)
+                        ? maxValue : null);
+            }
+        }
+
+        return (null, null);
     }
 
     private static bool? ReadCatalogReasoningCanDisable(JsonElement row)
@@ -676,6 +706,8 @@ public sealed class AiModelCatalogEnrichmentService
             ReasoningLevels = source.ReasoningLevels.Count > 0
                 ? source.ReasoningLevels.ToList()
                 : metadata.ReasoningLevels.ToList(),
+            ReasoningBudgetMin = source.ReasoningBudgetMin ?? metadata.ReasoningBudgetMin,
+            ReasoningBudgetMax = source.ReasoningBudgetMax ?? metadata.ReasoningBudgetMax,
             ReasoningCanDisable = source.ReasoningCanDisable ?? metadata.ReasoningCanDisable,
             ReasoningDialect = source.ReasoningDialect ?? metadata.ReasoningDialect,
             SupportsStructuredOutput = metadata.SupportsStructuredOutput || source.SupportsStructuredOutput,
@@ -843,6 +875,8 @@ public sealed class AiModelCatalogEnrichmentService
         public bool SupportsReasoning { get; init; }
         public bool? ReasoningSupport { get; init; }
         public List<string> ReasoningLevels { get; init; } = [];
+        public int? ReasoningBudgetMin { get; init; }
+        public int? ReasoningBudgetMax { get; init; }
         public bool? ReasoningCanDisable { get; init; }
         public string? ReasoningDialect { get; init; }
         public bool SupportsStructuredOutput { get; init; }

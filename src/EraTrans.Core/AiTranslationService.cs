@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
@@ -20,6 +21,18 @@ public sealed record AiTranslationSemanticContextGroup(
     IReadOnlyList<AiTranslationContextEntry> Entries)
 {
     public IReadOnlyList<int> TargetIds { get; init; } = [];
+}
+
+/// <summary>
+/// Result of one window request. A partially answered window is a success: the
+/// caller retries only the missing ids instead of resending the whole window.
+/// </summary>
+public sealed record WindowTranslationOutcome(
+    IReadOnlyList<AiTranslationResult> Translations,
+    IReadOnlyList<int> MissingIds,
+    IReadOnlyList<int> UnknownIds)
+{
+    public bool IsComplete => MissingIds.Count == 0;
 }
 
 public interface IAiChatCompletionClient
@@ -68,6 +81,23 @@ public sealed class AiTranslationService
         不要添加 Markdown 代码围栏、解释、前言或数组之外的内容。不能遗漏或重复任何 id。
         """;
 
+    /// <summary>
+    /// Prompt for one sequential window: the model sees a contiguous slice of the
+    /// script in source order, so it can read the passage as a whole before
+    /// translating line by line.
+    /// </summary>
+    private const string WindowSystemPrompt = """
+        你是 ERA 游戏文本本地化翻译助手。请把 lines 中 do 为 1 的行翻译成简体中文。
+
+        1. 只返回一个 JSON 对象，键是 id，值是译文，例如 {"12":"译文"}。不要代码块、不要解释、不要输出 do 为 0 的行。
+        2. 相邻且 join 相同的行属于同一句话：先整段理解，再逐行输出。不要让半句各自成句，拼起来要通顺，不要重复主语。
+        3. alt 相同的行是互斥分支：不要把它们的译文接成连续对话，但人名、称呼、术语要与本请求其他行保持一致。
+        4. 保留原文的变量占位符（如 %CALLNAME:MASTER%）、行内条件（\@ 条件 ? A # B \@）、控制码、标点和换行结构；无法翻译时原样返回原文。
+
+        part 大于 1 表示这是同一函数前一段的延续，人称和译法沿用它。
+        同一请求内，同一人名、称呼和术语必须使用同一译法。
+        """;
+
     private static readonly JsonSerializerOptions PromptJsonOptions = new()
     {
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
@@ -114,6 +144,34 @@ public sealed class AiTranslationService
     {
         ArgumentNullException.ThrowIfNull(semanticContextGroups);
         return TranslateCoreAsync(profile, requests, semanticContextGroups, reasoning, cancellationToken);
+    }
+
+    /// <summary>
+    /// Translates one sequential window. Lines marked as reference are sent as
+    /// context only; the answer is a flat id-to-text object.
+    /// </summary>
+    public async Task<WindowTranslationOutcome> TranslateWindowAsync(
+        AiProviderProfile profile,
+        TranslationWindow window,
+        AiReasoningOptions? reasoning = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(window);
+        AiProviderProfileValidator.Validate(profile);
+
+        if (window.TargetCount == 0)
+            return new WindowTranslationOutcome([], [], []);
+
+        string userPrompt = BuildWindowPayload(window);
+        return await CompleteWithReasoningFallbackAsync(
+            profile,
+            WindowSystemPrompt,
+            userPrompt,
+            requestKind: "Translation",
+            requestedEntryCount: window.TargetCount,
+            processResponse: response => ParseWindowResponse(response, window),
+            reasoning,
+            cancellationToken);
     }
 
     private async Task<IReadOnlyList<AiTranslationResult>> TranslateCoreAsync(
@@ -317,6 +375,152 @@ public sealed class AiTranslationService
             return value;
 
         return value.Replace(secret, "[已隐藏]", StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// One window is sent as a line-ordered list: the model reads the passage in
+    /// reading order, and the flags tell it which lines to translate, which belong
+    /// to the same sentence, and which are mutually exclusive branches.
+    /// </summary>
+    public static string BuildWindowPayload(TranslationWindow window)
+    {
+        ArgumentNullException.ThrowIfNull(window);
+
+        var lines = new List<Dictionary<string, object?>>(window.Lines.Count);
+        foreach (WindowLine line in window.Lines)
+        {
+            var item = new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["fn"] = line.FunctionId,
+                ["id"] = line.Id,
+                ["text"] = line.Text,
+                ["do"] = line.Translate ? 1 : 0
+            };
+
+            if (line.Join > 0)
+                item["join"] = line.Join;
+            if (line.AltGroup is not null)
+                item["alt"] = line.AltGroup;
+            if (line.InlineCondition)
+                item["cond"] = 1;
+            if (line.Reference)
+                item["ref"] = 1;
+
+            lines.Add(item);
+        }
+
+        var payload = new Dictionary<string, object?>(StringComparer.Ordinal);
+        if (window.Part > 1)
+            payload["part"] = window.Part;
+        payload["lines"] = lines;
+
+        return JsonSerializer.Serialize(payload, PromptJsonOptions);
+    }
+
+    /// <summary>
+    /// Parses the flat id-to-text answer. Missing ids are reported instead of
+    /// failing the whole window, and the older array shape is still accepted so a
+    /// model that ignores the instructions does not waste the request.
+    /// </summary>
+    public static WindowTranslationOutcome ParseWindowResponse(
+        string response,
+        TranslationWindow window)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(response);
+        ArgumentNullException.ThrowIfNull(window);
+
+        HashSet<int> expected = window.Lines
+            .Where(line => line.Translate)
+            .Select(line => line.Id)
+            .ToHashSet();
+        var parsed = new Dictionary<int, string>();
+
+        string json = ExtractJsonRegion(response);
+        JsonDocument document;
+        try
+        {
+            document = JsonDocument.Parse(json);
+        }
+        catch (JsonException ex)
+        {
+            throw new InvalidDataException("模型返回的 JSON 无法解析：" + ex.Message, ex);
+        }
+
+        using (document)
+        {
+            JsonElement root = document.RootElement;
+            if (root.ValueKind == JsonValueKind.Object)
+            {
+                foreach (JsonProperty property in root.EnumerateObject())
+                {
+                    if (!int.TryParse(property.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int id))
+                        continue;
+
+                    string? text = ReadTranslationText(property.Value);
+                    if (!string.IsNullOrWhiteSpace(text))
+                        parsed[id] = text;
+                }
+            }
+            else if (root.ValueKind == JsonValueKind.Array)
+            {
+                foreach (JsonElement item in root.EnumerateArray())
+                {
+                    if (item.ValueKind != JsonValueKind.Object ||
+                        !item.TryGetProperty("id", out JsonElement idElement) ||
+                        !idElement.TryGetInt32(out int id) ||
+                        !item.TryGetProperty("translation", out JsonElement translation))
+                    {
+                        continue;
+                    }
+
+                    string? text = ReadTranslationText(translation);
+                    if (!string.IsNullOrWhiteSpace(text))
+                        parsed[id] = text;
+                }
+            }
+            else
+            {
+                throw new InvalidDataException("模型返回内容必须是 JSON 对象或数组。");
+            }
+        }
+
+        if (parsed.Count == 0)
+            throw new InvalidDataException("模型没有返回任何可用的译文。");
+
+        int[] unknown = parsed.Keys.Where(id => !expected.Contains(id)).Order().ToArray();
+        int[] missing = expected.Where(id => !parsed.ContainsKey(id)).Order().ToArray();
+
+        var translations = window.Lines
+            .Where(line => line.Translate && parsed.ContainsKey(line.Id))
+            .Select(line => new AiTranslationResult(line.Id, parsed[line.Id]))
+            .ToArray();
+
+        return new WindowTranslationOutcome(translations, missing, unknown);
+    }
+
+    private static string? ReadTranslationText(JsonElement value) => value.ValueKind switch
+    {
+        JsonValueKind.String => value.GetString(),
+        JsonValueKind.Array => string.Concat(value.EnumerateArray()
+            .Where(part => part.ValueKind == JsonValueKind.String)
+            .Select(part => part.GetString())),
+        _ => null
+    };
+
+    /// <summary>Accepts answers wrapped in a code fence or surrounded by prose.</summary>
+    private static string ExtractJsonRegion(string response)
+    {
+        string trimmed = response.Trim();
+        int objectStart = trimmed.IndexOf('{');
+        int arrayStart = trimmed.IndexOf('[');
+        bool objectFirst = objectStart >= 0 && (arrayStart < 0 || objectStart < arrayStart);
+        int start = objectFirst ? objectStart : arrayStart;
+        int end = objectFirst ? trimmed.LastIndexOf('}') : trimmed.LastIndexOf(']');
+
+        if (start < 0 || end < start)
+            throw new InvalidDataException("模型返回内容中没有 JSON 内容。");
+
+        return trimmed[start..(end + 1)];
     }
 
     private static Dictionary<string, object> BuildSemanticPayload(

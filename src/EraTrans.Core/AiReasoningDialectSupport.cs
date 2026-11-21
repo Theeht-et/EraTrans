@@ -594,6 +594,17 @@ public static class AiReasoningDialectSupport
                host.EndsWith(".maas.aliyuncs.com", StringComparison.OrdinalIgnoreCase);
     }
 
+    private static int ResolveBudget(string effort) => effort switch
+    {
+        "minimal" => 512,
+        "low" => 1024,
+        "medium" => 4096,
+        "high" => 8192,
+        "xhigh" => 16000,
+        "max" => 32000,
+        _ => 4096
+    };
+
     private static int ResolveBudget(AiProviderModel model, string effort)
     {
         string id = NormalizeModelId(model.Id);

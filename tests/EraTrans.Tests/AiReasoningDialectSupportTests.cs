@@ -443,6 +443,39 @@ public sealed class AiReasoningDialectSupportTests
         }
     }
 
+    [Fact]
+    public void DoubaoSeed_UsesThinkingTypeAndAllowsDisable()
+    {
+        AiProviderModel model = new() { Id = "doubao-seed-1.6" };
+        const string endpoint = "https://ark.cn-beijing.volces.com/api/v3";
+        AiReasoningDialectSupport.ApplyKnownModelDefaults(model, endpoint);
+
+        Assert.True(model.ReasoningSupport);
+        Assert.True(model.ReasoningCanDisable);
+        Assert.Equal("thinkingType", model.ReasoningDialect);
+
+        using JsonDocument body = CreateBody(
+            endpoint, model, new AiModelReasoningSettings { Disabled = true });
+        Assert.Equal("disabled", body.RootElement.GetProperty("thinking").GetProperty("type").GetString());
+    }
+
+    [Fact]
+    public void Laguna_UsesPoolsideChatTemplateToggle()
+    {
+        AiProviderModel model = new() { Id = "laguna-reasoner" };
+        const string endpoint = "https://api.poolside.ai/v1";
+        AiReasoningDialectSupport.ApplyKnownModelDefaults(model, endpoint);
+
+        Assert.True(model.ReasoningSupport);
+        Assert.True(model.ReasoningCanDisable);
+        Assert.Equal("chatTemplateKwargs", model.ReasoningDialect);
+
+        using JsonDocument body = CreateBody(
+            endpoint, model, new AiModelReasoningSettings { Disabled = true });
+        Assert.False(body.RootElement.GetProperty("chat_template_kwargs")
+            .GetProperty("enable_thinking").GetBoolean());
+    }
+
     private static JsonDocument CreateBody(
         string baseUrl,
         AiProviderModel model,

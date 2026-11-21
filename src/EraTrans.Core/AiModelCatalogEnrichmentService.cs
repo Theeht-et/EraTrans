@@ -316,6 +316,11 @@ public sealed class AiModelCatalogEnrichmentService
                     Status = ReadString(row, "status"),
                     SupportsTools = ReadBoolean(row, "tool_call") || ReadBoolean(row, "tool"),
                     ReasoningLevels = ReadCatalogReasoningLevels(row),
+                    ReasoningCanDisable = ReadNullableBoolean(row, "reasoning_can_disable")
+                        ?? ReadNestedNullableBoolean(row, "reasoning", "can_disable")
+                        ?? ReadNestedNullableBoolean(row, "reasoning", "canDisable"),
+                    ReasoningDialect = ReadString(row, "reasoning_dialect")
+                        ?? ReadNestedString(row, "reasoning", "dialect"),
                     ReasoningSupport = ReadNullableBoolean(row, "reasoning")
                         ?? ReadNullableBoolean(row, "rsn")
                         ?? (HasCatalogReasoningOptions(row) ? true : null),
@@ -609,6 +614,8 @@ public sealed class AiModelCatalogEnrichmentService
             ReasoningLevels = source.ReasoningLevels.Count > 0
                 ? source.ReasoningLevels.ToList()
                 : metadata.ReasoningLevels.ToList(),
+            ReasoningCanDisable = source.ReasoningCanDisable ?? metadata.ReasoningCanDisable,
+            ReasoningDialect = source.ReasoningDialect ?? metadata.ReasoningDialect,
             SupportsStructuredOutput = metadata.SupportsStructuredOutput || source.SupportsStructuredOutput,
             SupportsAttachments = metadata.SupportsAttachments || source.SupportsAttachments,
             SupportsTemperature = metadata.SupportsTemperature || source.SupportsTemperature,
@@ -661,6 +668,22 @@ public sealed class AiModelCatalogEnrichmentService
     private static bool ReadBoolean(JsonElement element, string name) =>
         TryGetProperty(element, name, out JsonElement value) &&
         value.ValueKind == JsonValueKind.True;
+
+    private static bool? ReadNestedNullableBoolean(JsonElement element, string objectName, string propertyName)
+    {
+        if (!TryGetProperty(element, objectName, out JsonElement nested) ||
+            nested.ValueKind != JsonValueKind.Object)
+            return null;
+        return ReadNullableBoolean(nested, propertyName);
+    }
+
+    private static string? ReadNestedString(JsonElement element, string objectName, string propertyName)
+    {
+        if (!TryGetProperty(element, objectName, out JsonElement nested) ||
+            nested.ValueKind != JsonValueKind.Object)
+            return null;
+        return ReadString(nested, propertyName);
+    }
 
     private static bool? ReadNullableBoolean(JsonElement element, string name)
     {
@@ -758,6 +781,8 @@ public sealed class AiModelCatalogEnrichmentService
         public bool SupportsReasoning { get; init; }
         public bool? ReasoningSupport { get; init; }
         public List<string> ReasoningLevels { get; init; } = [];
+        public bool? ReasoningCanDisable { get; init; }
+        public string? ReasoningDialect { get; init; }
         public bool SupportsStructuredOutput { get; init; }
         public bool SupportsAttachments { get; init; }
         public bool SupportsTemperature { get; init; }

@@ -40,9 +40,8 @@ public static class AiProviderHttpRequestFactory
             }
         };
 
-        // Only emit the OpenAI Chat Completions reasoning_effort field when
-        // the selected model's discovered metadata explicitly advertises it.
-        // Unknown capabilities and manually entered models remain unchanged.
+        // Keep provider-specific reasoning payloads explicit. Metadata alone does
+        // not prove that an arbitrary OpenAI-compatible endpoint accepts a field.
         if (profile.ReasoningSettingsByModel.TryGetValue(profile.Model, out AiModelReasoningSettings? reasoning) &&
             reasoning.Enabled &&
             profile.AvailableModels.FirstOrDefault(model =>
@@ -50,7 +49,11 @@ public static class AiProviderHttpRequestFactory
             model.ReasoningLevels.Any(level =>
                 string.Equals(level, reasoning.Effort, StringComparison.OrdinalIgnoreCase)))
         {
-            payload["reasoning_effort"] = reasoning.Effort.ToLowerInvariant();
+            string host = new Uri(AiProviderProfileValidator.NormalizeBaseUrl(profile.BaseUrl)).Host;
+            if (host.Equals("api.openai.com", StringComparison.OrdinalIgnoreCase))
+                payload["reasoning_effort"] = reasoning.Effort.ToLowerInvariant();
+            else if (host.Equals("openrouter.ai", StringComparison.OrdinalIgnoreCase))
+                payload["reasoning"] = new { effort = reasoning.Effort.ToLowerInvariant() };
         }
 
         string json = JsonSerializer.Serialize(payload, JsonOptions);

@@ -392,6 +392,20 @@ public sealed class AiProviderSettingsStore
                                 Disabled = pair.Value.Disabled,
                                 Effort = NormalizeReasoningEffort(pair.Value.Effort)
                             }, StringComparer.OrdinalIgnoreCase),
+                        ReasoningCapabilitiesByModel = (item.ReasoningCapabilitiesByModel ??
+                                new Dictionary<string, StoredReasoningCapabilityOverride>())
+                            .Where(pair => !string.IsNullOrWhiteSpace(pair.Key) && pair.Value is not null)
+                            .ToDictionary(pair => pair.Key, pair => new AiModelReasoningCapabilityOverride
+                            {
+                                Dialect = string.IsNullOrWhiteSpace(pair.Value.Dialect)
+                                    ? AiReasoningDialectSupport.CustomOpenAiEffortDialect
+                                    : pair.Value.Dialect,
+                                CanDisable = pair.Value.CanDisable,
+                                Levels = (pair.Value.Levels ?? [])
+                                    .Where(level => level is "minimal" or "low" or "medium" or "high" or "xhigh" or "max")
+                                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                                    .ToList()
+                            }, StringComparer.OrdinalIgnoreCase),
                         AvailableModels = (item.Models ?? [])
                             .Where(model => model is not null && !string.IsNullOrWhiteSpace(model.Id))
                             .Select(model => new AiProviderModel
@@ -521,6 +535,15 @@ public sealed class AiProviderSettingsStore
                             Disabled = pair.Value.Disabled,
                             Effort = NormalizeReasoningEffort(pair.Value.Effort)
                         }, StringComparer.OrdinalIgnoreCase),
+                    ReasoningCapabilitiesByModel = (profile.ReasoningCapabilitiesByModel ??
+                            new Dictionary<string, AiModelReasoningCapabilityOverride>())
+                        .Where(pair => !string.IsNullOrWhiteSpace(pair.Key) && pair.Value is not null)
+                        .ToDictionary(pair => pair.Key, pair => new StoredReasoningCapabilityOverride
+                        {
+                            Dialect = pair.Value.Dialect,
+                            CanDisable = pair.Value.CanDisable,
+                            Levels = [.. pair.Value.Levels]
+                        }, StringComparer.OrdinalIgnoreCase),
                     Models = (profile.AvailableModels ?? [])
                         .Where(model => model is not null && !string.IsNullOrWhiteSpace(model.Id))
                         .Select(model => new StoredModel
@@ -623,6 +646,13 @@ public sealed class AiProviderSettingsStore
         public string Effort { get; set; } = "medium";
     }
 
+    private sealed class StoredReasoningCapabilityOverride
+    {
+        public string Dialect { get; set; } = AiReasoningDialectSupport.CustomOpenAiEffortDialect;
+        public bool CanDisable { get; set; }
+        public List<string>? Levels { get; set; } = ["low", "medium", "high"];
+    }
+
     private sealed class StoredProvider
     {
         public string Id { get; set; } = "";
@@ -637,6 +667,7 @@ public sealed class AiProviderSettingsStore
         public bool RequiresEndpointReview { get; set; }
         public string ProtectedApiKey { get; set; } = "";
         public Dictionary<string, StoredReasoningSettings>? ReasoningSettingsByModel { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, StoredReasoningCapabilityOverride>? ReasoningCapabilitiesByModel { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         public List<StoredModel>? Models { get; set; } = [];
     }
 

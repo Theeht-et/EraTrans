@@ -245,17 +245,57 @@
                     </StackPanel>
                     <Border Grid.Row="6" Margin="0,2,0,8" Padding="12,9" Background="#F7F8FA" BorderBrush="#E7EAEE" BorderThickness="1" CornerRadius="6">
                         <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <StackPanel VerticalAlignment="Center">
-                                <TextBlock Text="推理设置" FontSize="12" FontWeight="SemiBold" Foreground="#39414A"/>
-                                <TextBlock Text="自动遵循服务商默认行为；关闭仅在模型明确允许且接口协议已验证时提供；强度选项来自模型能力数据。" Margin="0,3,10,0" FontSize="10" Foreground="#7A8490" TextWrapping="Wrap"/>
-                            </StackPanel>
-                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                                <ComboBox x:Name="ReasoningModeComboBox" Width="112" Height="30" IsEnabled="False" SelectionChanged="ReasoningModeChanged" Margin="0,0,8,0"/>
-                                <ComboBox x:Name="ReasoningEffortComboBox" Width="104" Height="30" IsEnabled="False" SelectionChanged="ReasoningEffortChanged"/>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Text="推理设置" FontSize="12" FontWeight="SemiBold" Foreground="#39414A"/>
+                                    <TextBlock Text="选择关闭、自动或模型实际支持的推理强度；自动不向接口附加推理参数。" Margin="0,3,10,0" FontSize="10" Foreground="#7A8490" TextWrapping="Wrap"/>
+                                </StackPanel>
+                                <ComboBox x:Name="ReasoningLevelComboBox" Grid.Column="1" Width="132" Height="32"
+                                          IsEnabled="False" SelectionChanged="ReasoningLevelChanged"
+                                          ToolTip="只显示当前模型和接口协议已确认支持的选项。"/>
+                            </Grid>
+                            <StackPanel x:Name="CustomReasoningPanel" Grid.Row="1" Margin="0,9,0,0"
+                                        Visibility="Collapsed">
+                                <CheckBox x:Name="CustomReasoningEnabledCheckBox"
+                                          Content="手动配置此自定义模型的推理能力"
+                                          FontSize="11" Foreground="#39414A"
+                                          Checked="CustomReasoningOptionChanged"
+                                          Unchecked="CustomReasoningOptionChanged"/>
+                                <StackPanel x:Name="CustomReasoningOptionsPanel" Margin="18,6,0,0"
+                                            Visibility="Collapsed">
+                                    <TextBlock Text="协议：OpenAI 兼容 Chat Completions · reasoning_effort。仅在服务商文档确认支持此参数时启用。"
+                                               FontSize="10" Foreground="#7A8490" TextWrapping="Wrap"/>
+                                    <WrapPanel Margin="0,5,0,0">
+                                        <CheckBox x:Name="CustomReasoningCanDisableCheckBox"
+                                                  Content="支持关闭推理"
+                                                  Margin="0,0,14,0" FontSize="10"
+                                                  Checked="CustomReasoningOptionChanged"
+                                                  Unchecked="CustomReasoningOptionChanged"/>
+                                        <CheckBox x:Name="CustomReasoningLowCheckBox"
+                                                  Content="低" Margin="0,0,12,0" FontSize="10"
+                                                  IsChecked="True"
+                                                  Checked="CustomReasoningOptionChanged"
+                                                  Unchecked="CustomReasoningOptionChanged"/>
+                                        <CheckBox x:Name="CustomReasoningMediumCheckBox"
+                                                  Content="中" Margin="0,0,12,0" FontSize="10"
+                                                  IsChecked="True"
+                                                  Checked="CustomReasoningOptionChanged"
+                                                  Unchecked="CustomReasoningOptionChanged"/>
+                                        <CheckBox x:Name="CustomReasoningHighCheckBox"
+                                                  Content="高" FontSize="10"
+                                                  IsChecked="True"
+                                                  Checked="CustomReasoningOptionChanged"
+                                                  Unchecked="CustomReasoningOptionChanged"/>
+                                    </WrapPanel>
+                                </StackPanel>
                             </StackPanel>
                         </Grid>
                     </Border>

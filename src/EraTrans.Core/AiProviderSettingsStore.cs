@@ -33,6 +33,8 @@ public sealed class AiProviderProfile
         Protocol == AiProviderProtocol.OpenAiCompatible &&
         !RequiresEndpointReview &&
         AiProviderProfileValidator.IsValidBaseUrl(BaseUrl) &&
+        AiProviderProfileValidator.IsValidApiPath(ChatCompletionsPath, "/chat/completions") &&
+        AiProviderProfileValidator.IsValidApiPath(ModelsPath, "/models") &&
         !string.IsNullOrWhiteSpace(Model) &&
         !string.IsNullOrWhiteSpace(ApiKey);
 }
@@ -198,6 +200,19 @@ public static class AiProviderProfileValidator
         return path;
     }
 
+    public static bool IsValidApiPath(string? value, string defaultPath)
+    {
+        try
+        {
+            _ = NormalizeApiPath(value, defaultPath);
+            return true;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+    }
+
     public static string BuildApiEndpoint(string baseUrl, string? apiPath, string defaultPath)
     {
         string normalizedBaseUrl = NormalizeBaseUrl(baseUrl).TrimEnd('/');
@@ -212,6 +227,9 @@ public static class AiProviderProfileValidator
             throw new InvalidOperationException("请填写服务商名称。");
         if (!string.IsNullOrWhiteSpace(profile.BaseUrl))
             profile.BaseUrl = NormalizeBaseUrl(profile.BaseUrl);
+        profile.ChatCompletionsPath = NormalizeApiPath(
+            profile.ChatCompletionsPath, "/chat/completions");
+        profile.ModelsPath = NormalizeApiPath(profile.ModelsPath, "/models");
     }
 
     public static void ValidateForModelDiscovery(AiProviderProfile profile)
@@ -221,6 +239,7 @@ public static class AiProviderProfileValidator
             throw new InvalidOperationException("请填写服务商名称。");
 
         profile.BaseUrl = NormalizeBaseUrl(profile.BaseUrl);
+        profile.ModelsPath = NormalizeApiPath(profile.ModelsPath, "/models");
     }
 
     public static void Validate(AiProviderProfile profile)
@@ -234,6 +253,8 @@ public static class AiProviderProfileValidator
             throw new InvalidOperationException("请填写 API Key。");
 
         profile.BaseUrl = NormalizeBaseUrl(profile.BaseUrl);
+        profile.ChatCompletionsPath = NormalizeApiPath(
+            profile.ChatCompletionsPath, "/chat/completions");
     }
 }
 

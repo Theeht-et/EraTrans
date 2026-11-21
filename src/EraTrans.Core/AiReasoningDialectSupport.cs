@@ -168,9 +168,6 @@ public static class AiReasoningDialectSupport
             // the current provider has no known wire dialect for that model.
             model.ReasoningSupport ??= true;
             model.SupportsReasoning = true;
-            bool documentedDeepSeekModel =
-                id.Equals("deepseek-flash", StringComparison.OrdinalIgnoreCase) ||
-                id.Equals("deepseek-v4-pro", StringComparison.OrdinalIgnoreCase);
             if (model.ReasoningDialect is null &&
                 dialect is not null &&
                 (!dialect.Equals(DeepSeek, StringComparison.OrdinalIgnoreCase) ||

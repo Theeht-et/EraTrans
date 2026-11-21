@@ -15,6 +15,9 @@ public static class AiReasoningDialectSupport
     private const string Qwen = "qwenEnableThinking";
     private const string QwenReasoningEffort = "qwenReasoningEffort";
     private const string DashScopeGlmEffort = "dashScopeGlmEffort";
+    private const string DashScopeDeepSeekEffort = "dashScopeDeepSeekEffort";
+    private const string DashScopeKimiEffort = "dashScopeKimiEffort";
+    private const string SiliconFlowReasoningEffort = "siliconFlowReasoningEffort";
     private const string ThinkingType = "thinkingType";
     private const string VolcanoThinkingType = "volcanoThinkingType";
     private const string SiliconFlow = "siliconflowEnableThinking";
@@ -66,6 +69,9 @@ public static class AiReasoningDialectSupport
                         payload["reasoning_effort"] = "none";
                     break;
                 case DashScopeGlmEffort:
+                case DashScopeDeepSeekEffort:
+                case DashScopeKimiEffort:
+                case SiliconFlowReasoningEffort:
                     payload["enable_thinking"] = false;
                     break;
                 case OpenRouter:
@@ -114,6 +120,9 @@ public static class AiReasoningDialectSupport
             case OpenAiEffort:
             case QwenReasoningEffort:
             case DashScopeGlmEffort:
+            case DashScopeDeepSeekEffort:
+            case DashScopeKimiEffort:
+            case SiliconFlowReasoningEffort:
                 payload["reasoning_effort"] = effort;
                 break;
             case OpenRouter:
@@ -263,6 +272,10 @@ public static class AiReasoningDialectSupport
                 return QwenReasoningEffort;
             if (IsQwen3Model(normalizedModelId))
                 return Qwen;
+            if (IsAliyunDeepSeekV4Model(normalizedModelId))
+                return DashScopeDeepSeekEffort;
+            if (IsAliyunKimiModel(normalizedModelId))
+                return DashScopeKimiEffort;
             if (IsGlmModel(normalizedModelId))
                 return DashScopeGlmEffort;
             // Model Studio serves multiple vendors. Do not infer the Qwen
@@ -280,7 +293,12 @@ public static class AiReasoningDialectSupport
 
         if (host.Equals("api.siliconflow.cn", StringComparison.OrdinalIgnoreCase) ||
             host.Equals("api.siliconflow.com", StringComparison.OrdinalIgnoreCase))
+        {
+            if (IsAliyunDeepSeekV4Model(normalizedModelId) ||
+                Regex.IsMatch(normalizedModelId, @"^glm-5\.2(?:$|[-.])", RegexOptions.IgnoreCase))
+                return SiliconFlowReasoningEffort;
             return SiliconFlow;
+        }
 
         if (host.Equals("api.moonshot.cn", StringComparison.OrdinalIgnoreCase) ||
             host.Equals("api.moonshot.ai", StringComparison.OrdinalIgnoreCase) ||
@@ -318,6 +336,24 @@ public static class AiReasoningDialectSupport
     {
         levels = [];
         canDisable = false;
+
+        if (dialect is DashScopeDeepSeekEffort or SiliconFlowReasoningEffort &&
+            IsAliyunDeepSeekV4Model(id))
+        {
+            levels = Regex.IsMatch(id, @"^(?:deepseek-v4-pro|deepseek-v4-flash-0731|deepseek-v4-pro-0813|deepseek-v4\.1-flash)(?:$|[-._:@])", RegexOptions.IgnoreCase)
+                ? ["low", "high", "max"]
+                : ["high", "max"];
+            canDisable = true;
+            return true;
+        }
+
+        if (dialect == DashScopeKimiEffort)
+        {
+            canDisable = true;
+            if (IsKimiK31Pro(id))
+                levels = ["low", "medium", "high", "max"];
+            return true;
+        }
 
         if (IsQwen4Model(id))
         {
@@ -615,6 +651,15 @@ public static class AiReasoningDialectSupport
 
     private static bool IsGlmModel(string id) =>
         Regex.IsMatch(id, @"^(?:glm|zhipu/glm)-(?:4|5)(?:$|[-.])", RegexOptions.IgnoreCase);
+
+    private static bool IsAliyunDeepSeekV4Model(string id) =>
+        Regex.IsMatch(id, @"^deepseek-v4(?:$|[-.])", RegexOptions.IgnoreCase);
+
+    private static bool IsAliyunKimiModel(string id) =>
+        Regex.IsMatch(id, @"^kimi-k3(?:\.1-pro)?(?:$|[-._:@])", RegexOptions.IgnoreCase);
+
+    private static bool IsKimiK31Pro(string id) =>
+        Regex.IsMatch(id, @"^kimi-k3\.1-pro(?:$|[-._:@])", RegexOptions.IgnoreCase);
 
     private static bool IsVolcanoArkHost(string host) =>
         host.StartsWith("ark.", StringComparison.OrdinalIgnoreCase) &&

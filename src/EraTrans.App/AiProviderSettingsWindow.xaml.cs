@@ -102,9 +102,14 @@ public partial class AiProviderSettingsWindow : Window
         ApiKeyPasswordBox.IsEnabled = hasProfile && idle;
         ModelTextBox.IsEnabled = hasProfile && idle;
         bool reasoningAvailable = HasSupportedReasoningControls();
-        ReasoningModeComboBox.IsEnabled = hasProfile && idle && reasoningAvailable;
-        ReasoningEffortComboBox.IsEnabled = hasProfile && idle && reasoningAvailable &&
-            GetSelectedReasoningMode() == "effort";
+        ReasoningLevelComboBox.IsEnabled = hasProfile && idle && reasoningAvailable;
+        bool customPanelVisible = CustomReasoningPanel.Visibility == Visibility.Visible;
+        bool customOptionsEnabled = CustomReasoningOptionsPanel.Visibility == Visibility.Visible;
+        CustomReasoningEnabledCheckBox.IsEnabled = hasProfile && idle && customPanelVisible;
+        CustomReasoningCanDisableCheckBox.IsEnabled = hasProfile && idle && customOptionsEnabled;
+        CustomReasoningLowCheckBox.IsEnabled = hasProfile && idle && customOptionsEnabled;
+        CustomReasoningMediumCheckBox.IsEnabled = hasProfile && idle && customOptionsEnabled;
+        CustomReasoningHighCheckBox.IsEnabled = hasProfile && idle && customOptionsEnabled;
         FetchModelsButton.IsEnabled = hasProfile && idle;
         TestButton.IsEnabled = hasProfile && idle;
         RestoreDefaultBaseUrlButton.Visibility = _currentProfile?.IsBuiltIn == true
@@ -321,17 +326,72 @@ public partial class AiProviderSettingsWindow : Window
         return null;
     }
 
-    private AiProviderModel? GetSelectedReasoningModel()
+    private string SelectedModelId => ModelTextBox.Text.Trim();
+
+    private AiModelReasoningCapabilityOverride? GetCustomReasoningCapabilityOverride()
     {
-        if (_currentProfile is null || string.IsNullOrWhiteSpace(ModelTextBox.Text))
+        if (_currentProfile is null || SelectedModelId.Length == 0)
+            return null;
+
+        return _currentProfile.ReasoningCapabilitiesByModel.TryGetValue(
+            SelectedModelId, out AiModelReasoningCapabilityOverride? capability)
+                ? capability
+                : null;
+    }
+
+    private AiProviderModel? GetCatalogReasoningModel()
+    {
+        if (_currentProfile is null || SelectedModelId.Length == 0)
             return null;
 
         return _currentProfile.AvailableModels.FirstOrDefault(model =>
-            string.Equals(model.Id, ModelTextBox.Text.Trim(), StringComparison.OrdinalIgnoreCase));
+            string.Equals(model.Id, SelectedModelId, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private AiProviderModel? GetSelectedReasoningModel()
+    {
+        AiModelReasoningCapabilityOverride? capability = GetCustomReasoningCapabilityOverride();
+        if (capability is not null)
+        {
+            return new AiProviderModel
+            {
+                Id = SelectedModelId,
+                ReasoningSupport = true,
+                ReasoningLevels = capability.Levels.ToList(),
+                ReasoningCanDisable = capability.CanDisable,
+                ReasoningDialect = capability.Dialect
+            };
+        }
+
+        return GetCatalogReasoningModel();
+    }
+
+    private bool ShouldShowCustomReasoningPanel()
+    {
+        if (_currentProfile is not { IsBuiltIn: false } || SelectedModelId.Length == 0)
+            return false;
+
+        if (GetCustomReasoningCapabilityOverride() is not null)
+            return true;
+
+        AiProviderModel? model = GetCatalogReasoningModel();
+        return model is null ||
+               model.ReasoningSupport != true ||
+               !AiReasoningDialectSupport.IsCompatible(BaseUrlTextBox.Text, model);
     }
 
     private List<string> GetSupportedReasoningEfforts()
     {
+        AiModelReasoningCapabilityOverride? custom = GetCustomReasoningCapabilityOverride();
+        if (custom is not null)
+        {
+            return custom.Levels
+                .Select(level => level.Trim().ToLowerInvariant())
+                .Where(level => level is "minimal" or "low" or "medium" or "high" or "xhigh" or "max")
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
         AiProviderModel? model = GetSelectedReasoningModel();
         if (model?.ReasoningSupport != true)
             return [];
@@ -339,8 +399,9 @@ public partial class AiProviderSettingsWindow : Window
         if (model.ReasoningLevels.Count == 0 &&
             model.ReasoningDialect is "openrouterReasoning" or "qwenEnableThinking" or "siliconflowEnableThinking")
         {
-            // The current settings UI exposes discrete presets for budget-style
-            // dialects; Kelivo also supports an arbitrary token-budget control.
+            // Budget dialects expose documented discrete presets here. The
+            // arbitrary custom-token budget editor from Kelivo is not part of
+            // this translation utility's compact provider settings UI.
             return ["minimal", "low", "medium", "high", "xhigh", "max"];
         }
 
@@ -351,8 +412,8 @@ public partial class AiProviderSettingsWindow : Window
             .ToList();
     }
 
-    private string? GetSelectedReasoningMode() =>
-        (ReasoningModeComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString();
+    private string? GetSelectedReasoningLevel() =>
+        (ReasoningLevelComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString();
 
     private bool HasSupportedReasoningControls()
     {
@@ -364,7 +425,10 @@ public partial class AiProviderSettingsWindow : Window
 
     private bool IsModelReasoningDialectCompatible(AiProviderModel? model) =>
         model?.ReasoningSupport == true &&
-        AiReasoningDialectSupport.IsCompatible(BaseUrlTextBox.Text, model);
+        AiReasoningDialectSupport.IsCompatible(
+            BaseUrlTextBox.Text,
+            model,
+            GetCustomReasoningCapabilityOverride()?.Dialect);
 
     private void UpdateReasoningControls()
     {
@@ -372,56 +436,59 @@ public partial class AiProviderSettingsWindow : Window
         _loadingProfile = true;
         try
         {
+            bool showCustomPanel = ShouldShowCustomReasoningPanel();
+            AiModelReasoningCapabilityOverride? custom = GetCustomReasoningCapabilityOverride();
+            CustomReasoningPanel.Visibility = showCustomPanel
+                ? Visibility.Visible : Visibility.Collapsed;
+            CustomReasoningEnabledCheckBox.IsChecked = custom is not null;
+            CustomReasoningOptionsPanel.Visibility = custom is not null
+                ? Visibility.Visible : Visibility.Collapsed;
+            CustomReasoningCanDisableCheckBox.IsChecked = custom?.CanDisable == true;
+            CustomReasoningLowCheckBox.IsChecked = custom?.Levels.Contains("low", StringComparer.OrdinalIgnoreCase) == true;
+            CustomReasoningMediumCheckBox.IsChecked = custom?.Levels.Contains("medium", StringComparer.OrdinalIgnoreCase) == true;
+            CustomReasoningHighCheckBox.IsChecked = custom?.Levels.Contains("high", StringComparer.OrdinalIgnoreCase) == true;
+
             AiProviderModel? model = GetSelectedReasoningModel();
             bool supported = IsModelReasoningDialectCompatible(model);
             AiModelReasoningSettings? setting = null;
             if (supported && _currentProfile is not null)
-                _currentProfile.ReasoningSettingsByModel.TryGetValue(ModelTextBox.Text.Trim(), out setting);
+                _currentProfile.ReasoningSettingsByModel.TryGetValue(SelectedModelId, out setting);
 
             List<string> efforts = GetSupportedReasoningEfforts();
-            ReasoningModeComboBox.Items.Clear();
+            ReasoningLevelComboBox.Items.Clear();
             if (supported)
             {
-                ReasoningModeComboBox.Items.Add(new ComboBoxItem { Content = "自动", Tag = "auto" });
+                ReasoningLevelComboBox.Items.Add(new ComboBoxItem { Content = "自动", Tag = "auto" });
                 if (model!.ReasoningCanDisable == true)
-                    ReasoningModeComboBox.Items.Add(new ComboBoxItem { Content = "关闭", Tag = "off" });
-                if (efforts.Count > 0)
-                    ReasoningModeComboBox.Items.Add(new ComboBoxItem { Content = "指定强度", Tag = "effort" });
-            }
-
-            ReasoningEffortComboBox.Items.Clear();
-            foreach (string effort in efforts)
-            {
-                ReasoningEffortComboBox.Items.Add(new ComboBoxItem
+                    ReasoningLevelComboBox.Items.Add(new ComboBoxItem { Content = "关闭", Tag = "off" });
+                foreach (string effort in efforts)
                 {
-                    Content = effort switch
+                    ReasoningLevelComboBox.Items.Add(new ComboBoxItem
                     {
-                        "minimal" => "最小",
-                        "low" => "低",
-                        "medium" => "中",
-                        "high" => "高",
-                        "xhigh" => "极高",
-                        "max" => "最大",
-                        _ => effort
-                    },
-                    Tag = effort
-                });
+                        Content = effort switch
+                        {
+                            "minimal" => "最小",
+                            "low" => "低",
+                            "medium" => "中",
+                            "high" => "高",
+                            "xhigh" => "极高",
+                            "max" => "最大",
+                            _ => effort
+                        },
+                        Tag = effort
+                    });
+                }
             }
 
-            string mode = setting?.Disabled == true && model?.ReasoningCanDisable == true
+            string selected = setting?.Disabled == true && model?.ReasoningCanDisable == true
                 ? "off"
-                : setting?.Enabled == true && efforts.Count > 0
-                    ? "effort"
+                : setting?.Enabled == true && efforts.Contains(setting.Effort, StringComparer.OrdinalIgnoreCase)
+                    ? setting.Effort.Trim().ToLowerInvariant()
                     : "auto";
-            ReasoningModeComboBox.SelectedItem = ReasoningModeComboBox.Items
+            ReasoningLevelComboBox.SelectedItem = ReasoningLevelComboBox.Items
                 .OfType<ComboBoxItem>()
-                .FirstOrDefault(item => string.Equals(item.Tag?.ToString(), mode, StringComparison.Ordinal));
-            string selectedEffort = setting?.Effort ?? "medium";
-            int effortIndex = efforts.FindIndex(value =>
-                string.Equals(value, selectedEffort, StringComparison.OrdinalIgnoreCase));
-            ReasoningEffortComboBox.SelectedIndex = effortIndex >= 0 ? effortIndex : (efforts.Count > 0 ? 0 : -1);
-            ReasoningModeComboBox.IsEnabled = supported && !_loadFailed;
-            ReasoningEffortComboBox.IsEnabled = supported && mode == "effort" && efforts.Count > 0 && !_loadFailed;
+                .FirstOrDefault(item => string.Equals(item.Tag?.ToString(), selected, StringComparison.OrdinalIgnoreCase));
+            ReasoningLevelComboBox.IsEnabled = supported && !_loadFailed;
         }
         finally
         {
@@ -434,31 +501,60 @@ public partial class AiProviderSettingsWindow : Window
         if (_loadingProfile || _currentProfile is null || !HasSupportedReasoningControls())
             return;
 
-        string modelId = ModelTextBox.Text.Trim();
+        string modelId = SelectedModelId;
         if (modelId.Length == 0)
             return;
 
-        string mode = GetSelectedReasoningMode() ?? "auto";
-        string effort = (ReasoningEffortComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "medium";
+        string selected = GetSelectedReasoningLevel() ?? "auto";
+        bool isOff = string.Equals(selected, "off", StringComparison.OrdinalIgnoreCase);
+        bool isAuto = string.Equals(selected, "auto", StringComparison.OrdinalIgnoreCase);
         _currentProfile.ReasoningSettingsByModel[modelId] = new AiModelReasoningSettings
         {
-            Enabled = mode == "effort",
-            Disabled = mode == "off",
-            Effort = effort
+            Enabled = !isOff && !isAuto,
+            Disabled = isOff,
+            Effort = !isOff && !isAuto ? selected : "medium"
         };
-        ReasoningEffortComboBox.IsEnabled =
-            ReasoningModeComboBox.IsEnabled && mode == "effort";
     }
 
-    private void ReasoningModeChanged(object sender, SelectionChangedEventArgs e)
+    private void ReasoningLevelChanged(object sender, SelectionChangedEventArgs e) =>
+        SaveReasoningSetting();
+
+    private void CustomReasoningOptionChanged(object sender, RoutedEventArgs e)
     {
-        SaveReasoningSetting();
-        ReasoningEffortComboBox.IsEnabled =
-            ReasoningModeComboBox.IsEnabled && GetSelectedReasoningMode() == "effort";
-    }
+        if (_loadingProfile || _currentProfile is null || SelectedModelId.Length == 0)
+            return;
 
-    private void ReasoningEffortChanged(object sender, SelectionChangedEventArgs e) =>
-        SaveReasoningSetting();
+        if (ReferenceEquals(sender, CustomReasoningEnabledCheckBox))
+        {
+            if (CustomReasoningEnabledCheckBox.IsChecked == true)
+            {
+                if (!_currentProfile.ReasoningCapabilitiesByModel.ContainsKey(SelectedModelId))
+                {
+                    _currentProfile.ReasoningCapabilitiesByModel[SelectedModelId] =
+                        new AiModelReasoningCapabilityOverride();
+                }
+            }
+            else
+            {
+                _currentProfile.ReasoningCapabilitiesByModel.Remove(SelectedModelId);
+                _currentProfile.ReasoningSettingsByModel.Remove(SelectedModelId);
+            }
+        }
+        else if (_currentProfile.ReasoningCapabilitiesByModel.TryGetValue(
+                     SelectedModelId, out AiModelReasoningCapabilityOverride? capability))
+        {
+            capability.CanDisable = CustomReasoningCanDisableCheckBox.IsChecked == true;
+            capability.Levels =
+            [
+                if (CustomReasoningLowCheckBox.IsChecked == true) "low",
+                if (CustomReasoningMediumCheckBox.IsChecked == true) "medium",
+                if (CustomReasoningHighCheckBox.IsChecked == true) "high"
+            ];
+        }
+
+        UpdateReasoningControls();
+        SetEditorEnabled(_currentProfile is not null);
+    }
 
     private void ModelTextChanged(object sender, TextChangedEventArgs e)
     {

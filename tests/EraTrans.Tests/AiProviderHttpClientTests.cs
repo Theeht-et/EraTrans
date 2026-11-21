@@ -241,6 +241,104 @@ public sealed class AiProviderHttpClientTests
         Assert.False(body.RootElement.TryGetProperty("reasoning", out _));
     }
 
+    [Fact]
+    public void RequestFactory_SendsOpenAiReasoningOffOnlyWhenModelExplicitlyAllowsIt()
+    {
+        var profile = new AiProviderProfile
+        {
+            Name = "OpenAI",
+            BaseUrl = "https://api.openai.com/v1",
+            Model = "reasoning-model",
+            ApiKey = "secret",
+            AvailableModels =
+            [
+                new AiProviderModel
+                {
+                    Id = "reasoning-model",
+                    ReasoningSupport = true,
+                    ReasoningCanDisable = true
+                }
+            ],
+            ReasoningSettingsByModel = new Dictionary<string, AiModelReasoningSettings>
+            {
+                ["reasoning-model"] = new() { Disabled = true }
+            }
+        };
+
+        AiProviderHttpRequestDetails details =
+            AiProviderHttpRequestFactory.Create(profile, "system", "user");
+        using JsonDocument body = JsonDocument.Parse(details.JsonBody);
+        Assert.Equal("none", body.RootElement.GetProperty("reasoning_effort").GetString());
+
+        profile.AvailableModels[0].ReasoningCanDisable = false;
+        details = AiProviderHttpRequestFactory.Create(profile, "system", "user");
+        using JsonDocument notAllowed = JsonDocument.Parse(details.JsonBody);
+        Assert.False(notAllowed.RootElement.TryGetProperty("reasoning_effort", out _));
+    }
+
+    [Fact]
+    public void RequestFactory_SendsOpenRouterReasoningOffUsingEnabledFalse()
+    {
+        var profile = new AiProviderProfile
+        {
+            Name = "OpenRouter",
+            BaseUrl = "https://openrouter.ai/api/v1",
+            Model = "reasoning-model",
+            ApiKey = "secret",
+            AvailableModels =
+            [
+                new AiProviderModel
+                {
+                    Id = "reasoning-model",
+                    ReasoningSupport = true,
+                    ReasoningCanDisable = true
+                }
+            ],
+            ReasoningSettingsByModel = new Dictionary<string, AiModelReasoningSettings>
+            {
+                ["reasoning-model"] = new() { Disabled = true }
+            }
+        };
+
+        AiProviderHttpRequestDetails details =
+            AiProviderHttpRequestFactory.Create(profile, "system", "user");
+        using JsonDocument body = JsonDocument.Parse(details.JsonBody);
+        Assert.False(body.RootElement.GetProperty("reasoning").GetProperty("enabled").GetBoolean());
+        Assert.False(body.RootElement.GetProperty("reasoning").TryGetProperty("effort", out _));
+    }
+
+    [Fact]
+    public void RequestFactory_DoesNotApplyOffWhenModelDialectConflictsWithEndpoint()
+    {
+        var profile = new AiProviderProfile
+        {
+            Name = "OpenAI",
+            BaseUrl = "https://api.openai.com/v1",
+            Model = "reasoning-model",
+            ApiKey = "secret",
+            AvailableModels =
+            [
+                new AiProviderModel
+                {
+                    Id = "reasoning-model",
+                    ReasoningSupport = true,
+                    ReasoningCanDisable = true,
+                    ReasoningDialect = "openrouterReasoning"
+                }
+            ],
+            ReasoningSettingsByModel = new Dictionary<string, AiModelReasoningSettings>
+            {
+                ["reasoning-model"] = new() { Disabled = true }
+            }
+        };
+
+        AiProviderHttpRequestDetails details =
+            AiProviderHttpRequestFactory.Create(profile, "system", "user");
+        using JsonDocument body = JsonDocument.Parse(details.JsonBody);
+        Assert.False(body.RootElement.TryGetProperty("reasoning_effort", out _));
+        Assert.False(body.RootElement.TryGetProperty("reasoning", out _));
+    }
+
     private static HttpResponseMessage JsonResponse(HttpStatusCode status, string json) =>
         new(status) { Content = new StringContent(json, Encoding.UTF8, "application/json") };
 

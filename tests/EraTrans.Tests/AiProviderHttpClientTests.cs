@@ -475,6 +475,56 @@ public sealed class AiProviderHttpClientTests
         Assert.False(body.RootElement.TryGetProperty("reasoning_effort", out _));
     }
 
+    [Fact]
+    public void RequestFactory_AppliesExplicitReasoningSettingsToManuallyAddedCustomModel()
+    {
+        var profile = new AiProviderProfile
+        {
+            Name = "Custom provider",
+            BaseUrl = "https://custom-provider.example/v1",
+            Model = "my-custom-reasoner",
+            ApiKey = "secret",
+            // Deliberately absent from AvailableModels: the model was entered
+            // manually and its capability was explicitly configured by user.
+            ReasoningCapabilitiesByModel = new Dictionary<string, AiModelReasoningCapabilityOverride>
+            {
+                ["my-custom-reasoner"] = new()
+                {
+                    Dialect = AiReasoningDialectSupport.CustomOpenAiEffortDialect,
+                    CanDisable = true,
+                    Levels = ["low", "medium", "high"]
+                }
+            },
+            ReasoningSettingsByModel = new Dictionary<string, AiModelReasoningSettings>
+            {
+                ["my-custom-reasoner"] = new() { Enabled = true, Effort = "high" }
+            }
+        };
+
+        AiProviderHttpRequestDetails details =
+            AiProviderHttpRequestFactory.Create(profile, "system", "user");
+        using (JsonDocument body = JsonDocument.Parse(details.JsonBody))
+        {
+            Assert.Equal("high", body.RootElement.GetProperty("reasoning_effort").GetString());
+        }
+
+        profile.ReasoningSettingsByModel["my-custom-reasoner"].Disabled = true;
+        profile.ReasoningSettingsByModel["my-custom-reasoner"].Enabled = false;
+        details = AiProviderHttpRequestFactory.Create(profile, "system", "user");
+        using (JsonDocument body = JsonDocument.Parse(details.JsonBody))
+        {
+            Assert.Equal("none", body.RootElement.GetProperty("reasoning_effort").GetString());
+        }
+
+        // Auto means no override; provider/model defaults remain in control.
+        profile.ReasoningSettingsByModel["my-custom-reasoner"].Disabled = false;
+        details = AiProviderHttpRequestFactory.Create(profile, "system", "user");
+        using (JsonDocument body = JsonDocument.Parse(details.JsonBody))
+        {
+            Assert.False(body.RootElement.TryGetProperty("reasoning_effort", out _));
+        }
+    }
+
     private static HttpResponseMessage JsonResponse(HttpStatusCode status, string json) =>
         new(status) { Content = new StringContent(json, Encoding.UTF8, "application/json") };
 

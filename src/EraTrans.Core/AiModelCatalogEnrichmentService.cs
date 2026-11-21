@@ -394,7 +394,7 @@ public sealed class AiModelCatalogEnrichmentService
 
         if (TryGetProperty(row, "effort", out JsonElement topLevelEffort) &&
             topLevelEffort.ValueKind == JsonValueKind.Object)
-            ReadStringArray(topLevelEffort, "supported_levels", levels);
+            levels.AddRange(ReadStringArray(topLevelEffort, "supported_levels"));
 
         if (TryGetProperty(row, "reasoning", out JsonElement reasoning) &&
             reasoning.ValueKind == JsonValueKind.Object)
@@ -405,7 +405,7 @@ public sealed class AiModelCatalogEnrichmentService
                     continue;
                 if (values.ValueKind == JsonValueKind.Object)
                 {
-                    ReadStringArray(values, "supported_levels", levels);
+                    levels.AddRange(ReadStringArray(values, "supported_levels"));
                     continue;
                 }
                 if (values.ValueKind != JsonValueKind.Array)

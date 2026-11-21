@@ -318,7 +318,8 @@ public sealed class AiModelCatalogEnrichmentService
                     ReasoningLevels = ReadCatalogReasoningLevels(row),
                     ReasoningCanDisable = ReadNullableBoolean(row, "reasoning_can_disable")
                         ?? ReadNestedNullableBoolean(row, "reasoning", "can_disable")
-                        ?? ReadNestedNullableBoolean(row, "reasoning", "canDisable"),
+                        ?? ReadNestedNullableBoolean(row, "reasoning", "canDisable")
+                        ?? (HasCatalogReasoningDisableOption(row) ? true : null),
                     ReasoningDialect = ReadString(row, "reasoning_dialect")
                         ?? ReadNestedString(row, "reasoning", "dialect"),
                     ReasoningSupport = ReadNullableBoolean(row, "reasoning")
@@ -391,13 +392,23 @@ public sealed class AiModelCatalogEnrichmentService
             }
         }
 
+        if (TryGetProperty(row, "effort", out JsonElement topLevelEffort) &&
+            topLevelEffort.ValueKind == JsonValueKind.Object)
+            ReadStringArray(topLevelEffort, "supported_levels", levels);
+
         if (TryGetProperty(row, "reasoning", out JsonElement reasoning) &&
             reasoning.ValueKind == JsonValueKind.Object)
         {
             foreach (string propertyName in new[] { "effort", "levels", "supported_levels" })
             {
-                if (!TryGetProperty(reasoning, propertyName, out JsonElement values) ||
-                    values.ValueKind != JsonValueKind.Array)
+                if (!TryGetProperty(reasoning, propertyName, out JsonElement values))
+                    continue;
+                if (values.ValueKind == JsonValueKind.Object)
+                {
+                    ReadStringArray(values, "supported_levels", levels);
+                    continue;
+                }
+                if (values.ValueKind != JsonValueKind.Array)
                     continue;
                 foreach (JsonElement value in values.EnumerateArray())
                 {
@@ -410,8 +421,42 @@ public sealed class AiModelCatalogEnrichmentService
 
         return levels
             .Select(value => value.Trim())
+            .Where(value => !value.Equals("none", StringComparison.OrdinalIgnoreCase))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    private static bool HasCatalogReasoningDisableOption(JsonElement row)
+    {
+        if (TryGetProperty(row, "effort", out JsonElement effort) &&
+            effort.ValueKind == JsonValueKind.Object &&
+            TryGetProperty(effort, "supported_levels", out JsonElement levels) &&
+            levels.ValueKind == JsonValueKind.Array &&
+            levels.EnumerateArray().Any(value =>
+                value.ValueKind == JsonValueKind.String &&
+                string.Equals(value.GetString(), "none", StringComparison.OrdinalIgnoreCase)))
+            return true;
+
+        foreach (string propertyName in new[] { "reasoning_options", "reasoningOptions", "ro" })
+        {
+            if (!TryGetProperty(row, propertyName, out JsonElement options) ||
+                options.ValueKind != JsonValueKind.Array)
+                continue;
+            foreach (JsonElement option in options.EnumerateArray())
+            {
+                if (option.ValueKind != JsonValueKind.Object ||
+                    !string.Equals(ReadString(option, "type"), "effort", StringComparison.OrdinalIgnoreCase) ||
+                    !TryGetProperty(option, "values", out JsonElement values) ||
+                    values.ValueKind != JsonValueKind.Array)
+                    continue;
+                if (values.EnumerateArray().Any(value =>
+                    value.ValueKind == JsonValueKind.String &&
+                    string.Equals(value.GetString(), "none", StringComparison.OrdinalIgnoreCase)))
+                    return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool HasCatalogReasoningOptions(JsonElement row)
@@ -434,6 +479,13 @@ public sealed class AiModelCatalogEnrichmentService
                     return true;
             }
         }
+
+        if (TryGetProperty(row, "effort", out JsonElement effort) &&
+            effort.ValueKind == JsonValueKind.Object &&
+            TryGetProperty(effort, "supported_levels", out JsonElement supportedLevels) &&
+            supportedLevels.ValueKind == JsonValueKind.Array &&
+            supportedLevels.GetArrayLength() > 0)
+            return true;
 
         return false;
     }

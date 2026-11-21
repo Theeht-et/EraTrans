@@ -423,10 +423,12 @@ public sealed class AiReasoningDialectSupportTests
         Assert.Null(unknown.ReasoningDialect);
         Assert.False(AiReasoningDialectSupport.IsCompatible(endpoint, unknown));
 
-        AiProviderModel unrelatedVendor = new() { Id = "deepseek-v4-pro", ReasoningSupport = true };
-        AiReasoningDialectSupport.ApplyKnownModelDefaults(unrelatedVendor, endpoint);
-        Assert.Null(unrelatedVendor.ReasoningDialect);
-        Assert.False(AiReasoningDialectSupport.IsCompatible(endpoint, unrelatedVendor));
+        AiProviderModel deepseek = new() { Id = "deepseek-v4-pro" };
+        AiReasoningDialectSupport.ApplyKnownModelDefaults(deepseek, endpoint);
+        Assert.Equal("dashScopeDeepSeekEffort", deepseek.ReasoningDialect);
+        Assert.True(deepseek.ReasoningCanDisable);
+        Assert.Equal(new[] { "high", "max" }, deepseek.ReasoningLevels);
+        Assert.True(AiReasoningDialectSupport.IsCompatible(endpoint, deepseek));
     }
 
     [Fact]

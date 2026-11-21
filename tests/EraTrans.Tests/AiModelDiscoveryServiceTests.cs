@@ -651,6 +651,42 @@ public sealed class AiModelDiscoveryServiceTests
         Assert.Null(unknown.ReasoningDialect);
     }
 
+    [Fact]
+    public async Task CatalogEnrichment_PreservesExplicitReasoningOffMetadata()
+    {
+        var catalogUri = new Uri("https://models.dev/api.json?test=reasoning-off-capability");
+        const string catalogJson = """
+            {
+              "openai": {
+                "id": "openai",
+                "api": "https://api.openai.com/v1",
+                "models": {
+                  "reasoning-model": {
+                    "id": "reasoning-model",
+                    "name": "Reasoning model",
+                    "reasoning": true,
+                    "reasoning_can_disable": true,
+                    "reasoning_dialect": "openaiReasoningEffort"
+                  }
+                }
+              }
+            }
+            """;
+        using var handler = new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(catalogJson, Encoding.UTF8, "application/json")
+        });
+        using var client = new HttpClient(handler);
+        var enrichment = new AiModelCatalogEnrichmentService(client, catalogUri: catalogUri);
+
+        AiProviderModel result = Assert.Single(await enrichment.EnrichAsync(
+            new AiProviderProfile { BaseUrl = "https://api.openai.com/v1" },
+            [new AiProviderModel { Id = "reasoning-model", ReasoningSupport = true }]));
+
+        Assert.True(result.ReasoningCanDisable);
+        Assert.Equal("openaiReasoningEffort", result.ReasoningDialect);
+    }
+
     private sealed class StubHandler(
         Func<HttpRequestMessage, HttpResponseMessage> responseFactory) : HttpMessageHandler
     {

@@ -38,10 +38,10 @@ public static class AiReasoningDialectSupport
     private static string? ResolveCustomDialect(string? dialectOverride) =>
         dialectOverride?.ToLowerInvariant() switch
         {
-            CustomOpenAiEffortDialect => OpenAiEffort,
-            CustomOpenRouterDialect => OpenRouter,
-            CustomThinkingTypeDialect => ThinkingType,
-            CustomQwenDialect => Qwen,
+            "customopenaireasoningeffort" => OpenAiEffort,
+            "customopenrouterreasoning" => OpenRouter,
+            "customthinkingtype" => ThinkingType,
+            "customqwenenablethinking" => Qwen,
             _ => null
         };
 

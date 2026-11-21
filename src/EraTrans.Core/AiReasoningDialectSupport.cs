@@ -86,12 +86,12 @@ public static class AiReasoningDialectSupport
             return;
         }
 
-        if (!setting.Enabled ||
-            !model.ReasoningLevels.Any(level =>
-                string.Equals(level, effort, StringComparison.OrdinalIgnoreCase)))
-        {
+        bool advertisedEffort = model.ReasoningLevels.Any(level =>
+            string.Equals(level, effort, StringComparison.OrdinalIgnoreCase));
+        bool budgetEffort = model.ReasoningLevels.Count == 0 &&
+            dialect is OpenRouter or Qwen or SiliconFlow;
+        if (!setting.Enabled || (!advertisedEffort && !budgetEffort))
             return;
-        }
 
         switch (dialect)
         {
@@ -99,7 +99,9 @@ public static class AiReasoningDialectSupport
                 payload["reasoning_effort"] = effort;
                 break;
             case OpenRouter:
-                payload["reasoning"] = new { effort };
+                payload["reasoning"] = model.ReasoningLevels.Count > 0
+                    ? new { effort }
+                    : new { enabled = true, max_tokens = ResolveBudget(effort) };
                 break;
             case DeepSeek:
                 if (effort is "low" or "high" or "max")

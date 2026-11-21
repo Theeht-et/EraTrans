@@ -733,6 +733,43 @@ public sealed class AiReasoningDialectSupportTests
         Assert.True(model.ReasoningCanDisable);
     }
 
+    [Theory]
+    [InlineData("kimi-k2.5")]
+    [InlineData("kimi-k2.6")]
+    public void AliyunKimiHybridModels_UseEnableThinkingOff(string modelId)
+    {
+        AiProviderModel model = new() { Id = modelId };
+        const string endpoint = "https://dashscope.aliyuncs.com/compatible-mode/v1";
+        AiReasoningDialectSupport.ApplyKnownModelDefaults(model, endpoint);
+
+        Assert.Equal("dashScopeKimiToggle", model.ReasoningDialect);
+        Assert.True(model.ReasoningCanDisable);
+        Assert.Empty(model.ReasoningLevels);
+
+        using JsonDocument offBody = CreateBody(
+            endpoint, model, new AiModelReasoningSettings { Disabled = true });
+        Assert.False(offBody.RootElement.GetProperty("enable_thinking").GetBoolean());
+        Assert.False(offBody.RootElement.TryGetProperty("thinking", out _));
+        Assert.False(offBody.RootElement.TryGetProperty("reasoning_effort", out _));
+    }
+
+    [Fact]
+    public void AliyunKimiK27Code_RemainsThinkingOnlyWithoutOffControl()
+    {
+        AiProviderModel model = new() { Id = "kimi-k2.7-code" };
+        const string endpoint = "https://dashscope.aliyuncs.com/compatible-mode/v1";
+        AiReasoningDialectSupport.ApplyKnownModelDefaults(model, endpoint);
+
+        Assert.Equal("dashScopeKimiToggle", model.ReasoningDialect);
+        Assert.False(model.ReasoningCanDisable);
+        Assert.Empty(model.ReasoningLevels);
+        Assert.False(AiReasoningDialectSupport.IsCompatible(endpoint, model) == false);
+
+        using JsonDocument offBody = CreateBody(
+            endpoint, model, new AiModelReasoningSettings { Disabled = true });
+        Assert.False(offBody.RootElement.TryGetProperty("enable_thinking", out _));
+    }
+
     private static JsonDocument CreateBody(
         string baseUrl,
         AiProviderModel model,

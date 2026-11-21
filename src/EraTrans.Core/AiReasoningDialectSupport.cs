@@ -389,7 +389,7 @@ public static class AiReasoningDialectSupport
 
         if (Regex.IsMatch(id, @"^(?:qwq|qwen-?3)(?:$|[-.])", RegexOptions.IgnoreCase))
         {
-            canDisable = !Regex.IsMatch(id, @"qwen-?3.*(?:235b|thinking-only)", RegexOptions.IgnoreCase);
+            canDisable = !IsDashScopeThinkingOnlyModel(id);
             return true;
         }
 
@@ -423,7 +423,7 @@ public static class AiReasoningDialectSupport
             return true;
         }
 
-        if (Regex.IsMatch(id, @"^(?:minimax-m[23]|step-3|intern-s1|laguna)(?:$|[-.])", RegexOptions.IgnoreCase))
+        if (id.StartsWith("laguna-", StringComparison.OrdinalIgnoreCase))
         {
             canDisable = true;
             return true;
@@ -438,6 +438,22 @@ public static class AiReasoningDialectSupport
         }
 
         return false;
+    }
+
+    private static bool IsDashScopeThinkingOnlyModel(string id)
+    {
+        if (id.Contains("qwen3.7-max-preview", StringComparison.OrdinalIgnoreCase) ||
+            id.Contains("qwen3.7-max-2026-05-17", StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (Regex.IsMatch(id, @"(^|[/_:@])qwq(?:$|[-.])", RegexOptions.IgnoreCase) ||
+            Regex.IsMatch(id, @"(^|[/_:@])deepseek-r1(?:$|[-.])", RegexOptions.IgnoreCase))
+            return true;
+        if (id.Contains("kimi-k2.7-code", StringComparison.OrdinalIgnoreCase) ||
+            id.Contains("kimi-k2-thinking", StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (Regex.IsMatch(id, @"(^|[/_:@])minimax-m2\.(?:1|5)(?:$|[-.])", RegexOptions.IgnoreCase))
+            return true;
+        return id.Contains("-thinking", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsKimiK3(string modelId)

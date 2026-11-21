@@ -288,9 +288,23 @@ public sealed class AiProviderSettingsStore
 
     public AiProviderSettings Load()
     {
-        return File.Exists(_filePath)
-            ? LoadFrom(_filePath)
-            : new AiProviderSettings();
+        if (!File.Exists(_filePath))
+            return new AiProviderSettings();
+
+        AiProviderSettings settings = LoadFrom(_filePath);
+        ApplyBuiltInDefaultDisableMigration(settings);
+        return settings;
+    }
+
+    private static void ApplyBuiltInDefaultDisableMigration(AiProviderSettings settings)
+    {
+        if (settings.BuiltInDefaultDisableMigrationApplied)
+            return;
+
+        foreach (AiProviderProfile provider in settings.Providers.Where(provider => provider.IsBuiltIn))
+            provider.IsEnabled = false;
+
+        settings.BuiltInDefaultDisableMigrationApplied = true;
     }
 
     private static AiProviderSettings LoadFrom(string path)

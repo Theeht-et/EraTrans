@@ -403,7 +403,7 @@ public partial class AiProviderSettingsWindow : Window
             // Budget dialects expose documented discrete presets here. The
             // arbitrary custom-token budget editor from Kelivo is not part of
             // this translation utility's compact provider settings UI.
-            return ["minimal", "low", "medium", "high", "xhigh", "max"];
+            return ["low", "medium", "high", "xhigh", "max"];
         }
 
         return model.ReasoningLevels

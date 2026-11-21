@@ -27,6 +27,7 @@ public sealed class AiProviderProfile
     public bool RequiresEndpointReview { get; set; }
     public List<AiProviderModel> AvailableModels { get; set; } = [];
     public Dictionary<string, AiModelReasoningSettings> ReasoningSettingsByModel { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public Dictionary<string, AiModelReasoningCapabilityOverride> ReasoningCapabilitiesByModel { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
     [JsonIgnore]
     public bool IsReadyForTranslation =>
@@ -44,6 +45,19 @@ public sealed class AiModelReasoningSettings
     public bool Enabled { get; set; }
     public bool Disabled { get; set; }
     public string Effort { get; set; } = "medium";
+}
+
+/// <summary>
+/// Explicit capability configuration for a custom model whose reasoning
+/// support cannot be inferred safely from its model id or provider endpoint.
+/// This initial custom route is the OpenAI Chat Completions reasoning_effort
+/// field; it is never enabled implicitly.
+/// </summary>
+public sealed class AiModelReasoningCapabilityOverride
+{
+    public string Dialect { get; set; } = AiReasoningDialectSupport.CustomOpenAiEffortDialect;
+    public bool CanDisable { get; set; }
+    public List<string> Levels { get; set; } = ["low", "medium", "high"];
 }
 
 public sealed class AiProviderSettings

@@ -235,7 +235,7 @@
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
                             <TextBox x:Name="ModelTextBox" Height="36" Padding="10,0"
-                                     VerticalContentAlignment="Center"
+                                     VerticalContentAlignment="Center" TextChanged="ModelTextChanged"
                                      ToolTip="填写模型 ID，也可以获取模型列表后选择。"/>
                             <Button x:Name="FetchModelsButton" Grid.Column="1" Content="获取模型"
                                     Width="104" Height="36" Margin="9,0,0,0" Click="FetchModels_Click"/>
@@ -254,8 +254,8 @@
                                 <TextBlock Text="仅在模型明确提供推理档位时生效；未知能力不会发送推理参数。" Margin="0,3,10,0" FontSize="10" Foreground="#7A8490" TextWrapping="Wrap"/>
                             </StackPanel>
                             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                                <CheckBox x:Name="ReasoningEnabledCheckBox" Content="启用推理" VerticalAlignment="Center" Margin="0,0,12,0" IsEnabled="False" Checked="ReasoningSettingChanged" Unchecked="ReasoningSettingChanged"/>
-                                <ComboBox x:Name="ReasoningEffortComboBox" Width="104" Height="30" IsEnabled="False" SelectionChanged="ReasoningSettingChanged">
+                                <CheckBox x:Name="ReasoningEnabledCheckBox" Content="启用推理" VerticalAlignment="Center" Margin="0,0,12,0" IsEnabled="False" Checked="ReasoningCheckBoxChanged" Unchecked="ReasoningCheckBoxChanged"/>
+                                <ComboBox x:Name="ReasoningEffortComboBox" Width="104" Height="30" IsEnabled="False" SelectionChanged="ReasoningEffortChanged">
                                     <ComboBoxItem Content="低" Tag="low"/>
                                     <ComboBoxItem Content="中" Tag="medium"/>
                                     <ComboBoxItem Content="高" Tag="high"/>

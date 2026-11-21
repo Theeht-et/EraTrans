@@ -25,20 +25,26 @@ public static class AiProviderHttpRequestFactory
     public static AiProviderHttpRequestDetails Create(
         AiProviderProfile profile,
         string systemPrompt,
-        string userPrompt)
+        string userPrompt,
+        AiReasoningOptions? reasoning = null)
     {
         ArgumentNullException.ThrowIfNull(profile);
         string endpoint = AiProviderProfileValidator.BuildApiEndpoint(
             profile.BaseUrl, profile.ChatCompletionsPath, "/chat/completions");
-        string json = JsonSerializer.Serialize(new
+
+        var payload = new Dictionary<string, object?>(StringComparer.Ordinal)
         {
-            model = profile.Model,
-            messages = new[]
+            ["model"] = profile.Model,
+            ["messages"] = new[]
             {
                 new { role = "system", content = systemPrompt },
                 new { role = "user", content = userPrompt }
             }
-        }, JsonOptions);
+        };
+
+        AiReasoning.Apply(payload, profile.BaseUrl, reasoning);
+
+        string json = JsonSerializer.Serialize(payload, JsonOptions);
 
         return new AiProviderHttpRequestDetails(
             "POST", endpoint, json,

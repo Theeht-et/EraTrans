@@ -480,6 +480,8 @@ public sealed class AiModelDiscoveryServiceTests
         Assert.Equal("DeepSeek Chat", model.DisplayName);
         Assert.Equal(131072, model.ContextLimit);
         Assert.Equal(false, model.ReasoningSupport);
+        Assert.Equal(new[] { "low", "medium", "high" }, model.ReasoningLevels);
+        Assert.Equal("推理能力：不支持", model.ReasoningSupportDescription);
     }
 
     [Fact]

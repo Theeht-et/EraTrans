@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
@@ -55,16 +56,19 @@ public sealed class AiTranslationLogEntry
         _ => "未知"
     };
 
+    /// <summary>Duration for humans: seconds with one decimal, never milliseconds.</summary>
+    [JsonIgnore]
+    public string DurationDescription => DurationMilliseconds is long duration
+        ? (duration / 1000d).ToString("0.0", CultureInfo.InvariantCulture) + " 秒"
+        : "尚未完成";
+
     [JsonIgnore]
     public string Summary => RequestKind == "ConnectionTest"
-        ? $"连接测试 · {FormatDuration()}"
-        : $"{RequestedEntryCount} 个词条 · {FormatDuration()}";
+        ? $"连接测试 · {DurationDescription}"
+        : $"{RequestedEntryCount} 个词条 · {DurationDescription}";
 
     [JsonIgnore]
     public string RequestKindDescription => RequestKind == "ConnectionTest" ? "连接测试" : "AI 翻译";
-
-    private string FormatDuration() =>
-        DurationMilliseconds is long duration ? $"{duration:N0} ms" : "尚未完成";
 }
 
 public interface IAiTranslationLogStore

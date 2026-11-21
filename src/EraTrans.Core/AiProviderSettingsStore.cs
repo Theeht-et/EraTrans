@@ -236,7 +236,9 @@ public static class AiProviderProfileValidator
             profile.BaseUrl = NormalizeBaseUrl(profile.BaseUrl);
         profile.ChatCompletionsPath = NormalizeApiPath(
             profile.ChatCompletionsPath, "/chat/completions");
-        profile.ModelsPath = NormalizeApiPath(profile.ModelsPath, "/models");
+        profile.ModelsPath = string.IsNullOrWhiteSpace(profile.ModelsPath)
+            ? "/models"
+            : profile.ModelsPath.Trim();
     }
 
     public static void ValidateForModelDiscovery(AiProviderProfile profile)
@@ -352,8 +354,9 @@ public sealed class AiProviderSettingsStore
                         ApiKey = Encoding.UTF8.GetString(keyBytes),
                         ChatCompletionsPath = AiProviderProfileValidator.NormalizeApiPath(
                             item.ChatCompletionsPath, "/chat/completions"),
-                        ModelsPath = AiProviderProfileValidator.NormalizeApiPath(
-                            item.ModelsPath, "/models"),
+                        ModelsPath = string.IsNullOrWhiteSpace(item.ModelsPath)
+                            ? "/models"
+                            : item.ModelsPath.Trim(),
                         Protocol = AiProviderProtocol.OpenAiCompatible,
                         IsEnabled = item.IsEnabled,
                         IsBuiltIn = item.IsBuiltIn,
@@ -470,8 +473,9 @@ public sealed class AiProviderSettingsStore
                     Model = profile.Model,
                     ChatCompletionsPath = AiProviderProfileValidator.NormalizeApiPath(
                         profile.ChatCompletionsPath, "/chat/completions"),
-                    ModelsPath = AiProviderProfileValidator.NormalizeApiPath(
-                        profile.ModelsPath, "/models"),
+                    ModelsPath = string.IsNullOrWhiteSpace(profile.ModelsPath)
+                        ? "/models"
+                        : profile.ModelsPath.Trim(),
                     Protocol = (int)AiProviderProtocol.OpenAiCompatible,
                     IsEnabled = profile.IsEnabled,
                     IsBuiltIn = profile.IsBuiltIn,

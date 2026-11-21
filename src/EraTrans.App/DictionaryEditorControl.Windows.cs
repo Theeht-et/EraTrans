@@ -10,7 +10,7 @@ namespace EraTrans.App;
 /// * fixed batches (the switch is off): a constant number of dictionary lines,
 ///   no ordering analysis at all;
 /// * ordered windows (the switch is on): consecutive ERB functions in source order,
-///   never cutting a function in half. This replaces the old semantic-group batching.
+///   never cutting a function in half.
 /// </summary>
 public partial class DictionaryEditorControl
 {
@@ -20,8 +20,16 @@ public partial class DictionaryEditorControl
     private const string BatchFunctionName = "@batch";
 
     private readonly SequentialTranslationPlanner _windowPlanner = new();
-    private int _windowMaxCharacters = SequentialTranslationPlanner.DefaultMaxCharacters;
-    private int _windowMaxLines = SequentialTranslationPlanner.DefaultMaxLines;
+
+    private int WindowMaxCharacters => Math.Clamp(
+        _settings.WindowMaxCharacters,
+        EraTransUserSettings.MinimumWindowCharacters,
+        EraTransUserSettings.MaximumWindowCharacters);
+
+    private int WindowMaxLines => Math.Clamp(
+        _settings.WindowMaxLines,
+        EraTransUserSettings.MinimumWindowLines,
+        EraTransUserSettings.MaximumWindowLines);
 
     /// <summary>Entry point used by both translate buttons.</summary>
     private async Task TranslateWindowsAsync(IReadOnlyList<DictionaryEditorEntry> entries)
@@ -55,7 +63,7 @@ public partial class DictionaryEditorControl
     }
 
     // ---------------------------------------------------------------------
-    // 按原文顺序整段翻译（开关打开，替代原来的分组模式）
+    // 按原文顺序整段翻译（开关打开）
     // ---------------------------------------------------------------------
 
     private async Task TranslateOrderedWindowsAsync(IReadOnlyList<DictionaryEditorEntry> entries)
@@ -99,7 +107,7 @@ public partial class DictionaryEditorControl
     }
 
     // ---------------------------------------------------------------------
-    // 传统模式：按行固定条数分批，不做任何顺序分析（请求格式与提示词相同）
+    // 固定批次：按行固定条数，不做任何顺序分析（请求格式与提示词相同）
     // ---------------------------------------------------------------------
 
     private async Task TranslateFixedBatchesAsync(IReadOnlyList<DictionaryEditorEntry> entries)
@@ -163,23 +171,23 @@ public partial class DictionaryEditorControl
 
         int applied = 0;
         int skipped = 0;
-        int windowNumber = 0;
-        int totalWindows = windows.Count;
+        int requestNumber = 0;
+        int totalRequests = windows.Count;
         int totalLines = windows.Sum(window => window.TargetCount);
 
         StatusTextBlock.Text = skippedSplitFunctions > 0
-            ? $"准备{statusPrefix}：{totalWindows} 个窗口，{totalLines} 行；被切开的函数 {skippedSplitFunctions} 个。"
-            : $"准备{statusPrefix}：{totalWindows} 个窗口，{totalLines} 行。";
+            ? $"准备{statusPrefix}：{totalRequests} 个请求，{totalLines} 行；被切开的函数 {skippedSplitFunctions} 个。"
+            : $"准备{statusPrefix}：{totalRequests} 个请求，{totalLines} 行。";
 
         try
         {
             foreach (TranslationWindow window in windows)
             {
                 cancellation.Token.ThrowIfCancellationRequested();
-                windowNumber++;
+                requestNumber++;
 
                 StatusTextBlock.Text =
-                    $"{statusPrefix}：{(batchSize > 0 ? "第" : "窗口 ")}{windowNumber}/{totalWindows}" +
+                    $"{statusPrefix}：{(batchSize > 0 ? "第" : "窗口 ")}{requestNumber}/{totalRequests}" +
                     $"（{window.FunctionId}，本窗 {window.TargetCount} 行）……";
 
                 WindowTranslationOutcome outcome = await _translationService.TranslateWindowAsync(
@@ -199,7 +207,7 @@ public partial class DictionaryEditorControl
                     {
                         skipped += retryOutcome.MissingIds.Count;
                         StatusTextBlock.Text =
-                            $"第 {windowNumber} 次请求：{retryOutcome.MissingIds.Count} 行未返回译文，已跳过。";
+                            $"第 {requestNumber} 次请求：{retryOutcome.MissingIds.Count} 行未返回译文，已跳过。";
                     }
                 }
 
@@ -208,7 +216,7 @@ public partial class DictionaryEditorControl
             }
 
             StatusTextBlock.Text =
-                $"{statusPrefix}完成：{totalWindows} 个请求，回填 {applied} 行，跳过 {skipped} 行。" +
+                $"{statusPrefix}完成：{totalRequests} 个请求，回填 {applied} 行，跳过 {skipped} 行。" +
                 "请检查译文并手动保存。";
         }
         catch (OperationCanceledException)
@@ -277,7 +285,7 @@ public partial class DictionaryEditorControl
                 targetKeys.Contains(entry.Key)))
             .ToArray();
 
-        return _windowPlanner.Build(sources, _activeGroupingIndex, _windowMaxCharacters, _windowMaxLines);
+        return _windowPlanner.Build(sources, _activeGroupingIndex, WindowMaxCharacters, WindowMaxLines);
     }
 
     private void ApplyOutcome(

@@ -221,14 +221,14 @@ public partial class AiProviderSettingsWindow : Window
     private void ProviderListBox_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         _providerDragStart = e.GetPosition(ProviderListBox);
-        _providerDragPending = FindVisualParent<Button>(e.OriginalSource as DependencyObject) is null;
+        DependencyObject? source = e.OriginalSource as DependencyObject;
+        ListBoxItem? item = source is null
+            ? null
+            : ItemsControl.ContainerFromElement(ProviderListBox, source) as ListBoxItem;
+        _providerDragPending = item is not null && FindVisualParent<Button>(source) is null;
 
-        if (e.OriginalSource is DependencyObject source)
-        {
-            ListBoxItem? item = ItemsControl.ContainerFromElement(ProviderListBox, source) as ListBoxItem;
-            if (item?.DataContext is AiProviderProfile profile)
-                ProviderListBox.SelectedItem = profile;
-        }
+        if (item?.DataContext is AiProviderProfile profile)
+            ProviderListBox.SelectedItem = profile;
     }
 
     private void ProviderListBox_PreviewMouseMove(object sender, MouseEventArgs e)

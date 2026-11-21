@@ -75,7 +75,11 @@ public sealed class AiProviderHttpClientTests
         HttpRequestException error = await Assert.ThrowsAsync<HttpRequestException>(
             () => client.CompleteAsync(profile, "system", "user"));
         Assert.Equal(HttpStatusCode.Unauthorized, error.StatusCode);
-        Assert.Equal("invalid API key", error.Message);
+        Assert.Contains("服务商拒绝了身份认证", error.Message);
+        Assert.Contains("Authorization: Bearer", error.Message);
+        Assert.Contains("invalid API key", error.Message);
+        Assert.Contains("https://api.example.com/v1/chat/completions", error.Message);
+        Assert.DoesNotContain("api-secret", error.Message);
     }
 
     [Fact]
@@ -86,14 +90,15 @@ public sealed class AiProviderHttpClientTests
             Name = "Test",
             BaseUrl = "https://api.example.com/v1",
             Model = "model",
-            ApiKey = "secret"
+            ApiKey = "secret",
+            ChatCompletionsPath = "/v2/custom-chat"
         };
 
         AiProviderHttpRequestDetails details =
             AiProviderHttpRequestFactory.Create(profile, "system", "user");
 
         Assert.Equal("POST", details.Method);
-        Assert.Equal("https://api.example.com/v1/chat/completions", details.Endpoint);
+        Assert.Equal("https://api.example.com/v1/v2/custom-chat", details.Endpoint);
         Assert.Equal("Authorization", details.AuthenticationHeaderName);
         Assert.Equal("Bearer secret", details.AuthenticationHeaderValue);
         Assert.Null(details.VersionHeaderName);

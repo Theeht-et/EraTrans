@@ -337,28 +337,37 @@ public partial class AiProviderSettingsWindow : Window
 
     private void UpdateReasoningControls()
     {
-        if (_currentProfile is null)
+        bool wasLoading = _loadingProfile;
+        _loadingProfile = true;
+        try
         {
-            ReasoningEnabledCheckBox.IsChecked = false;
-            ReasoningEffortComboBox.SelectedIndex = 1;
-            return;
+            if (_currentProfile is null)
+            {
+                ReasoningEnabledCheckBox.IsChecked = false;
+                ReasoningEffortComboBox.SelectedIndex = 1;
+                return;
+            }
+
+            bool supported = HasSupportedReasoningLevels();
+            AiModelReasoningSettings? setting = null;
+            if (supported)
+                _currentProfile.ReasoningSettingsByModel.TryGetValue(ModelTextBox.Text.Trim(), out setting);
+
+            ReasoningEnabledCheckBox.IsChecked = supported && setting?.Enabled == true;
+            string effort = setting?.Effort ?? "medium";
+            ReasoningEffortComboBox.SelectedIndex = effort switch
+            {
+                "low" => 0,
+                "high" => 2,
+                _ => 1
+            };
+            ReasoningEnabledCheckBox.IsEnabled = supported && !_loadFailed;
+            ReasoningEffortComboBox.IsEnabled = supported && setting?.Enabled == true && !_loadFailed;
         }
-
-        bool supported = HasSupportedReasoningLevels();
-        AiModelReasoningSettings? setting = null;
-        if (supported)
-            _currentProfile.ReasoningSettingsByModel.TryGetValue(ModelTextBox.Text.Trim(), out setting);
-
-        ReasoningEnabledCheckBox.IsChecked = supported && setting?.Enabled == true;
-        string effort = setting?.Effort ?? "medium";
-        ReasoningEffortComboBox.SelectedIndex = effort switch
+        finally
         {
-            "low" => 0,
-            "high" => 2,
-            _ => 1
-        };
-        ReasoningEnabledCheckBox.IsEnabled = supported && !_loadFailed;
-        ReasoningEffortComboBox.IsEnabled = supported && setting?.Enabled == true && !_loadFailed;
+            _loadingProfile = wasLoading;
+        }
     }
 
     private void SaveReasoningSetting()

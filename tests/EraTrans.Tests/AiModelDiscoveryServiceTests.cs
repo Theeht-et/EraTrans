@@ -618,6 +618,39 @@ public sealed class AiModelDiscoveryServiceTests
         Assert.Equal(128000, model.ContextLimit);
     }
 
+    [Fact]
+    public void ParseModelsResponse_ReadsExplicitReasoningDisableAndDialectMetadata()
+    {
+        const string json = """
+            {
+              "data": [
+                {
+                  "id": "openai-reasoning",
+                  "reasoning": {
+                    "supported": true,
+                    "can_disable": true,
+                    "dialect": "openaiReasoningEffort",
+                    "effort": ["low", "high"]
+                  }
+                },
+                {
+                  "id": "unknown-disable",
+                  "reasoning": { "supported": true }
+                }
+              ]
+            }
+            """;
+
+        IReadOnlyList<AiProviderModel> models = AiModelDiscoveryService.ParseModelsResponse(json);
+        AiProviderModel explicitModel = Assert.Single(models, model => model.Id == "openai-reasoning");
+        Assert.True(explicitModel.ReasoningCanDisable);
+        Assert.Equal("openaiReasoningEffort", explicitModel.ReasoningDialect);
+
+        AiProviderModel unknown = Assert.Single(models, model => model.Id == "unknown-disable");
+        Assert.Null(unknown.ReasoningCanDisable);
+        Assert.Null(unknown.ReasoningDialect);
+    }
+
     private sealed class StubHandler(
         Func<HttpRequestMessage, HttpResponseMessage> responseFactory) : HttpMessageHandler
     {

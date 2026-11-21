@@ -223,7 +223,8 @@ public static class AiReasoningDialectSupport
                 if (model.ReasoningLevels.Count == 0)
                     model.ReasoningLevels = [.. levels];
                 model.ReasoningCanDisable ??= canDisable;
-                if (model.ReasoningDialect is null && dialect is not null)
+                // Kelivo resolves the provider's wire dialect before model/catalog guesses.
+                if (dialect is not null)
                     model.ReasoningDialect = dialect;
             }
         }
@@ -233,8 +234,7 @@ public static class AiReasoningDialectSupport
             // the current provider has no known wire dialect for that model.
             model.ReasoningSupport ??= true;
             model.SupportsReasoning = true;
-            if (model.ReasoningDialect is null &&
-                dialect is not null &&
+            if (dialect is not null &&
                 (!dialect.Equals(DeepSeek, StringComparison.OrdinalIgnoreCase) ||
                  documentedDeepSeekModel))
             {
@@ -242,7 +242,6 @@ public static class AiReasoningDialectSupport
             }
         }
         else if ((model.ReasoningSupport == true || model.SupportsReasoning) &&
-                 model.ReasoningDialect is null &&
                  dialect is not null &&
                  !dialect.Equals(DeepSeek, StringComparison.OrdinalIgnoreCase))
         {
@@ -259,7 +258,7 @@ public static class AiReasoningDialectSupport
             (model.ReasoningLevels.Count > 0 || model.ReasoningCanDisable == true))
         {
             model.ReasoningSupport ??= true;
-            model.ReasoningDialect ??= DeepSeek;
+            model.ReasoningDialect = DeepSeek;
         }
 
         // DeepSeek's documented current model list is intentionally narrow.

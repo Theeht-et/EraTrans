@@ -319,7 +319,7 @@ public sealed class AiModelCatalogEnrichmentService
                     ReasoningCanDisable = ReadNullableBoolean(row, "reasoning_can_disable")
                         ?? ReadNestedNullableBoolean(row, "reasoning", "can_disable")
                         ?? ReadNestedNullableBoolean(row, "reasoning", "canDisable")
-                        ?? (HasCatalogReasoningDisableOption(row) ? true : null),
+                        ?? ReadCatalogReasoningCanDisable(row),
                     ReasoningDialect = ReadString(row, "reasoning_dialect")
                         ?? ReadNestedString(row, "reasoning", "dialect"),
                     ReasoningSupport = ReadNullableBoolean(row, "reasoning")
@@ -426,29 +426,44 @@ public sealed class AiModelCatalogEnrichmentService
             .ToList();
     }
 
-    private static bool HasCatalogReasoningDisableOption(JsonElement row)
+    private static bool? ReadCatalogReasoningCanDisable(JsonElement row)
     {
+        bool hasEffortOption = false;
+
         if (TryGetProperty(row, "effort", out JsonElement effort) &&
             effort.ValueKind == JsonValueKind.Object &&
             TryGetProperty(effort, "supported_levels", out JsonElement levels) &&
             levels.ValueKind == JsonValueKind.Array &&
-            levels.EnumerateArray().Any(value =>
+            levels.GetArrayLength() > 0)
+        {
+            hasEffortOption = true;
+            if (levels.EnumerateArray().Any(value =>
                 value.ValueKind == JsonValueKind.String &&
                 string.Equals(value.GetString(), "none", StringComparison.OrdinalIgnoreCase)))
-            return true;
+                return true;
+        }
 
         foreach (string propertyName in new[] { "reasoning_options", "reasoningOptions", "ro" })
         {
             if (!TryGetProperty(row, propertyName, out JsonElement options) ||
                 options.ValueKind != JsonValueKind.Array)
                 continue;
+
             foreach (JsonElement option in options.EnumerateArray())
             {
-                if (option.ValueKind != JsonValueKind.Object ||
-                    !string.Equals(ReadString(option, "type"), "effort", StringComparison.OrdinalIgnoreCase) ||
+                if (option.ValueKind != JsonValueKind.Object)
+                    continue;
+
+                string? type = ReadString(option, "type");
+                if (type?.Equals("toggle", StringComparison.OrdinalIgnoreCase) == true)
+                    return true;
+
+                if (type?.Equals("effort", StringComparison.OrdinalIgnoreCase) != true ||
                     !TryGetProperty(option, "values", out JsonElement values) ||
                     values.ValueKind != JsonValueKind.Array)
                     continue;
+
+                hasEffortOption = true;
                 if (values.EnumerateArray().Any(value =>
                     value.ValueKind == JsonValueKind.String &&
                     string.Equals(value.GetString(), "none", StringComparison.OrdinalIgnoreCase)))
@@ -462,12 +477,16 @@ public sealed class AiModelCatalogEnrichmentService
             nestedEffort.ValueKind == JsonValueKind.Object &&
             TryGetProperty(nestedEffort, "supported_levels", out JsonElement nestedLevels) &&
             nestedLevels.ValueKind == JsonValueKind.Array &&
-            nestedLevels.EnumerateArray().Any(value =>
+            nestedLevels.GetArrayLength() > 0)
+        {
+            hasEffortOption = true;
+            if (nestedLevels.EnumerateArray().Any(value =>
                 value.ValueKind == JsonValueKind.String &&
                 string.Equals(value.GetString(), "none", StringComparison.OrdinalIgnoreCase)))
-            return true;
+                return true;
+        }
 
-        return false;
+        return hasEffortOption ? false : null;
     }
 
     private static bool HasCatalogReasoningOptions(JsonElement row)

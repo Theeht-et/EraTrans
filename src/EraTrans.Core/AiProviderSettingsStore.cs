@@ -393,8 +393,6 @@ public sealed class AiProviderSettingsStore
                                 Created = model.Created,
                                 ReasoningSupport = model.ReasoningSupport,
                                 ReasoningLevels = [.. (model.ReasoningLevels ?? [])],
-                            ReasoningCanDisable = model.ReasoningCanDisable,
-                            ReasoningDialect = model.ReasoningDialect,
                                 ReasoningCanDisable = model.ReasoningCanDisable,
                                 ReasoningDialect = model.ReasoningDialect,
                                 IsEmbedding = model.IsEmbedding,

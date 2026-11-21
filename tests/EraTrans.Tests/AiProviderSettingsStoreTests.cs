@@ -34,7 +34,7 @@ public sealed class AiProviderSettingsPortablePersistenceTests
                     {
                         ["custom-reasoner"] = new()
                         {
-                            Dialect = AiReasoningDialectSupport.CustomOpenAiEffortDialect,
+                            Dialect = AiReasoningDialectSupport.CustomThinkingTypeDialect,
                             CanDisable = true,
                             Levels = ["low", "high"]
                         }
@@ -109,7 +109,7 @@ public sealed class AiProviderSettingsPortablePersistenceTests
         AiModelReasoningCapabilityOverride customCapability =
             Assert.Single(provider.ReasoningCapabilitiesByModel.Values);
         Assert.Equal("custom-reasoner", provider.ReasoningCapabilitiesByModel.Keys.Single());
-        Assert.Equal(AiReasoningDialectSupport.CustomOpenAiEffortDialect, customCapability.Dialect);
+        Assert.Equal(AiReasoningDialectSupport.CustomThinkingTypeDialect, customCapability.Dialect);
         Assert.True(customCapability.CanDisable);
         Assert.Equal(new[] { "low", "high" }, customCapability.Levels);
         Assert.Collection(

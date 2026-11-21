@@ -770,6 +770,34 @@ public sealed class AiReasoningDialectSupportTests
         Assert.False(offBody.RootElement.TryGetProperty("enable_thinking", out _));
     }
 
+    [Fact]
+    public void LegacyDeepSeekFlashModel_UsesKnownOpenRouterDialect()
+    {
+        AiProviderModel model = new() { Id = "deepseek-flash" };
+        const string endpoint = "https://openrouter.ai/api/v1";
+        AiReasoningDialectSupport.ApplyKnownModelDefaults(model, endpoint);
+
+        Assert.True(model.ReasoningSupport);
+        Assert.True(model.ReasoningCanDisable);
+        Assert.Equal(new[] { "low", "high", "max" }, model.ReasoningLevels);
+        Assert.Equal("openrouterReasoning", model.ReasoningDialect);
+        using JsonDocument body = CreateBody(
+            endpoint, model, new AiModelReasoningSettings { Enabled = true, Effort = "max" });
+        Assert.Equal("max", body.RootElement.GetProperty("reasoning").GetProperty("effort").GetString());
+    }
+
+    [Fact]
+    public void AliyunUnknownLegacyGlmVariant_DoesNotGuessModelStudioWireDialect()
+    {
+        AiProviderModel model = new() { Id = "glm-4.7" };
+        const string endpoint = "https://dashscope.aliyuncs.com/compatible-mode/v1";
+        AiReasoningDialectSupport.ApplyKnownModelDefaults(model, endpoint);
+
+        Assert.True(model.ReasoningSupport);
+        Assert.Null(model.ReasoningDialect);
+        Assert.False(AiReasoningDialectSupport.IsCompatible(endpoint, model));
+    }
+
     private static JsonDocument CreateBody(
         string baseUrl,
         AiProviderModel model,

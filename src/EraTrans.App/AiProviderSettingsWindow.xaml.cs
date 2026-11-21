@@ -101,9 +101,10 @@ public partial class AiProviderSettingsWindow : Window
         ModelsPathTextBox.IsEnabled = hasProfile && idle;
         ApiKeyPasswordBox.IsEnabled = hasProfile && idle;
         ModelTextBox.IsEnabled = hasProfile && idle;
-        bool reasoningAvailable = HasSupportedReasoningLevels();
-        ReasoningEnabledCheckBox.IsEnabled = hasProfile && idle && reasoningAvailable;
-        ReasoningEffortComboBox.IsEnabled = hasProfile && idle && reasoningAvailable && ReasoningEnabledCheckBox.IsChecked == true;
+        bool reasoningAvailable = HasSupportedReasoningControls();
+        ReasoningModeComboBox.IsEnabled = hasProfile && idle && reasoningAvailable;
+        ReasoningEffortComboBox.IsEnabled = hasProfile && idle && reasoningAvailable &&
+            GetSelectedReasoningMode() == "effort";
         FetchModelsButton.IsEnabled = hasProfile && idle;
         TestButton.IsEnabled = hasProfile && idle;
         RestoreDefaultBaseUrlButton.Visibility = _currentProfile?.IsBuiltIn == true
@@ -337,13 +338,20 @@ public partial class AiProviderSettingsWindow : Window
 
         return model.ReasoningLevels
             .Select(level => level.Trim().ToLowerInvariant())
-            .Where(level => level is "low" or "medium" or "high")
+            .Where(level => level is "minimal" or "low" or "medium" or "high" or "xhigh" or "max")
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
 
-    private bool HasSupportedReasoningLevels() =>
-        IsKnownReasoningEndpoint() && GetSupportedReasoningEfforts().Count > 0;
+    private string? GetSelectedReasoningMode() =>
+        (ReasoningModeComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString();
+
+    private bool HasSupportedReasoningControls()
+    {
+        AiProviderModel? model = GetSelectedReasoningModel();
+        return IsKnownReasoningEndpoint() && model?.ReasoningSupport == true &&
+               (model.ReasoningCanDisable == true || GetSupportedReasoningEfforts().Count > 0);
+    }
 
     private bool IsKnownReasoningEndpoint()
     {
@@ -366,44 +374,56 @@ public partial class AiProviderSettingsWindow : Window
         _loadingProfile = true;
         try
         {
-            if (_currentProfile is null)
-            {
-                ReasoningEnabledCheckBox.IsChecked = false;
-                ReasoningEffortComboBox.SelectedIndex = 1;
-                return;
-            }
-
-            List<string> supportedEfforts = GetSupportedReasoningEfforts();
-            bool supported = IsKnownReasoningEndpoint() && supportedEfforts.Count > 0;
+            AiProviderModel? model = GetSelectedReasoningModel();
+            bool supported = IsKnownReasoningEndpoint() && model?.ReasoningSupport == true;
             AiModelReasoningSettings? setting = null;
-            if (supported)
+            if (supported && _currentProfile is not null)
                 _currentProfile.ReasoningSettingsByModel.TryGetValue(ModelTextBox.Text.Trim(), out setting);
 
+            List<string> efforts = GetSupportedReasoningEfforts();
+            ReasoningModeComboBox.Items.Clear();
+            if (supported)
+            {
+                ReasoningModeComboBox.Items.Add(new ComboBoxItem { Content = "自动", Tag = "auto" });
+                if (model!.ReasoningCanDisable == true)
+                    ReasoningModeComboBox.Items.Add(new ComboBoxItem { Content = "关闭", Tag = "off" });
+                if (efforts.Count > 0)
+                    ReasoningModeComboBox.Items.Add(new ComboBoxItem { Content = "指定强度", Tag = "effort" });
+            }
+
             ReasoningEffortComboBox.Items.Clear();
-            foreach (string effortOption in supportedEfforts)
+            foreach (string effort in efforts)
             {
                 ReasoningEffortComboBox.Items.Add(new ComboBoxItem
                 {
-                    Content = effortOption switch
+                    Content = effort switch
                     {
+                        "minimal" => "最小",
                         "low" => "低",
                         "medium" => "中",
                         "high" => "高",
-                        _ => effortOption
+                        "xhigh" => "极高",
+                        "max" => "最大",
+                        _ => effort
                     },
-                    Tag = effortOption
+                    Tag = effort
                 });
             }
 
-            ReasoningEnabledCheckBox.IsChecked = supported && setting?.Enabled == true;
-            string effort = setting?.Effort ?? "medium";
-            int selectedIndex = supportedEfforts.FindIndex(value =>
-                string.Equals(value, effort, StringComparison.OrdinalIgnoreCase));
-            ReasoningEffortComboBox.SelectedIndex = selectedIndex >= 0
-                ? selectedIndex
-                : supported ? 0 : -1;
-            ReasoningEnabledCheckBox.IsEnabled = supported && !_loadFailed;
-            ReasoningEffortComboBox.IsEnabled = supported && setting?.Enabled == true && !_loadFailed;
+            string mode = setting?.Disabled == true && model?.ReasoningCanDisable == true
+                ? "off"
+                : setting?.Enabled == true && efforts.Count > 0
+                    ? "effort"
+                    : "auto";
+            ReasoningModeComboBox.SelectedItem = ReasoningModeComboBox.Items
+                .OfType<ComboBoxItem>()
+                .FirstOrDefault(item => string.Equals(item.Tag?.ToString(), mode, StringComparison.Ordinal));
+            string selectedEffort = setting?.Effort ?? "medium";
+            int effortIndex = efforts.FindIndex(value =>
+                string.Equals(value, selectedEffort, StringComparison.OrdinalIgnoreCase));
+            ReasoningEffortComboBox.SelectedIndex = effortIndex >= 0 ? effortIndex : (efforts.Count > 0 ? 0 : -1);
+            ReasoningModeComboBox.IsEnabled = supported && ! _loadFailed;
+            ReasoningEffortComboBox.IsEnabled = supported && mode == "effort" && efforts.Count > 0 && !_loadFailed;
         }
         finally
         {
@@ -413,28 +433,30 @@ public partial class AiProviderSettingsWindow : Window
 
     private void SaveReasoningSetting()
     {
-        if (_loadingProfile || _currentProfile is null || !HasSupportedReasoningLevels())
+        if (_loadingProfile || _currentProfile is null || !HasSupportedReasoningControls())
             return;
 
         string modelId = ModelTextBox.Text.Trim();
         if (modelId.Length == 0)
             return;
 
+        string mode = GetSelectedReasoningMode() ?? "auto";
         string effort = (ReasoningEffortComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "medium";
         _currentProfile.ReasoningSettingsByModel[modelId] = new AiModelReasoningSettings
         {
-            Enabled = ReasoningEnabledCheckBox.IsChecked == true,
+            Enabled = mode == "effort",
+            Disabled = mode == "off",
             Effort = effort
         };
         ReasoningEffortComboBox.IsEnabled =
-            ReasoningEnabledCheckBox.IsEnabled && ReasoningEnabledCheckBox.IsChecked == true;
+            ReasoningModeComboBox.IsEnabled && mode == "effort";
     }
 
-    private void ReasoningCheckBoxChanged(object sender, RoutedEventArgs e)
+    private void ReasoningModeChanged(object sender, SelectionChangedEventArgs e)
     {
         SaveReasoningSetting();
         ReasoningEffortComboBox.IsEnabled =
-            ReasoningEnabledCheckBox.IsEnabled && ReasoningEnabledCheckBox.IsChecked == true;
+            ReasoningModeComboBox.IsEnabled && GetSelectedReasoningMode() == "effort";
     }
 
     private void ReasoningEffortChanged(object sender, SelectionChangedEventArgs e) =>

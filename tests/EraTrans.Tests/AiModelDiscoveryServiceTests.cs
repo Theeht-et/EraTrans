@@ -563,6 +563,16 @@ public sealed class AiModelDiscoveryServiceTests
                 {
                   "id": "model-with-level-list",
                   "supported_reasoning_levels": ["minimal", "low", "high"]
+                },
+                {
+                  "id": "deepseek-model-list-shape",
+                  "effort": { "supported_levels": ["low", "high", "max"], "default_level": "high" }
+                },
+                {
+                  "id": "model-with-none-level",
+                  "reasoning_options": [
+                    { "type": "effort", "values": ["none", "low", "high"] }
+                  ]
                 }
               ]
             }
@@ -577,6 +587,16 @@ public sealed class AiModelDiscoveryServiceTests
         AiProviderModel direct = Assert.Single(models, model => model.Id == "model-with-level-list");
         Assert.Equal(true, direct.ReasoningSupport);
         Assert.Equal(new[] { "minimal", "low", "high" }, direct.ReasoningLevels);
+
+        AiProviderModel deepseek = Assert.Single(models, model => model.Id == "deepseek-model-list-shape");
+        Assert.True(deepseek.ReasoningSupport);
+        Assert.Equal(new[] { "low", "high", "max" }, deepseek.ReasoningLevels);
+        Assert.Null(deepseek.ReasoningCanDisable);
+
+        AiProviderModel none = Assert.Single(models, model => model.Id == "model-with-none-level");
+        Assert.True(none.ReasoningSupport);
+        Assert.True(none.ReasoningCanDisable);
+        Assert.Equal(new[] { "low", "high" }, none.ReasoningLevels);
     }
 
     [Fact]

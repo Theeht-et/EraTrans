@@ -93,7 +93,7 @@ public sealed class AiProviderSettings
                     Name = preset.Name,
                     BaseUrl = preset.BaseUrl,
                     Protocol = AiProviderProtocol.OpenAiCompatible,
-                    IsEnabled = true,
+                    IsEnabled = false,
                     IsBuiltIn = true
                 });
             }

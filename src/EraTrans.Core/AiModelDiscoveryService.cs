@@ -238,8 +238,9 @@ public sealed class AiModelDiscoveryService
         CancellationToken cancellationToken = default)
     {
         AiProviderProfileValidator.ValidateForModelDiscovery(profile);
-        string baseUrl = AiProviderProfileValidator.NormalizeBaseUrl(profile.BaseUrl);
-        var endpoint = new Uri($"{baseUrl.TrimEnd('/')}/models", UriKind.Absolute);
+        string endpointText = AiProviderProfileValidator.BuildApiEndpoint(
+            profile.BaseUrl, profile.ModelsPath, "/models");
+        var endpoint = new Uri(endpointText, UriKind.Absolute);
         using var request = new HttpRequestMessage(HttpMethod.Get, endpoint);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         if (!string.IsNullOrWhiteSpace(profile.ApiKey))

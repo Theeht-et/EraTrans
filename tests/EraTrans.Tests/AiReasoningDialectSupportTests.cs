@@ -763,7 +763,7 @@ public sealed class AiReasoningDialectSupportTests
         Assert.Equal("dashScopeKimiToggle", model.ReasoningDialect);
         Assert.False(model.ReasoningCanDisable);
         Assert.Empty(model.ReasoningLevels);
-        Assert.False(AiReasoningDialectSupport.IsCompatible(endpoint, model) == false);
+        Assert.True(AiReasoningDialectSupport.IsCompatible(endpoint, model));
 
         using JsonDocument offBody = CreateBody(
             endpoint, model, new AiModelReasoningSettings { Disabled = true });

@@ -18,6 +18,8 @@ public sealed class AiProviderModel
     public long? Created { get; set; }
     public bool? ReasoningSupport { get; set; }
     public List<string> ReasoningLevels { get; set; } = [];
+    public bool? ReasoningCanDisable { get; set; }
+    public string? ReasoningDialect { get; set; }
     public bool IsEmbedding { get; set; }
     public bool IsRerank { get; set; }
     public string? Family { get; set; }
@@ -359,6 +361,12 @@ public sealed class AiModelDiscoveryService
                     ?? ReadNestedInt(row, "limit", "output"),
                 ReasoningSupport = reasoningSupport,
                 ReasoningLevels = reasoningLevels,
+                ReasoningCanDisable = ReadNullableBoolean(row, "reasoning_can_disable")
+                    ?? ReadNullableBoolean(row, "can_disable")
+                    ?? ReadNestedBoolean(row, "reasoning", "can_disable")
+                    ?? ReadNestedBoolean(row, "reasoning", "canDisable"),
+                ReasoningDialect = ReadString(row, "reasoning_dialect")
+                    ?? ReadNestedString(row, "reasoning", "dialect"),
                 SupportsReasoning = reasoningSupport == true,
                 IsEmbedding = isEmbedding,
                 IsRerank = isRerank
@@ -538,6 +546,14 @@ public sealed class AiModelDiscoveryService
             JsonValueKind.False => false,
             _ => null
         };
+    }
+
+    private static string? ReadNestedString(JsonElement element, string objectName, string propertyName)
+    {
+        if (!TryGetProperty(element, objectName, out JsonElement nested) ||
+            nested.ValueKind != JsonValueKind.Object)
+            return null;
+        return ReadString(nested, propertyName);
     }
 
     private static int? ReadNestedInt(JsonElement element, string objectName, string propertyName)

@@ -163,12 +163,13 @@ public partial class AiProviderSettingsWindow : Window
 
     private static string PreviewEndpoint(string baseUrl, string path, string fallbackPath)
     {
-        if (string.IsNullOrWhiteSpace(baseUrl))
-            return $"(请填写 Base URL){AiProviderProfileValidator.NormalizeApiPath(path, fallbackPath)}";
-
         try
         {
-            return AiProviderProfileValidator.BuildApiEndpoint(baseUrl, path, fallbackPath);
+            string normalizedPath = AiProviderProfileValidator.NormalizeApiPath(path, fallbackPath);
+            if (string.IsNullOrWhiteSpace(baseUrl))
+                return $"(请填写 Base URL){normalizedPath}";
+
+            return AiProviderProfileValidator.BuildApiEndpoint(baseUrl, normalizedPath, fallbackPath);
         }
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or UriFormatException)
         {
@@ -188,10 +189,6 @@ public partial class AiProviderSettingsWindow : Window
 
         BaseUrlTextBox.Text = preset.BaseUrl;
         _currentProfile.BaseUrl = preset.BaseUrl;
-        _currentProfile.ChatCompletionsPath = "/chat/completions";
-        _currentProfile.ModelsPath = "/models";
-        ChatCompletionsPathTextBox.Text = _currentProfile.ChatCompletionsPath;
-        ModelsPathTextBox.Text = _currentProfile.ModelsPath;
         _currentProfile.RequiresEndpointReview = false;
         LegacyProtocolWarning.Visibility = Visibility.Collapsed;
         UpdateEndpointPreview();

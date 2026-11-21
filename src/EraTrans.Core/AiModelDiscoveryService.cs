@@ -330,6 +330,17 @@ public sealed class AiModelDiscoveryService
             bool isEmbedding = LooksLikeEmbeddingModel(id);
             bool isRerank = LooksLikeRerankModel(id);
             List<string> reasoningLevels = ReadReasoningLevels(row);
+            bool hasNoneEffort = reasoningLevels.Any(level =>
+                level.Equals("none", StringComparison.OrdinalIgnoreCase));
+            reasoningLevels = reasoningLevels
+                .Where(level => !level.Equals("none", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            bool? reasoningCanDisable =
+                ReadNullableBoolean(row, "reasoning_can_disable")
+                ?? ReadNullableBoolean(row, "can_disable")
+                ?? ReadNestedBoolean(row, "reasoning", "can_disable")
+                ?? ReadNestedBoolean(row, "reasoning", "canDisable")
+                ?? (hasNoneEffort ? true : null);
             bool? reasoningSupport = ReadNullableBoolean(row, "reasoning")
                 ?? ReadNullableBoolean(row, "supports_reasoning")
                 ?? ReadNullableBoolean(row, "thinking")
@@ -337,7 +348,7 @@ public sealed class AiModelDiscoveryService
                 ?? ReadNestedBoolean(row, "thinking", "supported")
                 ?? ReadNestedBoolean(row, "capabilities", "reasoning");
             if (reasoningSupport is null &&
-                (reasoningLevels.Count > 0 || HasProviderReasoningOptions(row)))
+                (reasoningLevels.Count > 0 || hasNoneEffort || HasProviderReasoningOptions(row)))
                 reasoningSupport = true;
 
             models.Add(new AiProviderModel
@@ -361,10 +372,7 @@ public sealed class AiModelDiscoveryService
                     ?? ReadNestedInt(row, "limit", "output"),
                 ReasoningSupport = reasoningSupport,
                 ReasoningLevels = reasoningLevels,
-                ReasoningCanDisable = ReadNullableBoolean(row, "reasoning_can_disable")
-                    ?? ReadNullableBoolean(row, "can_disable")
-                    ?? ReadNestedBoolean(row, "reasoning", "can_disable")
-                    ?? ReadNestedBoolean(row, "reasoning", "canDisable"),
+                ReasoningCanDisable = reasoningCanDisable,
                 ReasoningDialect = ReadString(row, "reasoning_dialect")
                     ?? ReadNestedString(row, "reasoning", "dialect"),
                 SupportsReasoning = reasoningSupport == true,
@@ -476,6 +484,13 @@ public sealed class AiModelDiscoveryService
             }
         }
 
+        if (TryGetProperty(row, "effort", out JsonElement effort) &&
+            effort.ValueKind == JsonValueKind.Object &&
+            TryGetProperty(effort, "supported_levels", out JsonElement levels) &&
+            levels.ValueKind == JsonValueKind.Array &&
+            levels.GetArrayLength() > 0)
+            return true;
+
         return false;
     }
 
@@ -491,6 +506,12 @@ public sealed class AiModelDiscoveryService
             ReadStringArray(row, propertyName, levels);
         }
 
+        if (TryGetProperty(row, "effort", out JsonElement topLevelEffort) &&
+            topLevelEffort.ValueKind == JsonValueKind.Object)
+        {
+            ReadStringArray(topLevelEffort, "supported_levels", levels);
+        }
+
         foreach (string objectName in new[] { "reasoning", "thinking" })
         {
             if (!TryGetProperty(row, objectName, out JsonElement nested) ||
@@ -499,6 +520,10 @@ public sealed class AiModelDiscoveryService
 
             foreach (string propertyName in new[] { "effort", "levels", "supported_levels", "supportedReasoningLevels" })
                 ReadStringArray(nested, propertyName, levels);
+
+            if (TryGetProperty(nested, "effort", out JsonElement nestedEffort) &&
+                nestedEffort.ValueKind == JsonValueKind.Object)
+                ReadStringArray(nestedEffort, "supported_levels", levels);
         }
 
         foreach (string propertyName in new[] { "reasoning_options", "reasoningOptions" })

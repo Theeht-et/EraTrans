@@ -153,7 +153,11 @@ public partial class AiProviderSettingsWindow : Window
     private void ConnectionEndpointTextChanged(object sender, TextChangedEventArgs e)
     {
         if (!_loadingProfile)
+        {
             UpdateEndpointPreview();
+            UpdateReasoningControls();
+            SetEditorEnabled(_currentProfile is not null);
+        }
     }
 
     private void UpdateEndpointPreview()
@@ -339,7 +343,22 @@ public partial class AiProviderSettingsWindow : Window
     }
 
     private bool HasSupportedReasoningLevels() =>
-        GetSupportedReasoningEfforts().Count > 0;
+        IsKnownReasoningEndpoint() && GetSupportedReasoningEfforts().Count > 0;
+
+    private bool IsKnownReasoningEndpoint()
+    {
+        try
+        {
+            string host = new Uri(AiProviderProfileValidator.NormalizeBaseUrl(BaseUrlTextBox.Text)).Host;
+            return host.Equals("api.openai.com", StringComparison.OrdinalIgnoreCase) ||
+                   host.Equals("openrouter.ai", StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception ex) when (
+            ex is ArgumentException or InvalidOperationException or UriFormatException)
+        {
+            return false;
+        }
+    }
 
     private void UpdateReasoningControls()
     {

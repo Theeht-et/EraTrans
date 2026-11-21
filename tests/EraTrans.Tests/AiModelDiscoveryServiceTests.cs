@@ -591,7 +591,7 @@ public sealed class AiModelDiscoveryServiceTests
         AiProviderModel deepseek = Assert.Single(models, model => model.Id == "deepseek-model-list-shape");
         Assert.True(deepseek.ReasoningSupport);
         Assert.Equal(new[] { "low", "high", "max" }, deepseek.ReasoningLevels);
-        Assert.Null(deepseek.ReasoningCanDisable);
+        Assert.False(deepseek.ReasoningCanDisable);
 
         AiProviderModel none = Assert.Single(models, model => model.Id == "model-with-none-level");
         Assert.True(none.ReasoningSupport);

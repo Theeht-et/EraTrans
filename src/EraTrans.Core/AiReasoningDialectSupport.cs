@@ -280,7 +280,7 @@ public static class AiReasoningDialectSupport
                 return DashScopeKimiToggle;
             if (IsAliyunKimiModel(normalizedModelId))
                 return DashScopeKimiEffort;
-            if (IsGlmModel(normalizedModelId))
+            if (IsAliyunModelStudioGlmModel(normalizedModelId))
                 return DashScopeGlmEffort;
             // Model Studio serves multiple vendors. Do not infer the Qwen
             // payload shape for unrelated model IDs on a shared endpoint.
@@ -396,7 +396,7 @@ public static class AiReasoningDialectSupport
             return true;
         }
 
-        if (Regex.IsMatch(id, @"^deepseek-(?:reasoner|r1|v3\.1|v3\.2|v4)(?:$|[-._:@])", RegexOptions.IgnoreCase))
+        if (Regex.IsMatch(id, @"^deepseek-(?:flash|reasoner|r1|v3\.1|v3\.2|v4)(?:$|[-._:@])", RegexOptions.IgnoreCase))
         {
             levels = ["low", "high", "max"];
             canDisable = true;
@@ -672,6 +672,9 @@ public static class AiReasoningDialectSupport
 
     private static bool IsGlmModel(string id) =>
         Regex.IsMatch(id, @"^(?:glm|zhipu/glm)-(?:4|5)(?:$|[-.])", RegexOptions.IgnoreCase);
+
+    private static bool IsAliyunModelStudioGlmModel(string id) =>
+        Regex.IsMatch(id, @"^(?:glm|zhipu/glm)-5(?:$|[-.])", RegexOptions.IgnoreCase);
 
     private static bool IsAliyunDeepSeekV4Model(string id) =>
         Regex.IsMatch(id,

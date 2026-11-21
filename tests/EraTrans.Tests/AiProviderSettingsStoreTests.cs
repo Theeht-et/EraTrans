@@ -433,7 +433,7 @@ public sealed class AiProviderSettingsPortablePersistenceTests
     }
 
     [Fact]
-    public void EnsureBuiltInProviders_PreservesAnExistingExplicitlyEnabledDefault()
+    public void EnsureBuiltInProviders_DisablesPreviouslyEnabledBuiltInsOnlyOnce()
     {
         var explicitlyEnabled = new AiProviderProfile
         {
@@ -447,9 +447,14 @@ public sealed class AiProviderSettingsPortablePersistenceTests
 
         settings.EnsureBuiltInProviders();
 
-        Assert.True(explicitlyEnabled.IsEnabled);
+        Assert.False(explicitlyEnabled.IsEnabled);
+        Assert.True(settings.BuiltInDefaultDisableMigrationApplied);
         Assert.All(settings.Providers.Where(provider => provider.Id != explicitlyEnabled.Id),
             provider => Assert.False(provider.IsEnabled));
+
+        explicitlyEnabled.IsEnabled = true;
+        settings.EnsureBuiltInProviders();
+        Assert.True(explicitlyEnabled.IsEnabled);
     }
 
     [Fact]

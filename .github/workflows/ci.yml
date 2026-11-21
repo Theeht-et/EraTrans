@@ -27,8 +27,29 @@ jobs:
       - name: Build
         run: dotnet build EraTrans.sln --configuration Release --no-restore
 
+      # Test failures are surfaced as annotations so the failing test name and
+      # assertion message are readable without signing in to view raw logs.
       - name: Test
-        run: dotnet test EraTrans.sln --configuration Release --no-build --verbosity normal
+        shell: pwsh
+        run: |
+          dotnet test EraTrans.sln --configuration Release --no-build --verbosity normal 2>&1 |
+            Tee-Object -FilePath test-output.log
+          $exitCode = $LASTEXITCODE
+          if ($exitCode -ne 0) {
+            Select-String -Path test-output.log -Pattern 'Failed |Error Message|Assert\.' |
+              Select-Object -First 40 |
+              ForEach-Object { Write-Host "::error::$($_.Line.Trim())" }
+          }
+          exit $exitCode
+
+      - name: Upload test output
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-output
+          path: test-output.log
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Clean publish output
         shell: pwsh

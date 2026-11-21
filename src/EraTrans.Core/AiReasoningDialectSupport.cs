@@ -294,8 +294,7 @@ public static class AiReasoningDialectSupport
         if (host.Equals("api.siliconflow.cn", StringComparison.OrdinalIgnoreCase) ||
             host.Equals("api.siliconflow.com", StringComparison.OrdinalIgnoreCase))
         {
-            if (IsAliyunDeepSeekV4Model(normalizedModelId) ||
-                Regex.IsMatch(normalizedModelId, @"^glm-5\.2(?:$|[-.])", RegexOptions.IgnoreCase))
+            if (IsSiliconFlowReasoningEffortModel(modelId))
                 return SiliconFlowReasoningEffort;
             return SiliconFlow;
         }
@@ -337,12 +336,26 @@ public static class AiReasoningDialectSupport
         levels = [];
         canDisable = false;
 
-        if (dialect is DashScopeDeepSeekEffort or SiliconFlowReasoningEffort &&
-            IsAliyunDeepSeekV4Model(id))
+        if (dialect == DashScopeDeepSeekEffort && IsAliyunDeepSeekV4Model(id))
         {
-            levels = Regex.IsMatch(id, @"^(?:deepseek-v4-pro|deepseek-v4-flash-0731|deepseek-v4-pro-0813|deepseek-v4\.1-flash)(?:$|[-._:@])", RegexOptions.IgnoreCase)
+            levels = Regex.IsMatch(id, @"^(?:deepseek-v4-flash-0731|deepseek-v4-pro-0813|deepseek-v4\.1-flash)(?:$|[-._:@])", RegexOptions.IgnoreCase)
                 ? ["low", "high", "max"]
                 : ["high", "max"];
+            canDisable = true;
+            return true;
+        }
+
+        if (dialect == SiliconFlowReasoningEffort && IsDeepSeekV4Model(id))
+        {
+            levels = ["high", "max"];
+            canDisable = true;
+            return true;
+        }
+
+        if (dialect == SiliconFlowReasoningEffort &&
+            Regex.IsMatch(id, @"^glm-5\.2(?:$|[-.])", RegexOptions.IgnoreCase))
+        {
+            levels = ["high", "max"];
             canDisable = true;
             return true;
         }
@@ -350,8 +363,9 @@ public static class AiReasoningDialectSupport
         if (dialect == DashScopeKimiEffort)
         {
             canDisable = true;
-            if (IsKimiK31Pro(id))
-                levels = ["low", "medium", "high", "max"];
+            levels = IsKimiK31Pro(id)
+                ? ["low", "medium", "high", "max"]
+                : ["low", "high", "max"];
             return true;
         }
 
@@ -653,7 +667,23 @@ public static class AiReasoningDialectSupport
         Regex.IsMatch(id, @"^(?:glm|zhipu/glm)-(?:4|5)(?:$|[-.])", RegexOptions.IgnoreCase);
 
     private static bool IsAliyunDeepSeekV4Model(string id) =>
+        Regex.IsMatch(id,
+            @"^(?:deepseek-v4-pro|deepseek-v4-flash-0731|deepseek-v4-pro-0813|deepseek-v4\.1-flash)(?:$|[-._:@])",
+            RegexOptions.IgnoreCase);
+
+    private static bool IsDeepSeekV4Model(string id) =>
         Regex.IsMatch(id, @"^deepseek-v4(?:$|[-.])", RegexOptions.IgnoreCase);
+
+    private static bool IsSiliconFlowReasoningEffortModel(string modelId)
+    {
+        string id = modelId.Trim();
+        return Regex.IsMatch(id,
+                   @"^(?:Pro/)?deepseek-ai/DeepSeek-V4(?:-Flash)?$",
+                   RegexOptions.IgnoreCase) ||
+               Regex.IsMatch(id,
+                   @"^Pro/zai-org/GLM-5\.2$",
+                   RegexOptions.IgnoreCase);
+    }
 
     private static bool IsAliyunKimiModel(string id) =>
         Regex.IsMatch(id, @"^kimi-k3(?:\.1-pro)?(?:$|[-._:@])", RegexOptions.IgnoreCase);

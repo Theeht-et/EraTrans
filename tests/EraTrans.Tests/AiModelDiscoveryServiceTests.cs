@@ -740,6 +740,22 @@ public sealed class AiModelDiscoveryServiceTests
                         "default_level": "high"
                       }
                     }
+                  },
+                  "toggle-reasoning-model": {
+                    "id": "toggle-reasoning-model",
+                    "name": "Toggle reasoning model",
+                    "reasoning": true,
+                    "reasoning_options": [
+                      { "type": "toggle" }
+                    ]
+                  },
+                  "effort-without-none-model": {
+                    "id": "effort-without-none-model",
+                    "name": "Effort-only reasoning model",
+                    "reasoning": true,
+                    "reasoning_options": [
+                      { "type": "effort", "values": ["low", "high"] }
+                    ]
                   }
                 }
               }
@@ -767,6 +783,21 @@ public sealed class AiModelDiscoveryServiceTests
         Assert.True(nested.ReasoningCanDisable);
         Assert.Equal(new[] { "low", "high" }, nested.ReasoningLevels);
         Assert.Equal("openaiReasoningEffort", nested.ReasoningDialect);
+
+        IReadOnlyList<AiProviderModel> inferred = await enrichment.EnrichAsync(
+            new AiProviderProfile { BaseUrl = "https://api.openai.com/v1" },
+            [
+                new AiProviderModel { Id = "toggle-reasoning-model" },
+                new AiProviderModel { Id = "effort-without-none-model" }
+            ]);
+        AiProviderModel toggle = Assert.Single(inferred, model => model.Id == "toggle-reasoning-model");
+        Assert.True(toggle.ReasoningSupport);
+        Assert.True(toggle.ReasoningCanDisable);
+
+        AiProviderModel effortOnly = Assert.Single(inferred, model => model.Id == "effort-without-none-model");
+        Assert.True(effortOnly.ReasoningSupport);
+        Assert.False(effortOnly.ReasoningCanDisable);
+        Assert.Equal(new[] { "low", "high" }, effortOnly.ReasoningLevels);
     }
 
     [Fact]

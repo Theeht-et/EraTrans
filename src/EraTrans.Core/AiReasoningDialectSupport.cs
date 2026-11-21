@@ -722,7 +722,8 @@ public static class AiReasoningDialectSupport
         Regex.IsMatch(id, @"^qwen3\.8(?:$|[-.])", RegexOptions.IgnoreCase);
 
     private static bool IsQwen3Model(string id) =>
-        Regex.IsMatch(id, @"^(?:qwq|qwen-?3)(?:$|[-.])", RegexOptions.IgnoreCase);
+        Regex.IsMatch(id, @"qwen-?3", RegexOptions.IgnoreCase) ||
+        Regex.IsMatch(id, @"(^|[/_:@])qwq(?:$|[-.])", RegexOptions.IgnoreCase);
 
     private static bool IsGlmModel(string id) =>
         Regex.IsMatch(id, @"^(?:glm|zhipu/glm)-(?:4|5)(?:$|[-.])", RegexOptions.IgnoreCase);

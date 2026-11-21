@@ -812,6 +812,69 @@ public sealed class AiModelDiscoveryServiceTests
     }
 
     [Fact]
+    public async Task CatalogEnrichment_PreservesExplicitDisableCapabilityOverToggleAndNoneOptions()
+    {
+        var catalogUri = new Uri("https://models.dev/api.json?test=reasoning-disable-source-priority");
+        const string catalogJson = """
+            {
+              "openai": {
+                "id": "openai",
+                "api": "https://api.openai.com/v1",
+                "models": {
+                  "toggle-model": {
+                    "id": "toggle-model",
+                    "name": "Toggle model",
+                    "reasoning": true,
+                    "reasoning_options": [{ "type": "toggle" }]
+                  },
+                  "none-model": {
+                    "id": "none-model",
+                    "name": "None model",
+                    "reasoning": true,
+                    "reasoning_options": [
+                      { "type": "effort", "values": ["none", "low", "high"] }
+                    ]
+                  },
+                  "effort-only-model": {
+                    "id": "effort-only-model",
+                    "name": "Effort-only model",
+                    "reasoning": true,
+                    "reasoning_options": [
+                      { "type": "effort", "values": ["low", "high"] }
+                    ]
+                  }
+                }
+              }
+            }
+            """;
+        using var handler = new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(catalogJson, Encoding.UTF8, "application/json")
+        });
+        using var client = new HttpClient(handler);
+        var enrichment = new AiModelCatalogEnrichmentService(client, catalogUri: catalogUri);
+
+        IReadOnlyList<AiProviderModel> models = await enrichment.EnrichAsync(
+            new AiProviderProfile { BaseUrl = "https://api.openai.com/v1" },
+            [
+                new AiProviderModel { Id = "toggle-model", ReasoningCanDisable = false },
+                new AiProviderModel { Id = "none-model", ReasoningCanDisable = false },
+                new AiProviderModel { Id = "effort-only-model", ReasoningCanDisable = true }
+            ]);
+
+        AiProviderModel toggle = Assert.Single(models, model => model.Id == "toggle-model");
+        Assert.False(toggle.ReasoningCanDisable);
+
+        AiProviderModel none = Assert.Single(models, model => model.Id == "none-model");
+        Assert.False(none.ReasoningCanDisable);
+        Assert.Equal(new[] { "low", "high" }, none.ReasoningLevels);
+
+        AiProviderModel effortOnly = Assert.Single(models, model => model.Id == "effort-only-model");
+        Assert.True(effortOnly.ReasoningCanDisable);
+        Assert.Equal(new[] { "low", "high" }, effortOnly.ReasoningLevels);
+    }
+
+    [Fact]
     public async Task CatalogEnrichment_ParsesTopLevelEffortAndInfersNoneAsDisableCapability()
     {
         var catalogUri = new Uri("https://models.dev/api.json?test=top-level-effort-levels");

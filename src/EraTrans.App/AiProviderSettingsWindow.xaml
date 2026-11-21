@@ -12,7 +12,7 @@
         </Grid.RowDefinitions>
         <StackPanel Margin="0,0,0,16">
             <TextBlock Text="AI 服务商" FontSize="23" FontWeight="SemiBold" Foreground="#20242A"/>
-            <TextBlock Text="管理用于游戏文本翻译的模型服务。所有服务商统一使用 OpenAI Chat Completions 接口。"
+            <TextBlock Text="管理用于游戏文本翻译的模型服务。默认请求路径为 /chat/completions，模型列表路径为 /models，均可按服务商文档调整。"
                        Margin="0,5,0,0" FontSize="12" Foreground="#68717D" TextWrapping="Wrap"/>
         </StackPanel>
 
@@ -39,10 +39,8 @@
                             <TextBlock Text="已添加的服务商" VerticalAlignment="Center"
                                        FontWeight="SemiBold" Foreground="#303740"/>
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                                <Button x:Name="MoveUpButton" Content="上移" Width="46" Height="30"
-                                        Margin="0,0,4,0" Click="MoveProviderUp_Click"/>
-                                <Button x:Name="MoveDownButton" Content="下移" Width="46" Height="30"
-                                        Margin="0,0,4,0" Click="MoveProviderDown_Click"/>
+                                <TextBlock Text="拖动项目可排序" VerticalAlignment="Center"
+                                           Margin="0,0,10,0" FontSize="10" Foreground="#7A8490"/>
                                 <Button x:Name="AddProviderButton" Content="＋ 添加" Width="72" Height="30"
                                         Click="AddProvider_Click"/>
                             </StackPanel>
@@ -53,8 +51,11 @@
                                    TextTrimming="CharacterEllipsis"/>
                     </Grid>
                     <ListBox x:Name="ProviderListBox" Grid.Row="1" BorderThickness="0"
-                             Background="Transparent" SelectionMode="Single"
+                             Background="Transparent" SelectionMode="Single" AllowDrop="True"
                              SelectionChanged="ProviderListBox_SelectionChanged"
+                             PreviewMouseLeftButtonDown="ProviderListBox_PreviewMouseLeftButtonDown"
+                             PreviewMouseMove="ProviderListBox_PreviewMouseMove"
+                             DragOver="ProviderListBox_DragOver" Drop="ProviderListBox_Drop"
                              ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                         <ListBox.ItemContainerStyle>
                             <Style TargetType="{x:Type ListBoxItem}">

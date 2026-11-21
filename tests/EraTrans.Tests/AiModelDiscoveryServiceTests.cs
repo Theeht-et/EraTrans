@@ -656,6 +656,16 @@ public sealed class AiModelDiscoveryServiceTests
                 {
                   "id": "unknown-disable",
                   "reasoning": { "supported": true }
+                },
+                {
+                  "id": "toggle-disable",
+                  "reasoning": true,
+                  "reasoning_options": [{ "type": "toggle" }]
+                },
+                {
+                  "id": "effort-does-not-disable",
+                  "reasoning": true,
+                  "reasoning_options": [{ "type": "effort", "values": ["low", "high"] }]
                 }
               ]
             }
@@ -669,6 +679,14 @@ public sealed class AiModelDiscoveryServiceTests
         AiProviderModel unknown = Assert.Single(models, model => model.Id == "unknown-disable");
         Assert.Null(unknown.ReasoningCanDisable);
         Assert.Null(unknown.ReasoningDialect);
+
+        AiProviderModel toggle = Assert.Single(models, model => model.Id == "toggle-disable");
+        Assert.True(toggle.ReasoningCanDisable);
+        Assert.True(toggle.ReasoningSupport);
+
+        AiProviderModel effortOnly = Assert.Single(models, model => model.Id == "effort-does-not-disable");
+        Assert.False(effortOnly.ReasoningCanDisable);
+        Assert.Equal(new[] { "low", "high" }, effortOnly.ReasoningLevels);
     }
 
     [Fact]

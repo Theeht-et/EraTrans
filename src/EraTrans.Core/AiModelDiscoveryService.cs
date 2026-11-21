@@ -334,7 +334,8 @@ public sealed class AiModelDiscoveryService
                 ?? ReadNestedBoolean(row, "reasoning", "supported")
                 ?? ReadNestedBoolean(row, "thinking", "supported")
                 ?? ReadNestedBoolean(row, "capabilities", "reasoning");
-            if (reasoningSupport is null && reasoningLevels.Count > 0)
+            if (reasoningSupport is null &&
+                (reasoningLevels.Count > 0 || HasProviderReasoningOptions(row)))
                 reasoningSupport = true;
 
             models.Add(new AiProviderModel
@@ -446,6 +447,30 @@ public sealed class AiModelDiscoveryService
         return null;
     }
 
+    private static bool HasProviderReasoningOptions(JsonElement row)
+    {
+        foreach (string propertyName in new[] { "reasoning_options", "reasoningOptions" })
+        {
+            if (!TryGetProperty(row, propertyName, out JsonElement options) ||
+                options.ValueKind != JsonValueKind.Array)
+                continue;
+
+            foreach (JsonElement option in options.EnumerateArray())
+            {
+                if (option.ValueKind != JsonValueKind.Object)
+                    continue;
+                string? type = ReadString(option, "type");
+                if (type is not null &&
+                    (type.Equals("effort", StringComparison.OrdinalIgnoreCase) ||
+                     type.Equals("budget_tokens", StringComparison.OrdinalIgnoreCase) ||
+                     type.Equals("toggle", StringComparison.OrdinalIgnoreCase)))
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
     private static List<string> ReadReasoningLevels(JsonElement row)
     {
         var levels = new List<string>();
@@ -466,6 +491,19 @@ public sealed class AiModelDiscoveryService
 
             foreach (string propertyName in new[] { "effort", "levels", "supported_levels", "supportedReasoningLevels" })
                 ReadStringArray(nested, propertyName, levels);
+        }
+
+        foreach (string propertyName in new[] { "reasoning_options", "reasoningOptions" })
+        {
+            if (!TryGetProperty(row, propertyName, out JsonElement options) ||
+                options.ValueKind != JsonValueKind.Array)
+                continue;
+            foreach (JsonElement option in options.EnumerateArray())
+            {
+                if (option.ValueKind == JsonValueKind.Object &&
+                    string.Equals(ReadString(option, "type"), "effort", StringComparison.OrdinalIgnoreCase))
+                    ReadStringArray(option, "values", levels);
+            }
         }
 
         return levels

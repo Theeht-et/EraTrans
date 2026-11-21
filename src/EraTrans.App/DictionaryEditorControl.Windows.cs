@@ -4,18 +4,20 @@ using System.Windows;
 namespace EraTrans.App;
 
 /// <summary>
-/// Two translation modes share one entry point:
+/// Both modes share one request format, one prompt and one parser. They differ
+/// only in how the lines of a single request are chosen:
 ///
-/// * "按行分批" (the existing switch is off): a fixed number of dictionary lines per
-///   request, no ordering analysis at all. Kept unchanged because it is predictable
-///   and works on dictionaries whose grouping file is missing.
-/// * "按原文顺序整段" (the existing switch is on): consecutive ERB functions are sent
-///   as ordered windows, so a passage is read as a whole before it is translated.
-///   This replaces the previous semantic-group batching.
+/// * fixed batches (the switch is off): a constant number of dictionary lines,
+///   no ordering analysis at all;
+/// * ordered windows (the switch is on): consecutive ERB functions in source order,
+///   never cutting a function in half. This replaces the old semantic-group batching.
 /// </summary>
 public partial class DictionaryEditorControl
 {
     private const int TranslationBatchSize = 12;
+
+    /// <summary>Function name used for fixed batches, which have no function context.</summary>
+    private const string BatchFunctionName = "@batch";
 
     private readonly SequentialTranslationPlanner _windowPlanner = new();
     private int _windowMaxCharacters = SequentialTranslationPlanner.DefaultMaxCharacters;
@@ -53,7 +55,7 @@ public partial class DictionaryEditorControl
     }
 
     // ---------------------------------------------------------------------
-    // 按原文顺序整段翻译（替换原来的分组模式）
+    // 按原文顺序整段翻译（开关打开，替代原来的分组模式）
     // ---------------------------------------------------------------------
 
     private async Task TranslateOrderedWindowsAsync(IReadOnlyList<DictionaryEditorEntry> entries)
@@ -89,6 +91,68 @@ public partial class DictionaryEditorControl
             return;
         }
 
+        await RunWindowsAsync(
+            profile!,
+            plan.Windows,
+            statusPrefix: "按原文顺序翻译",
+            skippedSplitFunctions: plan.SplitFunctionCount);
+    }
+
+    // ---------------------------------------------------------------------
+    // 传统模式：按行固定条数分批，不做任何顺序分析（请求格式与提示词相同）
+    // ---------------------------------------------------------------------
+
+    private async Task TranslateFixedBatchesAsync(IReadOnlyList<DictionaryEditorEntry> entries)
+    {
+        if (_document is null)
+            return;
+
+        if (!TryGetTranslationProfile(out AiProviderProfile? profile))
+            return;
+
+        TranslationWindow[] windows = entries
+            .Select((entry, position) => (entry, position))
+            .GroupBy(item => item.position / TranslationBatchSize)
+            .Select(group => new TranslationWindow(
+                BatchFunctionName,
+                1,
+                group.Select(item => new WindowLine(
+                    item.entry.Index,
+                    item.entry.Key,
+                    item.entry.Original,
+                    BatchFunctionName,
+                    Translate: true,
+                    Reference: false,
+                    Join: 0,
+                    InlineCondition: item.entry.Original.Contains("\\@", StringComparison.Ordinal),
+                    AltGroup: null)).ToArray()))
+            .ToArray();
+
+        if (windows.Length == 0)
+            return;
+
+        await RunWindowsAsync(
+            profile!,
+            windows,
+            statusPrefix: "按行分批翻译",
+            skippedSplitFunctions: 0,
+            batchSize: TranslationBatchSize);
+    }
+
+    // ---------------------------------------------------------------------
+    // 两种模式共用的发送、重试与回填
+    // ---------------------------------------------------------------------
+
+    private async Task RunWindowsAsync(
+        AiProviderProfile profile,
+        IReadOnlyList<TranslationWindow> windows,
+        string statusPrefix,
+        int skippedSplitFunctions,
+        int batchSize = 0)
+    {
+        if (_document is null)
+            return;
+
         var entriesByIndex = _document.Entries.ToDictionary(entry => entry.Index);
 
         using var cancellation = new CancellationTokenSource();
@@ -100,41 +164,42 @@ public partial class DictionaryEditorControl
         int applied = 0;
         int skipped = 0;
         int windowNumber = 0;
-        int totalWindows = plan.Windows.Count;
+        int totalWindows = windows.Count;
+        int totalLines = windows.Sum(window => window.TargetCount);
 
-        StatusTextBlock.Text =
-            $"准备按原文顺序翻译：{totalWindows} 个窗口，{plan.TargetLineCount} 行；" +
-            $"被切开的函数 {plan.SplitFunctionCount} 个。";
+        StatusTextBlock.Text = skippedSplitFunctions > 0
+            ? $"准备{statusPrefix}：{totalWindows} 个窗口，{totalLines} 行；被切开的函数 {skippedSplitFunctions} 个。"
+            : $"准备{statusPrefix}：{totalWindows} 个窗口，{totalLines} 行。";
 
         try
         {
-            foreach (TranslationWindow window in plan.Windows)
+            foreach (TranslationWindow window in windows)
             {
                 cancellation.Token.ThrowIfCancellationRequested();
                 windowNumber++;
 
                 StatusTextBlock.Text =
-                    $"按原文顺序翻译：窗口 {windowNumber}/{totalWindows}" +
+                    $"{statusPrefix}：{(batchSize > 0 ? "第" : "窗口 ")}{windowNumber}/{totalWindows}" +
                     $"（{window.FunctionId}，本窗 {window.TargetCount} 行）……";
 
                 WindowTranslationOutcome outcome = await _translationService.TranslateWindowAsync(
-                    profile!, window, reasoning: null, cancellation.Token);
+                    profile, window, reasoning: null, cancellation.Token);
                 ApplyOutcome(outcome, entriesByIndex, ref applied, ref skipped);
 
                 if (outcome.MissingIds.Count > 0)
                 {
                     // Only the unanswered lines are sent again, so a partially broken
-                    // answer never wastes the whole window.
+                    // answer never wastes the whole request.
                     TranslationWindow retry = RetryWindowForIds(window, outcome.MissingIds);
                     WindowTranslationOutcome retryOutcome = await _translationService.TranslateWindowAsync(
-                        profile!, retry, reasoning: null, cancellation.Token);
+                        profile, retry, reasoning: null, cancellation.Token);
                     ApplyOutcome(retryOutcome, entriesByIndex, ref applied, ref skipped);
 
                     if (retryOutcome.MissingIds.Count > 0)
                     {
                         skipped += retryOutcome.MissingIds.Count;
                         StatusTextBlock.Text =
-                            $"窗口 {windowNumber}：{retryOutcome.MissingIds.Count} 行未返回译文，已跳过。";
+                            $"第 {windowNumber} 次请求：{retryOutcome.MissingIds.Count} 行未返回译文，已跳过。";
                     }
                 }
 
@@ -143,7 +208,7 @@ public partial class DictionaryEditorControl
             }
 
             StatusTextBlock.Text =
-                $"按原文顺序翻译完成：{totalWindows} 个窗口，回填 {applied} 行，跳过 {skipped} 行。" +
+                $"{statusPrefix}完成：{totalWindows} 个请求，回填 {applied} 行，跳过 {skipped} 行。" +
                 "请检查译文并手动保存。";
         }
         catch (OperationCanceledException)
@@ -158,92 +223,14 @@ public partial class DictionaryEditorControl
         }
         finally
         {
-            EndTranslationRun();
+            _translationCancellation = null;
+            _isTranslating = false;
+            SetTranslationControlsEnabled(true);
+            UpdateDocumentStatus();
+            UpdateTranslationButtons();
+            UpdateProviderStatus();
         }
     }
-
-    // ---------------------------------------------------------------------
-    // 传统模式：按行固定条数分批，不做任何顺序分析
-    // ---------------------------------------------------------------------
-
-    private async Task TranslateFixedBatchesAsync(IReadOnlyList<DictionaryEditorEntry> entries)
-    {
-        if (_document is null)
-            return;
-
-        if (!TryGetTranslationProfile(out AiProviderProfile? profile))
-            return;
-
-        DictionaryEditorEntry[][] batches = entries
-            .Select((entry, position) => (entry, position))
-            .GroupBy(item => item.position / TranslationBatchSize)
-            .Select(group => group.Select(item => item.entry).ToArray())
-            .ToArray();
-
-        if (batches.Length == 0)
-            return;
-
-        var entriesByIndex = _document.Entries.ToDictionary(entry => entry.Index);
-
-        using var cancellation = new CancellationTokenSource();
-        _translationCancellation = cancellation;
-        _isTranslating = true;
-        SetTranslationControlsEnabled(false);
-        UpdateDocumentStatus();
-
-        int applied = 0;
-        int skipped = 0;
-        int completed = 0;
-        int total = entries.Count;
-
-        try
-        {
-            for (int batchIndex = 0; batchIndex < batches.Length; batchIndex++)
-            {
-                cancellation.Token.ThrowIfCancellationRequested();
-                DictionaryEditorEntry[] batch = batches[batchIndex];
-
-                StatusTextBlock.Text =
-                    $"正在请求 AI 翻译：{completed}/{total}" +
-                    $"（第 {batchIndex + 1}/{batches.Length} 批，本批 {batch.Length} 项）……";
-
-                AiTranslationRequest[] requests = batch
-                    .Select(entry => new AiTranslationRequest(
-                        entry.Index, entry.Key, entry.Original, entry.Context))
-                    .ToArray();
-
-                IReadOnlyList<AiTranslationResult> results = await _translationService.TranslateAsync(
-                    profile!, requests, cancellation.Token);
-
-                ApplyResults(results, entriesByIndex, ref applied, ref skipped);
-
-                completed += batch.Length;
-                EntriesDataGrid.Items.Refresh();
-                UpdateDocumentStatus();
-            }
-
-            StatusTextBlock.Text =
-                $"AI 翻译完成：回填 {applied} 项，跳过 {skipped} 项。请检查译文并手动保存。";
-        }
-        catch (OperationCanceledException)
-        {
-            StatusTextBlock.Text = $"AI 翻译已取消：已回填 {applied} 项，尚未自动保存。";
-        }
-        catch (Exception ex)
-        {
-            StatusTextBlock.Text = $"AI 翻译中断：已回填 {applied} 项，尚未自动保存。";
-            MessageBox.Show(OwnerWindow, ex.Message, "AI 翻译失败",
-                MessageBoxButton.OK, MessageBoxImage.Error);
-        }
-        finally
-        {
-            EndTranslationRun();
-        }
-    }
-
-    // ---------------------------------------------------------------------
-    // 公共部分
-    // ---------------------------------------------------------------------
 
     private bool TryGetTranslationProfile(out AiProviderProfile? profile)
     {
@@ -273,16 +260,6 @@ public partial class DictionaryEditorControl
         return false;
     }
 
-    private void EndTranslationRun()
-    {
-        _translationCancellation = null;
-        _isTranslating = false;
-        SetTranslationControlsEnabled(true);
-        UpdateDocumentStatus();
-        UpdateTranslationButtons();
-        UpdateProviderStatus();
-    }
-
     private WindowPlan BuildWindowPlan(
         IReadOnlyList<DictionaryEditorEntry> allEntries,
         ISet<string> targetKeys)
@@ -307,16 +284,9 @@ public partial class DictionaryEditorControl
         WindowTranslationOutcome outcome,
         IReadOnlyDictionary<int, DictionaryEditorEntry> entriesByIndex,
         ref int applied,
-        ref int skipped) =>
-        ApplyResults(outcome.Translations, entriesByIndex, ref applied, ref skipped);
-
-    private void ApplyResults(
-        IReadOnlyList<AiTranslationResult> results,
-        IReadOnlyDictionary<int, DictionaryEditorEntry> entriesByIndex,
-        ref int applied,
         ref int skipped)
     {
-        foreach (AiTranslationResult result in results)
+        foreach (AiTranslationResult result in outcome.Translations)
         {
             if (!entriesByIndex.TryGetValue(result.Id, out DictionaryEditorEntry? entry))
                 continue;

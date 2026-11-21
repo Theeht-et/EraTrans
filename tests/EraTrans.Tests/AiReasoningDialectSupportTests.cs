@@ -397,6 +397,45 @@ public sealed class AiReasoningDialectSupportTests
     }
 
     [Fact]
+    public void Qwen38ThinkingOnlyOpenWeightModel_DoesNotExposeOff()
+    {
+        AiProviderModel model = new() { Id = "qwen3.8-2.4t-a95b" };
+        const string endpoint = "https://dashscope.aliyuncs.com/compatible-mode/v1";
+        AiReasoningDialectSupport.ApplyKnownModelDefaults(model, endpoint);
+
+        Assert.True(model.ReasoningSupport);
+        Assert.False(model.ReasoningCanDisable);
+        Assert.Equal("qwenReasoningEffort", model.ReasoningDialect);
+        Assert.Equal(new[] { "low", "medium", "xhigh" }, model.ReasoningLevels);
+
+        using JsonDocument offBody = CreateBody(
+            endpoint, model, new AiModelReasoningSettings { Disabled = true });
+        Assert.False(offBody.RootElement.TryGetProperty("enable_thinking", out _));
+        Assert.False(offBody.RootElement.TryGetProperty("reasoning_effort", out _));
+    }
+
+    [Fact]
+    public void Qwen37MaxOnlyThinkingSnapshotsAreDistinguishedFromMixedThinkingModels()
+    {
+        const string endpoint = "https://dashscope.aliyuncs.com/compatible-mode/v1";
+        foreach (string id in new[] { "qwen3.7-max-preview", "qwen3.7-max-2026-05-17" })
+        {
+            AiProviderModel onlyThinking = new() { Id = id };
+            AiReasoningDialectSupport.ApplyKnownModelDefaults(onlyThinking, endpoint);
+            Assert.True(onlyThinking.ReasoningSupport);
+            Assert.False(onlyThinking.ReasoningCanDisable);
+        }
+
+        foreach (string id in new[] { "qwen3.7-max-2026-05-20", "qwen3.7-max-2026-06-08" })
+        {
+            AiProviderModel mixed = new() { Id = id };
+            AiReasoningDialectSupport.ApplyKnownModelDefaults(mixed, endpoint);
+            Assert.True(mixed.ReasoningSupport);
+            Assert.True(mixed.ReasoningCanDisable);
+        }
+    }
+
+    [Fact]
     public void AliyunWorkspaceDomain_ResolvesDialectFromModelFamilyNotHostAlone()
     {
         const string endpoint = "https://llm-abc123.cn-beijing.maas.aliyuncs.com/compatible-mode/v1";

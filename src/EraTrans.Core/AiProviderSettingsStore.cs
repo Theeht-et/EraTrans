@@ -391,6 +391,10 @@ public sealed class AiProviderSettingsStore
                                 Created = model.Created,
                                 ReasoningSupport = model.ReasoningSupport,
                                 ReasoningLevels = [.. (model.ReasoningLevels ?? [])],
+                            ReasoningCanDisable = model.ReasoningCanDisable,
+                            ReasoningDialect = model.ReasoningDialect,
+                                ReasoningCanDisable = model.ReasoningCanDisable,
+                                ReasoningDialect = model.ReasoningDialect,
                                 IsEmbedding = model.IsEmbedding,
                                 IsRerank = model.IsRerank,
                                 Family = model.Family,
@@ -627,6 +631,8 @@ public sealed class AiProviderSettingsStore
         public long? Created { get; set; }
         public bool? ReasoningSupport { get; set; }
         public List<string>? ReasoningLevels { get; set; } = [];
+        public bool? ReasoningCanDisable { get; set; }
+        public string? ReasoningDialect { get; set; }
         public bool IsEmbedding { get; set; }
         public bool IsRerank { get; set; }
         public string? Family { get; set; }

@@ -3,6 +3,8 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
 
 namespace EraTrans.App;
 
@@ -69,8 +71,11 @@ public partial class AiProviderSettingsWindow : Window
         ProviderTitleTextBlock.Text = hasProfile ? _currentProfile!.Name : "服务商配置";
         ProviderNameTextBox.Text = _currentProfile?.Name ?? "";
         BaseUrlTextBox.Text = _currentProfile?.BaseUrl ?? "";
+        ChatCompletionsPathTextBox.Text = _currentProfile?.ChatCompletionsPath ?? "/chat/completions";
+        ModelsPathTextBox.Text = _currentProfile?.ModelsPath ?? "/models";
         ApiKeyPasswordBox.Password = _currentProfile?.ApiKey ?? "";
         ModelTextBox.Text = _currentProfile?.Model ?? "";
+        UpdateEndpointPreview();
         LegacyProtocolWarning.Visibility = _currentProfile?.RequiresEndpointReview == true
             ? Visibility.Visible : Visibility.Collapsed;
         int cachedCount = _currentProfile?.AvailableModels.Count ?? 0;
@@ -91,6 +96,8 @@ public partial class AiProviderSettingsWindow : Window
         ProviderListBox.IsEnabled = idle;
         ProviderNameTextBox.IsEnabled = hasProfile && idle && _currentProfile?.IsBuiltIn != true;
         BaseUrlTextBox.IsEnabled = hasProfile && idle;
+        ChatCompletionsPathTextBox.IsEnabled = hasProfile && idle;
+        ModelsPathTextBox.IsEnabled = hasProfile && idle;
         ApiKeyPasswordBox.IsEnabled = hasProfile && idle;
         ModelTextBox.IsEnabled = hasProfile && idle;
         FetchModelsButton.IsEnabled = hasProfile && idle;
@@ -107,9 +114,6 @@ public partial class AiProviderSettingsWindow : Window
             hasProfile && idle && _currentProfile is not null && !_currentProfile.IsBuiltIn;
         AddProviderButton.IsEnabled = idle;
 
-        int index = _currentProfile is null ? -1 : _providers.IndexOf(_currentProfile);
-        MoveUpButton.IsEnabled = idle && index > 0;
-        MoveDownButton.IsEnabled = idle && index >= 0 && index < _providers.Count - 1;
         SetCurrentProviderButton.IsEnabled =
             hasProfile && idle &&
             _currentProfile!.IsReadyForTranslation &&
@@ -142,6 +146,36 @@ public partial class AiProviderSettingsWindow : Window
         SetEditorEnabled(_currentProfile is not null);
     }
 
+    private void ConnectionEndpointTextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (!_loadingProfile)
+            UpdateEndpointPreview();
+    }
+
+    private void UpdateEndpointPreview()
+    {
+        string chat = PreviewEndpoint(BaseUrlTextBox.Text, ChatCompletionsPathTextBox.Text,
+            "/chat/completions");
+        string models = PreviewEndpoint(BaseUrlTextBox.Text, ModelsPathTextBox.Text, "/models");
+        EndpointPreviewTextBlock.Text =
+            $"连接测试/翻译：{chat}\n获取模型：{models}";
+    }
+
+    private static string PreviewEndpoint(string baseUrl, string path, string fallbackPath)
+    {
+        if (string.IsNullOrWhiteSpace(baseUrl))
+            return $"(请填写 Base URL){AiProviderProfileValidator.NormalizeApiPath(path, fallbackPath)}";
+
+        try
+        {
+            return AiProviderProfileValidator.BuildApiEndpoint(baseUrl, path, fallbackPath);
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or UriFormatException)
+        {
+            return $"(地址或路径无效：{ex.Message})";
+        }
+    }
+
     private void RestoreDefaultBaseUrl_Click(object sender, RoutedEventArgs e)
     {
         if (_loadFailed || _isTesting || _isFetchingModels || _currentProfile is not { IsBuiltIn: true })
@@ -154,9 +188,14 @@ public partial class AiProviderSettingsWindow : Window
 
         BaseUrlTextBox.Text = preset.BaseUrl;
         _currentProfile.BaseUrl = preset.BaseUrl;
+        _currentProfile.ChatCompletionsPath = "/chat/completions";
+        _currentProfile.ModelsPath = "/models";
+        ChatCompletionsPathTextBox.Text = _currentProfile.ChatCompletionsPath;
+        ModelsPathTextBox.Text = _currentProfile.ModelsPath;
         _currentProfile.RequiresEndpointReview = false;
         LegacyProtocolWarning.Visibility = Visibility.Collapsed;
-        StatusTextBlock.Text = "已恢复该内置服务商的默认 API 地址。";
+        UpdateEndpointPreview();
+        StatusTextBlock.Text = "已恢复该内置服务商的默认 Base URL 和 API 路径。";
         UpdateActiveProviderStatus();
     }
 
@@ -179,24 +218,101 @@ public partial class AiProviderSettingsWindow : Window
         UpdateActiveProviderStatus();
     }
 
-    private void MoveProviderUp_Click(object sender, RoutedEventArgs e) => MoveSelectedProvider(-1);
+    private Point _providerDragStart;
+    private bool _providerDragPending;
 
-    private void MoveProviderDown_Click(object sender, RoutedEventArgs e) => MoveSelectedProvider(1);
-
-    private void MoveSelectedProvider(int offset)
+    private void ProviderListBox_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (_loadFailed || _isTesting || _isFetchingModels || _currentProfile is null)
+        _providerDragStart = e.GetPosition(ProviderListBox);
+        _providerDragPending = FindVisualParent<Button>(e.OriginalSource as DependencyObject) is null;
+
+        if (e.OriginalSource is DependencyObject source)
+        {
+            ListBoxItem? item = ItemsControl.ContainerFromElement(ProviderListBox, source) as ListBoxItem;
+            if (item?.DataContext is AiProviderProfile profile)
+                ProviderListBox.SelectedItem = profile;
+        }
+    }
+
+    private void ProviderListBox_PreviewMouseMove(object sender, MouseEventArgs e)
+    {
+        if (!_providerDragPending || e.LeftButton != MouseButtonState.Pressed ||
+            _loadFailed || _isTesting || _isFetchingModels ||
+            ProviderListBox.SelectedItem is not AiProviderProfile profile)
+            return;
+
+        Point current = e.GetPosition(ProviderListBox);
+        if (Math.Abs(current.X - _providerDragStart.X) < SystemParameters.MinimumHorizontalDragDistance &&
+            Math.Abs(current.Y - _providerDragStart.Y) < SystemParameters.MinimumVerticalDragDistance)
+            return;
+
+        _providerDragPending = false;
+        var data = new DataObject(typeof(AiProviderProfile), profile);
+        DragDrop.DoDragDrop(ProviderListBox, data, DragDropEffects.Move);
+    }
+
+    private void ProviderListBox_DragOver(object sender, DragEventArgs e)
+    {
+        e.Effects = !_loadFailed && !_isTesting && !_isFetchingModels &&
+                    e.Data.GetDataPresent(typeof(AiProviderProfile))
+            ? DragDropEffects.Move
+            : DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private void ProviderListBox_Drop(object sender, DragEventArgs e)
+    {
+        _providerDragPending = false;
+        if (_loadFailed || _isTesting || _isFetchingModels ||
+            !e.Data.GetDataPresent(typeof(AiProviderProfile)) ||
+            e.Data.GetData(typeof(AiProviderProfile)) is not AiProviderProfile dragged)
+            return;
+
+        int oldIndex = _providers.IndexOf(dragged);
+        if (oldIndex < 0)
+            return;
+
+        int targetIndex;
+        DependencyObject? source = e.OriginalSource as DependencyObject;
+        ListBoxItem? targetItem = source is null
+            ? null
+            : ItemsControl.ContainerFromElement(ProviderListBox, source) as ListBoxItem;
+
+        if (targetItem?.DataContext is AiProviderProfile target)
+        {
+            targetIndex = _providers.IndexOf(target);
+            Point position = e.GetPosition(targetItem);
+            if (position.Y >= targetItem.ActualHeight / 2)
+                targetIndex++;
+        }
+        else
+        {
+            targetIndex = _providers.Count;
+        }
+
+        if (targetIndex > oldIndex)
+            targetIndex--;
+        targetIndex = Math.Clamp(targetIndex, 0, _providers.Count - 1);
+        if (targetIndex == oldIndex)
             return;
 
         SaveFieldsToCurrentProfile();
-        int oldIndex = _providers.IndexOf(_currentProfile);
-        int newIndex = oldIndex + offset;
-        if (oldIndex < 0 || newIndex < 0 || newIndex >= _providers.Count)
-            return;
-
-        _providers.Move(oldIndex, newIndex);
-        ProviderListBox.SelectedItem = _currentProfile;
+        _providers.Move(oldIndex, targetIndex);
+        ProviderListBox.SelectedItem = dragged;
         UpdateActiveProviderStatus();
+        StatusTextBlock.Text = "服务商顺序已调整，点击“保存”后生效。";
+        e.Handled = true;
+    }
+
+    private static T? FindVisualParent<T>(DependencyObject? child) where T : DependencyObject
+    {
+        while (child is not null)
+        {
+            if (child is T match)
+                return match;
+            child = VisualTreeHelper.GetParent(child);
+        }
+        return null;
     }
 
     private void SaveFieldsToCurrentProfile()
@@ -213,8 +329,11 @@ public partial class AiProviderSettingsWindow : Window
         _currentProfile.Name = ProviderNameTextBox.Text.Trim();
         ProviderTitleTextBlock.Text = _currentProfile.Name;
         _currentProfile.BaseUrl = newBaseUrl;
+        _currentProfile.ChatCompletionsPath = ChatCompletionsPathTextBox.Text.Trim();
+        _currentProfile.ModelsPath = ModelsPathTextBox.Text.Trim();
         _currentProfile.Model = ModelTextBox.Text.Trim();
         _currentProfile.ApiKey = ApiKeyPasswordBox.Password;
+        UpdateEndpointPreview();
 
         if (string.Equals(_activeProviderId, _currentProfile.Id, StringComparison.Ordinal) &&
             !_currentProfile.IsReadyForTranslation)
@@ -247,6 +366,8 @@ public partial class AiProviderSettingsWindow : Window
         {
             Name = customName,
             BaseUrl = "",
+            ChatCompletionsPath = "/chat/completions",
+            ModelsPath = "/models",
             Protocol = AiProviderProtocol.OpenAiCompatible,
             IsBuiltIn = false,
             IsEnabled = true

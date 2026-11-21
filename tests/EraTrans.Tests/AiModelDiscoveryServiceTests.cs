@@ -713,6 +713,45 @@ public sealed class AiModelDiscoveryServiceTests
     }
 
     [Fact]
+    public async Task CatalogEnrichment_ParsesTopLevelEffortAndInfersNoneAsDisableCapability()
+    {
+        var catalogUri = new Uri("https://models.dev/api.json?test=top-level-effort-levels");
+        const string catalogJson = """
+            {
+              "openai": {
+                "id": "openai",
+                "api": "https://api.openai.com/v1",
+                "models": {
+                  "reasoning-model": {
+                    "id": "reasoning-model",
+                    "name": "Reasoning model",
+                    "reasoning": true,
+                    "effort": {
+                      "supported_levels": ["none", "low", "high"],
+                      "default_level": "high"
+                    }
+                  }
+                }
+              }
+            }
+            """;
+        using var handler = new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(catalogJson, Encoding.UTF8, "application/json")
+        });
+        using var client = new HttpClient(handler);
+        var enrichment = new AiModelCatalogEnrichmentService(client, catalogUri: catalogUri);
+
+        AiProviderModel result = Assert.Single(await enrichment.EnrichAsync(
+            new AiProviderProfile { BaseUrl = "https://api.openai.com/v1" },
+            [new AiProviderModel { Id = "reasoning-model" }]));
+
+        Assert.True(result.ReasoningSupport);
+        Assert.True(result.ReasoningCanDisable);
+        Assert.Equal(new[] { "low", "high" }, result.ReasoningLevels);
+    }
+
+    [Fact]
     public async Task CatalogEnrichment_AppliesVerifiedDeepSeekReasoningDefaultsWhenCatalogUnavailable()
     {
         var catalogUri = new Uri("https://models.dev/api.json?test=deepseek-reasoning-defaults");

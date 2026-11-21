@@ -48,23 +48,16 @@ public sealed class AiProviderModel
 
     public bool IsChatModel => !IsEmbedding && !IsRerank;
 
-    public string ReasoningSupportDescription
-    {
-        get
-        {
-            string support = ReasoningSupport switch
-            {
-                true => "支持",
-                false => "不支持",
-                null when SupportsReasoning => "支持",
-                _ => "未知"
-            };
-            return $"推理能力：{support}" +
-                   (ReasoningSupport != false && ReasoningLevels.Count > 0
-                       ? $"（{string.Join(" / ", ReasoningLevels)}）"
-                       : "");
-        }
-    }
+    public bool HasKnownReasoningSupport =>
+        ReasoningSupport.HasValue || SupportsReasoning;
+
+    public bool IsReasoningSupported =>
+        ReasoningSupport ?? SupportsReasoning;
+
+    public string ReasoningSupportDescription =>
+        !HasKnownReasoningSupport
+            ? ""
+            : IsReasoningSupported ? "推理支持" : "不支持推理";
 
     public string ContextLimitDescription => ContextLimit is > 0
         ? FormatTokenLimit(ContextLimit.Value)

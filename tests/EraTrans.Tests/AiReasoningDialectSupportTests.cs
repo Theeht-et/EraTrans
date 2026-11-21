@@ -194,6 +194,20 @@ public sealed class AiReasoningDialectSupportTests
     }
 
     [Fact]
+    public void KimiForCodingHighspeed_HasNoEffortLadderButCanDisableLikeKelivo()
+    {
+        const string endpoint = "https://api.moonshot.cn/v1";
+        AiProviderModel model = new() { Id = "kimi-for-coding-highspeed" };
+        AiReasoningDialectSupport.ApplyKnownModelDefaults(model, endpoint);
+
+        Assert.True(model.ReasoningSupport);
+        Assert.Equal("kimiThinking", model.ReasoningDialect);
+        Assert.Empty(model.ReasoningLevels);
+        Assert.True(model.ReasoningCanDisable);
+        Assert.True(AiReasoningDialectSupport.IsCompatible(endpoint, model));
+    }
+
+    [Fact]
     public void OpenRouter_UsesItsOwnReasoningObjectAndPreservesExplicitCapability()
     {
         AiProviderModel model = new()

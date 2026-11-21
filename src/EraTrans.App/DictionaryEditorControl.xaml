@@ -1,34 +1,10 @@
-<Window x:Class="EraTrans.App.DictionaryEditorWindow"
-        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="字典编辑器"
-        Width="1480"
-        Height="880"
-        MinWidth="980"
-        MinHeight="640"
-        WindowStartupLocation="CenterOwner"
-        Background="#F5F6F8"
-        Loaded="Window_Loaded"
-        PreviewKeyDown="Window_PreviewKeyDown">
-    <Grid Margin="18">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-            <RowDefinition Height="Auto" />
-        </Grid.RowDefinitions>
-
-        <StackPanel Margin="0,0,0,16">
-            <TextBlock Text="JSON 字典编辑器"
-                       FontSize="24"
-                       FontWeight="SemiBold"
-                       Foreground="#20242A" />
-            <TextBlock Margin="0,5,0,0"
-                       Text="只编辑非变量词条的译文和翻译状态。key、original、context 及其他原始字段会保留。"
-                       FontSize="13"
-                       Foreground="#68717D" />
-        </StackPanel>
-
-        <Grid Grid.Row="1">
+<UserControl x:Class="EraTrans.App.DictionaryEditorControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="#F5F6F8"
+             PreviewKeyDown="Control_PreviewKeyDown">
+    <Grid>
+        <Grid>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="300" MinWidth="190" MaxWidth="480" />
                 <ColumnDefinition Width="8" />
@@ -99,8 +75,7 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
-                        <RowDefinition Height="190" />
-                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="160" />
                     </Grid.RowDefinitions>
 
                     <Grid Margin="0,0,0,12">
@@ -131,12 +106,24 @@
                     </Grid>
 
                     <DockPanel Grid.Row="1" Margin="0,0,0,10">
-                        <TextBlock x:Name="AiProviderStatusTextBlock"
-                                   DockPanel.Dock="Right"
-                                   VerticalAlignment="Center"
-                                   Foreground="#68717D"
-                                   FontSize="11"
-                                   Text="AI 翻译未配置" />
+                        <StackPanel DockPanel.Dock="Right"
+                                    Width="235"
+                                    Margin="10,0,0,0"
+                                    VerticalAlignment="Center">
+                            <TextBlock x:Name="AiProviderStatusTextBlock"
+                                       Foreground="#68717D"
+                                       FontSize="11"
+                                       TextAlignment="Right"
+                                       TextTrimming="CharacterEllipsis"
+                                       Text="AI 翻译未配置" />
+                            <TextBlock x:Name="StatusTextBlock"
+                                       Foreground="#68717D"
+                                       FontSize="11"
+                                       TextAlignment="Right"
+                                       TextWrapping="Wrap"
+                                       MaxHeight="30"
+                                       Text="就绪" />
+                        </StackPanel>
                         <StackPanel Orientation="Horizontal">
                             <Button x:Name="AiSettingsButton"
                                     Content="AI 服务设置"
@@ -174,8 +161,8 @@
                         </StackPanel>
                     </DockPanel>
 
+                    <Grid Grid.Row="2">
                     <DataGrid x:Name="EntriesDataGrid"
-                              Grid.Row="2"
                               AutoGenerateColumns="False"
                               CanUserAddRows="False"
                               CanUserDeleteRows="False"
@@ -264,73 +251,81 @@
                                                 Margin="4,2"
                                                 IsEnabled="{Binding IsEditable}"
                                                 Click="EditTranslationButton_Click"
-                                                ToolTip="在大编辑窗口中查看和编辑完整译文" />
+                                                ToolTip="打开完整译文编辑窗口" />
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
 
                         </DataGrid.Columns>
                     </DataGrid>
+                    <Border x:Name="EmptyStateBorder" Background="#FAFBFC"
+                            BorderBrush="#E3E6EA" BorderThickness="1" CornerRadius="6"
+                            Margin="1" Visibility="Visible" IsHitTestVisible="False">
+                        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="520" Margin="24">
+                            <TextBlock x:Name="EmptyStateTitleTextBlock" Text="尚未打开工作区"
+                                       FontSize="20" FontWeight="SemiBold" Foreground="#39414A"
+                                       TextAlignment="Center" />
+                            <TextBlock x:Name="EmptyStateDescriptionTextBlock" Margin="0,10,0,0"
+                                       Text="选择原游戏目录和统一输出目录，然后打开工作区或提取字典。"
+                                       FontSize="13" Foreground="#68717D" TextWrapping="Wrap"
+                                       TextAlignment="Center" />
+                        </StackPanel>
+                    </Border>
+                    </Grid>
 
-                    <Border Grid.Row="3" Margin="0,10,0,0" Padding="10" Background="#FAFBFC" BorderBrush="#E3E6EA" BorderThickness="1" CornerRadius="6">
+                    <Border Grid.Row="3" Margin="0,10,0,0" Padding="10"
+                            Background="#FAFBFC" BorderBrush="#E3E6EA" BorderThickness="1" CornerRadius="6">
                         <Grid>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="68" />
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="*" />
-                            </Grid.RowDefinitions>
-                            <TextBlock x:Name="EntryGroupLabelTextBlock" Text="同组条目"
-                                       FontSize="12" FontWeight="SemiBold" Foreground="#39414A" Margin="0,0,0,4" />
-                            <TextBox x:Name="EntryGroupTextBox" Grid.Row="1" IsReadOnly="True"
-                                     BorderThickness="0" Background="Transparent" TextWrapping="Wrap"
-                                     AcceptsReturn="True" VerticalScrollBarVisibility="Auto"
-                                     HorizontalScrollBarVisibility="Auto"
-                                     Text="当前词条没有可用的 ERB 语义分组信息。" />
-                            <TextBlock Grid.Row="2" Text="当前词条上下文"
-                                       FontSize="12" FontWeight="SemiBold" Foreground="#39414A"
-                                       Margin="0,5,0,4" />
-                            <TextBox x:Name="EntryContextTextBox" Grid.Row="3" IsReadOnly="True"
-                                     BorderThickness="0" Background="Transparent" TextWrapping="Wrap"
-                                     AcceptsReturn="True" VerticalScrollBarVisibility="Auto"
-                                     HorizontalScrollBarVisibility="Auto"
-                                     Text="选择一个词条查看上下文。" />
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="1.1*" />
+                                <ColumnDefinition Width="8" />
+                                <ColumnDefinition Width="1*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid Grid.Column="0">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                </Grid.RowDefinitions>
+                                <TextBlock x:Name="EntryGroupLabelTextBlock" Text="同组条目"
+                                           FontSize="12" FontWeight="SemiBold" Foreground="#39414A"
+                                           Margin="0,0,0,4" />
+                                <TextBox x:Name="EntryGroupTextBox" Grid.Row="1" IsReadOnly="True"
+                                         BorderThickness="0" Background="Transparent" TextWrapping="Wrap"
+                                         AcceptsReturn="True" VerticalScrollBarVisibility="Auto"
+                                         HorizontalScrollBarVisibility="Auto"
+                                         Text="当前词条没有可用的 ERB 语义分组信息。" />
+                            </Grid>
+                            <GridSplitter Grid.Column="1" Width="8" HorizontalAlignment="Stretch"
+                                          VerticalAlignment="Stretch" ResizeDirection="Columns"
+                                          ResizeBehavior="PreviousAndNext" ShowsPreview="False" Cursor="SizeWE">
+                                <GridSplitter.Template>
+                                    <ControlTemplate TargetType="{x:Type GridSplitter}">
+                                        <Border Background="Transparent">
+                                            <Border Width="2" HorizontalAlignment="Center"
+                                                    Background="#D5DAE0" CornerRadius="1" />
+                                        </Border>
+                                    </ControlTemplate>
+                                </GridSplitter.Template>
+                            </GridSplitter>
+                            <Grid Grid.Column="2">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                </Grid.RowDefinitions>
+                                <TextBlock Text="当前词条上下文" FontSize="12" FontWeight="SemiBold"
+                                           Foreground="#39414A" Margin="0,0,0,4" />
+                                <TextBox x:Name="EntryContextTextBox" Grid.Row="1" IsReadOnly="True"
+                                         BorderThickness="0" Background="Transparent" TextWrapping="Wrap"
+                                         AcceptsReturn="True" VerticalScrollBarVisibility="Auto"
+                                         HorizontalScrollBarVisibility="Auto"
+                                         Text="选择一个词条查看上下文。" />
+                            </Grid>
                         </Grid>
                     </Border>
-                    <Grid Grid.Row="4" Margin="0,12,0,0">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock x:Name="StatusTextBlock"
-                                   VerticalAlignment="Center"
-                                   Text="变量类词条只读；状态值：-1 忽略、0 未翻译、1 已翻译。"
-                                   TextWrapping="Wrap"
-                                   Foreground="#68717D"
-                                   FontSize="12" />
-                        <StackPanel Grid.Column="1"
-                                    Orientation="Horizontal">
-                            <Button x:Name="SaveButton"
-                                    Content="保存当前字典"
-                                    Width="140"
-                                    Height="36"
-                                    Margin="0,0,10,0"
-                                    IsEnabled="False"
-                                    Click="SaveButton_Click" />
-                            <Button Content="关闭"
-                                    Width="90"
-                                    Height="36"
-                                    Click="CloseButton_Click" />
-                        </StackPanel>
-                    </Grid>
+
                 </Grid>
             </Border>
         </Grid>
 
-        <TextBlock Grid.Row="2"
-                   Margin="0,12,0,0"
-                   Text="AI 结果仅回填当前编辑器，不会自动保存；变量、已有译文和已忽略词条均会跳过。保存前仍会检查文件是否被外部修改。"
-                   Foreground="#87909B"
-                   FontSize="11" />
     </Grid>
-</Window>
+</UserControl>

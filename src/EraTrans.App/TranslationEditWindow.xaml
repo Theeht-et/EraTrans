@@ -7,7 +7,7 @@
         MinWidth="680"
         MinHeight="540"
         ResizeMode="CanResize"
-        WindowStartupLocation="CenterOwner"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
         Background="#F5F6F8"
         PreviewKeyDown="Window_PreviewKeyDown">
     <Grid Margin="22">

@@ -8,6 +8,7 @@ namespace EraTrans.App;
 public partial class ParserSettingsWindow : Window
 {
     private readonly EraTransUserSettingsStore _store;
+    private readonly EraTransUserSettings _settingsToPreserve;
 
     public ParserSettingsWindow(
         EraTransUserSettings settings,
@@ -17,6 +18,7 @@ public partial class ParserSettingsWindow : Window
         ArgumentNullException.ThrowIfNull(store);
 
         _store = store;
+        _settingsToPreserve = settings;
         InitializeComponent();
         Populate(settings);
     }
@@ -75,6 +77,9 @@ public partial class ParserSettingsWindow : Window
                 MergeConcatenatedStrings = MergeConcatenatedStringsCheckBox.IsChecked == true,
                 WriteContext = WriteContextCheckBox.IsChecked == true,
                 EnableErbSemanticGroupingTranslation = EnableErbSemanticGroupingTranslationCheckBox.IsChecked == true,
+                LastGameDirectory = _settingsToPreserve.LastGameDirectory,
+                LastOutputRootDirectory = _settingsToPreserve.LastOutputRootDirectory,
+                LastDictionaryFileRelativePath = _settingsToPreserve.LastDictionaryFileRelativePath,
                 TargetFileExtensions = ReadLines(TargetFileExtensionsTextBox),
                 AutoReplaceReferenceFiles = ReadLines(AutoReplaceReferenceFilesTextBox),
                 VariableNameCharacters = ReadLines(VariableNameCharactersTextBox),

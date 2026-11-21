@@ -95,7 +95,11 @@ public partial class DictionaryEditorControl : UserControl
             return false;
         }
 
-        CommitActiveGridEdits();
+        if (!CommitActiveGridEdits())
+        {
+            return false;
+        }
+
         if (_document?.IsDirty != true)
         {
             return true;
@@ -147,7 +151,11 @@ public partial class DictionaryEditorControl : UserControl
             return false;
         }
 
-        CommitActiveGridEdits();
+        if (!CommitActiveGridEdits())
+        {
+            return false;
+        }
+
         if (_document?.IsDirty != true)
         {
             return true;
@@ -175,11 +183,9 @@ public partial class DictionaryEditorControl : UserControl
                LoadDictionary(_currentFile);
     }
 
-    private void CommitActiveGridEdits()
-    {
-        EntriesDataGrid.CommitEdit(DataGridEditingUnit.Cell, true);
+    private bool CommitActiveGridEdits() =>
+        EntriesDataGrid.CommitEdit(DataGridEditingUnit.Cell, true) &&
         EntriesDataGrid.CommitEdit(DataGridEditingUnit.Row, true);
-    }
 
     private void SetEmptyState(string title, string description)
     {
@@ -660,8 +666,12 @@ public partial class DictionaryEditorControl : UserControl
 
         try
         {
-            EntriesDataGrid.CommitEdit(System.Windows.Controls.DataGridEditingUnit.Cell, true);
-            EntriesDataGrid.CommitEdit(System.Windows.Controls.DataGridEditingUnit.Row, true);
+            if (!CommitActiveGridEdits())
+            {
+                StatusTextBlock.Text = "当前单元格内容尚未通过提交，未保存字典。请修正后重试。";
+                return false;
+            }
+
             _document.Save();
             StatusTextBlock.Text = "保存成功。原始字段和其他 JSON 字段均已保留。";
             UpdateDocumentStatus();
@@ -698,8 +708,10 @@ public partial class DictionaryEditorControl : UserControl
 
     private void TranslateSelectedButton_Click(object sender, RoutedEventArgs e)
     {
-        EntriesDataGrid.CommitEdit(System.Windows.Controls.DataGridEditingUnit.Cell, true);
-        EntriesDataGrid.CommitEdit(System.Windows.Controls.DataGridEditingUnit.Row, true);
+        if (!CommitActiveGridEdits())
+        {
+            return;
+        }
 
         DictionaryEditorEntry[] selected = EntriesDataGrid.SelectedCells
             .Select(cell => cell.Item)
@@ -727,8 +739,10 @@ public partial class DictionaryEditorControl : UserControl
         if (_document is null)
             return;
 
-        EntriesDataGrid.CommitEdit(System.Windows.Controls.DataGridEditingUnit.Cell, true);
-        EntriesDataGrid.CommitEdit(System.Windows.Controls.DataGridEditingUnit.Row, true);
+        if (!CommitActiveGridEdits())
+        {
+            return;
+        }
 
         DictionaryEditorEntry[] pending = _document.Entries
             .Where(IsPendingTranslation)

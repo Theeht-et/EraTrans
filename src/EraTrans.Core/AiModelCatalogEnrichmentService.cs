@@ -101,7 +101,7 @@ public sealed class AiModelCatalogEnrichmentService
         CatalogSnapshot? catalog = await GetCatalogAsync(cancellationToken);
         if (catalog is null)
         {
-            return models.Select(ApplyKnownReasoningHint).ToArray();
+            return models.Select(model => ApplyKnownReasoningHint(ApplyProviderReasoningDefaults(profile, model))).ToArray();
         }
 
         IReadOnlyList<string> providerIds = ResolveProviderIds(profile.BaseUrl, catalog)
@@ -151,11 +151,11 @@ public sealed class AiModelCatalogEnrichmentService
             }
 
             if (metadata is null && contextHint is null)
-                return ApplyKnownReasoningHint(model);
+                return ApplyKnownReasoningHint(ApplyProviderReasoningDefaults(profile, model));
 
             metadata ??= new CatalogModel { Id = lookupId, Name = model.DisplayName };
             AiProviderModel enriched = ApplyMetadata(model, metadata, contextHint);
-            return ApplyKnownReasoningHint(enriched);
+            return ApplyKnownReasoningHint(ApplyProviderReasoningDefaults(profile, enriched));
         }).ToArray();
     }
 
@@ -549,6 +549,52 @@ public sealed class AiModelCatalogEnrichmentService
         }
 
         return hostProviderIds;
+    }
+
+    private static AiProviderModel ApplyProviderReasoningDefaults(
+        AiProviderProfile profile,
+        AiProviderModel model)
+    {
+        string host;
+        try
+        {
+            host = new Uri(AiProviderProfileValidator.NormalizeBaseUrl(profile.BaseUrl)).Host;
+        }
+        catch (Exception ex) when (
+            ex is ArgumentException or InvalidOperationException or UriFormatException)
+        {
+            return model;
+        }
+
+        if (!host.Equals("api.deepseek.com", StringComparison.OrdinalIgnoreCase))
+            return model;
+
+        string id = model.Id.Trim();
+        if (!id.Equals("deepseek-flash", StringComparison.OrdinalIgnoreCase) &&
+            !id.Equals("deepseek-v4-pro", StringComparison.OrdinalIgnoreCase))
+            return model;
+
+        // DeepSeek's current official Chat Completions documentation explicitly
+        // lists these models and their low/high/max effort + thinking toggle.
+        if (model.ReasoningSupport == false)
+            return model;
+
+        model.ReasoningSupport = true;
+        model.SupportsReasoning = true;
+        if (model.ReasoningLevels.Count == 0)
+            model.ReasoningLevels = ["low", "high", "max"];
+        else
+            model.ReasoningLevels = model.ReasoningLevels
+                .Where(level => level.Equals("low", StringComparison.OrdinalIgnoreCase) ||
+                                level.Equals("high", StringComparison.OrdinalIgnoreCase) ||
+                                level.Equals("max", StringComparison.OrdinalIgnoreCase))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        if (model.ReasoningLevels.Count == 0)
+            model.ReasoningLevels = ["low", "high", "max"];
+        model.ReasoningCanDisable ??= true;
+        model.ReasoningDialect ??= "deepseekThinking";
+        return model;
     }
 
     private static AiProviderModel ApplyKnownReasoningHint(AiProviderModel model)

@@ -15,6 +15,7 @@ public partial class MainWindow : Window
     private readonly DictionaryEditorControl _editor;
     private EraTransOutputLayout? _activeLayout;
     private bool _canPersistSettings = true;
+    private bool _isProcessing;
 
     public MainWindow()
     {
@@ -186,6 +187,7 @@ public partial class MainWindow : Window
 
     private void SetBusy(bool busy)
     {
+        _isProcessing = busy;
         OpenWorkspaceButton.IsEnabled = !busy;
         BrowseGameDirectoryButton.IsEnabled = !busy;
         BrowseOutputDirectoryButton.IsEnabled = !busy;
@@ -331,6 +333,18 @@ public partial class MainWindow : Window
 
     private void MainWindow_Closing(object? sender, CancelEventArgs e)
     {
+        if (_isProcessing)
+        {
+            MessageBox.Show(
+                this,
+                "字典提取或游戏副本处理仍在进行。请等待当前操作完成后再关闭程序。",
+                "操作进行中",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            e.Cancel = true;
+            return;
+        }
+
         if (!_editor.CanClose())
         {
             e.Cancel = true;

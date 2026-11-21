@@ -255,11 +255,7 @@
                             </StackPanel>
                             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                                 <CheckBox x:Name="ReasoningEnabledCheckBox" Content="启用推理" VerticalAlignment="Center" Margin="0,0,12,0" IsEnabled="False" Checked="ReasoningCheckBoxChanged" Unchecked="ReasoningCheckBoxChanged"/>
-                                <ComboBox x:Name="ReasoningEffortComboBox" Width="104" Height="30" IsEnabled="False" SelectionChanged="ReasoningEffortChanged">
-                                    <ComboBoxItem Content="低" Tag="low"/>
-                                    <ComboBoxItem Content="中" Tag="medium"/>
-                                    <ComboBoxItem Content="高" Tag="high"/>
-                                </ComboBox>
+                                <ComboBox x:Name="ReasoningEffortComboBox" Width="104" Height="30" IsEnabled="False" SelectionChanged="ReasoningEffortChanged"/>
                             </StackPanel>
                         </Grid>
                     </Border>

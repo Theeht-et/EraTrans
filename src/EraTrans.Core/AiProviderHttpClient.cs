@@ -28,7 +28,8 @@ public static class AiProviderHttpRequestFactory
         string userPrompt)
     {
         ArgumentNullException.ThrowIfNull(profile);
-        string baseUrl = AiProviderProfileValidator.NormalizeBaseUrl(profile.BaseUrl).TrimEnd('/');
+        string endpoint = AiProviderProfileValidator.BuildApiEndpoint(
+            profile.BaseUrl, profile.ChatCompletionsPath, "/chat/completions");
         string json = JsonSerializer.Serialize(new
         {
             model = profile.Model,
@@ -40,7 +41,7 @@ public static class AiProviderHttpRequestFactory
         }, JsonOptions);
 
         return new AiProviderHttpRequestDetails(
-            "POST", baseUrl + "/chat/completions", json,
+            "POST", endpoint, json,
             "Authorization", "Bearer " + profile.ApiKey.Trim(), null, null);
     }
 }

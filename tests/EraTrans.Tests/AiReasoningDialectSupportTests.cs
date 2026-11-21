@@ -332,7 +332,7 @@ public sealed class AiReasoningDialectSupportTests
     }
 
     [Fact]
-    public void Grok47_ExposesVerifiedEffortLevelsAndNeverOffersOff()
+    public void Grok47CapabilityIsRecognizedButNotSentThroughLegacyChatCompletions()
     {
         AiProviderModel model = new() { Id = "grok-4.7" };
         const string endpoint = "https://api.x.ai/v1";
@@ -340,16 +340,14 @@ public sealed class AiReasoningDialectSupportTests
 
         Assert.True(model.ReasoningSupport);
         Assert.False(model.ReasoningCanDisable);
-        Assert.Equal("openaiReasoningEffort", model.ReasoningDialect);
+        Assert.Null(model.ReasoningDialect);
         Assert.Equal(new[] { "low", "medium", "high", "xhigh" }, model.ReasoningLevels);
+        Assert.False(AiReasoningDialectSupport.IsCompatible(endpoint, model));
 
         using JsonDocument body = CreateBody(
             endpoint, model, new AiModelReasoningSettings { Enabled = true, Effort = "xhigh" });
-        Assert.Equal("xhigh", body.RootElement.GetProperty("reasoning_effort").GetString());
-
-        using JsonDocument offBody = CreateBody(
-            endpoint, model, new AiModelReasoningSettings { Disabled = true });
-        Assert.False(offBody.RootElement.TryGetProperty("reasoning_effort", out _));
+        Assert.False(body.RootElement.TryGetProperty("reasoning_effort", out _));
+        Assert.False(body.RootElement.TryGetProperty("reasoning", out _));
     }
 
     [Fact]

@@ -283,8 +283,8 @@ public sealed class AiReasoningDialectSupportTests
         AiReasoningDialectSupport.ApplyKnownModelDefaults(model, "https://api.deepseek.com/v1");
 
         Assert.True(model.ReasoningSupport);
-        Assert.Equal(new[] { "low", "high", "max" }, model.ReasoningLevels);
-        Assert.True(model.ReasoningCanDisable);
+        Assert.Empty(model.ReasoningLevels);
+        Assert.Null(model.ReasoningCanDisable);
         Assert.Null(model.ReasoningDialect);
         Assert.False(AiReasoningDialectSupport.IsCompatible("https://api.deepseek.com/v1", model));
     }

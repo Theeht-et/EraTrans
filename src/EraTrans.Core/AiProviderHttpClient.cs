@@ -22,23 +22,37 @@ public static class AiProviderHttpRequestFactory
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     };
 
+    /// <summary>
+    /// Builds a Chat Completions request. The reasoning argument overrides the
+    /// provider's saved choice; omitting it uses whatever the user selected in
+    /// the dictionary editor (Auto by default, which writes nothing).
+    /// </summary>
     public static AiProviderHttpRequestDetails Create(
         AiProviderProfile profile,
         string systemPrompt,
-        string userPrompt)
+        string userPrompt,
+        AiReasoningOptions? reasoning = null)
     {
         ArgumentNullException.ThrowIfNull(profile);
         string endpoint = AiProviderProfileValidator.BuildApiEndpoint(
             profile.BaseUrl, profile.ChatCompletionsPath, "/chat/completions");
-        string json = JsonSerializer.Serialize(new
+
+        var payload = new Dictionary<string, object?>(StringComparer.Ordinal)
         {
-            model = profile.Model,
-            messages = new[]
+            ["model"] = profile.Model,
+            ["messages"] = new[]
             {
                 new { role = "system", content = systemPrompt },
                 new { role = "user", content = userPrompt }
             }
-        }, JsonOptions);
+        };
+
+        AiReasoning.Apply(
+            payload,
+            profile.BaseUrl,
+            reasoning ?? AiReasoningSettingsStore.ResolveForProvider(profile.Id));
+
+        string json = JsonSerializer.Serialize(payload, JsonOptions);
 
         return new AiProviderHttpRequestDetails(
             "POST", endpoint, json,
@@ -59,15 +73,23 @@ public sealed class OpenAiCompatibleChatCompletionClient : IAiChatCompletionClie
         _httpClient = httpClient ?? SharedHttpClient;
     }
 
+    public Task<string> CompleteAsync(
+        AiProviderProfile profile,
+        string systemPrompt,
+        string userPrompt,
+        CancellationToken cancellationToken = default) =>
+        CompleteAsync(profile, systemPrompt, userPrompt, reasoning: null, cancellationToken);
+
     public async Task<string> CompleteAsync(
         AiProviderProfile profile,
         string systemPrompt,
         string userPrompt,
+        AiReasoningOptions? reasoning,
         CancellationToken cancellationToken = default)
     {
         AiProviderProfileValidator.Validate(profile);
         AiProviderHttpRequestDetails details =
-            AiProviderHttpRequestFactory.Create(profile, systemPrompt, userPrompt);
+            AiProviderHttpRequestFactory.Create(profile, systemPrompt, userPrompt, reasoning);
 
         using var request = new HttpRequestMessage(HttpMethod.Post, details.Endpoint);
         request.Content = new StringContent(details.JsonBody, Encoding.UTF8, "application/json");

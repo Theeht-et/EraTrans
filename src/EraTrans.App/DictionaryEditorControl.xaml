@@ -110,7 +110,28 @@
                                     Width="235"
                                     Margin="10,0,0,0"
                                     VerticalAlignment="Center">
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                <TextBlock Text="推理"
+                                           VerticalAlignment="Center"
+                                           Margin="0,0,6,0"
+                                           FontSize="11"
+                                           Foreground="#68717D" />
+                                <ComboBox x:Name="AiReasoningComboBox"
+                                          Width="92"
+                                          Height="24"
+                                          Padding="4,0"
+                                          VerticalContentAlignment="Center"
+                                          FontSize="11"
+                                          SelectionChanged="AiReasoningComboBox_SelectionChanged"
+                                          DropDownOpened="AiReasoningComboBox_DropDownOpened"
+                                          ToolTip="自动：使用服务商默认设置。开启/关闭：向请求附加当前服务商对应的推理字段。">
+                                    <ComboBoxItem Content="自动" Tag="auto" />
+                                    <ComboBoxItem Content="开启" Tag="on" />
+                                    <ComboBoxItem Content="关闭" Tag="off" />
+                                </ComboBox>
+                            </StackPanel>
                             <TextBlock x:Name="AiProviderStatusTextBlock"
+                                       Margin="0,4,0,0"
                                        Foreground="#68717D"
                                        FontSize="11"
                                        TextAlignment="Right"

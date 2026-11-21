@@ -18,6 +18,7 @@ public sealed class AiProviderModel
     public long? Created { get; set; }
     public bool? ReasoningSupport { get; set; }
     public List<string> ReasoningLevels { get; set; } = [];
+    public bool HasExplicitReasoningLevels { get; set; }
     public bool? ReasoningCanDisable { get; set; }
     public string? ReasoningDialect { get; set; }
     public int? ReasoningBudgetMin { get; set; }

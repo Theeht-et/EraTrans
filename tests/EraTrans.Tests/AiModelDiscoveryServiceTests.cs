@@ -285,6 +285,46 @@ public sealed class AiModelDiscoveryServiceTests
     }
 
     [Fact]
+    public async Task CatalogEnrichment_ExtractsReasoningBudgetBoundsFromModelsDevOptions()
+    {
+        var catalogUri = new Uri("https://models.dev/api.json?test=reasoning-budget-bounds");
+        const string json = """
+            {
+              "openrouter": {
+                "id": "openrouter",
+                "api": "https://openrouter.ai/api/v1",
+                "models": {
+                  "vendor/budget-model": {
+                    "id": "vendor/budget-model",
+                    "name": "Budget Model",
+                    "reasoning": true,
+                    "reasoning_options": [
+                      { "type": "budget_tokens", "min": 4096, "max": 50000 }
+                    ]
+                  }
+                }
+              }
+            }
+            """;
+        using var handler = new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(json, Encoding.UTF8, "application/json")
+        });
+        using var client = new HttpClient(handler);
+        var enrichment = new AiModelCatalogEnrichmentService(client, catalogUri: catalogUri);
+
+        IReadOnlyList<AiProviderModel> result = await enrichment.EnrichAsync(
+            new AiProviderProfile { BaseUrl = "https://openrouter.ai/api/v1" },
+            [new AiProviderModel { Id = "vendor/budget-model" }]);
+
+        AiProviderModel model = Assert.Single(result);
+        Assert.True(model.ReasoningSupport);
+        Assert.Equal(4096, model.ReasoningBudgetMin);
+        Assert.Equal(50000, model.ReasoningBudgetMax);
+        Assert.Empty(model.ReasoningLevels);
+    }
+
+    [Fact]
     public async Task CatalogEnrichment_CatalogFailureDoesNotBlockDiscoveredModels()
     {
         var catalogUri = new Uri("https://models.dev/api.json?test=era-trans-enrichment-failure");

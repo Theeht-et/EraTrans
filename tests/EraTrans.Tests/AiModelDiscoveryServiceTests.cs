@@ -692,6 +692,45 @@ public sealed class AiModelDiscoveryServiceTests
         Assert.Equal("openaiReasoningEffort", result.ReasoningDialect);
     }
 
+    [Fact]
+    public async Task CatalogEnrichment_AppliesVerifiedDeepSeekReasoningDefaultsWhenCatalogUnavailable()
+    {
+        var catalogUri = new Uri("https://models.dev/api.json?test=deepseek-reasoning-defaults");
+        using var handler = new StubHandler(_ =>
+            new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
+        using var client = new HttpClient(handler);
+        var enrichment = new AiModelCatalogEnrichmentService(client, catalogUri: catalogUri);
+
+        IReadOnlyList<AiProviderModel> models = await enrichment.EnrichAsync(
+            new AiProviderProfile { BaseUrl = "https://api.deepseek.com/v1" },
+            [
+                new AiProviderModel { Id = "deepseek-flash" },
+                new AiProviderModel { Id = "deepseek-v4-pro" },
+                new AiProviderModel { Id = "deepseek-reasoner" },
+                new AiProviderModel { Id = "other-model" }
+            ]);
+
+        AiProviderModel flash = Assert.Single(models, model => model.Id == "deepseek-flash");
+        Assert.True(flash.ReasoningSupport);
+        Assert.True(flash.ReasoningCanDisable);
+        Assert.Equal("deepseekThinking", flash.ReasoningDialect);
+        Assert.Equal(new[] { "low", "high", "max" }, flash.ReasoningLevels);
+
+        AiProviderModel v4 = Assert.Single(models, model => model.Id == "deepseek-v4-pro");
+        Assert.True(v4.ReasoningSupport);
+        Assert.True(v4.ReasoningCanDisable);
+        Assert.Equal("deepseekThinking", v4.ReasoningDialect);
+
+        AiProviderModel legacy = Assert.Single(models, model => model.Id == "deepseek-reasoner");
+        Assert.Null(legacy.ReasoningCanDisable);
+        Assert.Null(legacy.ReasoningDialect);
+        Assert.Empty(legacy.ReasoningLevels);
+
+        AiProviderModel other = Assert.Single(models, model => model.Id == "other-model");
+        Assert.Null(other.ReasoningSupport);
+        Assert.Null(other.ReasoningCanDisable);
+    }
+
     private sealed class StubHandler(
         Func<HttpRequestMessage, HttpResponseMessage> responseFactory) : HttpMessageHandler
     {

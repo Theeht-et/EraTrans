@@ -24,6 +24,30 @@ public sealed class AiReasoningDialectSupportTests
     }
 
     [Fact]
+    public void ProviderDialectOverridesConflictingCatalogDialectLikeKelivo()
+    {
+        AiProviderModel openAiModel = new()
+        {
+            Id = "gpt-5.6",
+            ReasoningSupport = true,
+            ReasoningDialect = "openaiResponsesReasoning"
+        };
+        AiReasoningDialectSupport.ApplyKnownModelDefaults(
+            openAiModel, "https://api.openai.com/v1");
+        Assert.Equal("openaiReasoningEffort", openAiModel.ReasoningDialect);
+
+        AiProviderModel qwenModel = new()
+        {
+            Id = "qwen3.7-plus",
+            ReasoningSupport = true,
+            ReasoningDialect = "openaiReasoningEffort"
+        };
+        AiReasoningDialectSupport.ApplyKnownModelDefaults(
+            qwenModel, "https://dashscope.aliyuncs.com/compatible-mode/v1");
+        Assert.Equal("qwenEnableThinking", qwenModel.ReasoningDialect);
+    }
+
+    [Fact]
     public void OpenAiGpt56_UsesNoneOnlyWhenModelAllowsDisabling()
     {
         AiProviderModel model = new() { Id = "gpt-5.6" };

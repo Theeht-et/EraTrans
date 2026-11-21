@@ -900,6 +900,45 @@ public sealed class AiModelDiscoveryServiceTests
     }
 
     [Fact]
+    public async Task CatalogEnrichment_PreservesExplicitlyEmptyEffortLevelsLikeKelivo()
+    {
+        var catalogUri = new Uri("https://models.dev/api.json?test=explicit-empty-effort-levels");
+        const string catalogJson = """
+            {
+              "openai": {
+                "id": "openai",
+                "api": "https://api.openai.com/v1",
+                "models": {
+                  "gpt-5.6": {
+                    "id": "gpt-5.6",
+                    "name": "GPT 5.6",
+                    "reasoning": true,
+                    "reasoning_options": [
+                      { "type": "effort", "values": [] }
+                    ]
+                  }
+                }
+              }
+            }
+            """;
+        using var handler = new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(catalogJson, Encoding.UTF8, "application/json")
+        });
+        using var client = new HttpClient(handler);
+        var enrichment = new AiModelCatalogEnrichmentService(client, catalogUri: catalogUri);
+
+        AiProviderModel model = Assert.Single(await enrichment.EnrichAsync(
+            new AiProviderProfile { BaseUrl = "https://api.openai.com/v1" },
+            [new AiProviderModel { Id = "gpt-5.6" }]));
+
+        Assert.True(model.ReasoningSupport);
+        Assert.False(model.ReasoningCanDisable);
+        Assert.True(model.HasExplicitReasoningLevels);
+        Assert.Empty(model.ReasoningLevels);
+    }
+
+    [Fact]
     public async Task CatalogEnrichment_AppliesVerifiedDeepSeekReasoningDefaultsWhenCatalogUnavailable()
     {
         var catalogUri = new Uri("https://models.dev/api.json?test=deepseek-reasoning-defaults");

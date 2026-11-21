@@ -106,6 +106,7 @@ public partial class AiProviderSettingsWindow : Window
         bool customPanelVisible = CustomReasoningPanel.Visibility == Visibility.Visible;
         bool customOptionsEnabled = CustomReasoningOptionsPanel.Visibility == Visibility.Visible;
         CustomReasoningEnabledCheckBox.IsEnabled = hasProfile && idle && customPanelVisible;
+        CustomReasoningDialectComboBox.IsEnabled = hasProfile && idle && customOptionsEnabled;
         CustomReasoningCanDisableCheckBox.IsEnabled = hasProfile && idle && customOptionsEnabled;
         CustomReasoningLowCheckBox.IsEnabled = hasProfile && idle && customOptionsEnabled;
         CustomReasoningMediumCheckBox.IsEnabled = hasProfile && idle && customOptionsEnabled;
@@ -443,6 +444,13 @@ public partial class AiProviderSettingsWindow : Window
             CustomReasoningEnabledCheckBox.IsChecked = custom is not null;
             CustomReasoningOptionsPanel.Visibility = custom is not null
                 ? Visibility.Visible : Visibility.Collapsed;
+            CustomReasoningDialectComboBox.SelectedItem = custom is null
+                ? null
+                : CustomReasoningDialectComboBox.Items
+                    .OfType<ComboBoxItem>()
+                    .FirstOrDefault(item => string.Equals(
+                        item.Tag?.ToString(), custom.Dialect, StringComparison.OrdinalIgnoreCase))
+                  ?? CustomReasoningDialectComboBox.Items.OfType<ComboBoxItem>().FirstOrDefault();
             CustomReasoningCanDisableCheckBox.IsChecked = custom?.CanDisable == true;
             CustomReasoningLowCheckBox.IsChecked = custom?.Levels.Contains("low", StringComparer.OrdinalIgnoreCase) == true;
             CustomReasoningMediumCheckBox.IsChecked = custom?.Levels.Contains("medium", StringComparer.OrdinalIgnoreCase) == true;
@@ -543,6 +551,9 @@ public partial class AiProviderSettingsWindow : Window
         else if (_currentProfile.ReasoningCapabilitiesByModel.TryGetValue(
                      SelectedModelId, out AiModelReasoningCapabilityOverride? capability))
         {
+            capability.Dialect =
+                (CustomReasoningDialectComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString()
+                ?? AiReasoningDialectSupport.CustomOpenAiEffortDialect;
             capability.CanDisable = CustomReasoningCanDisableCheckBox.IsChecked == true;
             var selectedLevels = new List<string>();
             if (CustomReasoningLowCheckBox.IsChecked == true)

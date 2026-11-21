@@ -18,6 +18,8 @@ public sealed class AiProviderProfile
     public string BaseUrl { get; set; } = "";
     public string Model { get; set; } = "";
     public string ApiKey { get; set; } = "";
+    public string ChatCompletionsPath { get; set; } = "/chat/completions";
+    public string ModelsPath { get; set; } = "/models";
     public AiProviderProtocol Protocol { get; set; } = AiProviderProtocol.OpenAiCompatible;
     public bool IsEnabled { get; set; } = true;
     public bool IsBuiltIn { get; set; }
@@ -176,6 +178,33 @@ public static class AiProviderProfileValidator
         }
     }
 
+    public static string NormalizeApiPath(string? value, string defaultPath)
+    {
+        string path = string.IsNullOrWhiteSpace(value) ? defaultPath : value.Trim();
+        if (!path.StartsWith("/", StringComparison.Ordinal))
+            path = "/" + path;
+
+        if (path.StartsWith("//", StringComparison.Ordinal) ||
+            path.Contains('?', StringComparison.Ordinal) ||
+            path.Contains('#', StringComparison.Ordinal) ||
+            path.Contains('\\', StringComparison.Ordinal) ||
+            path.Split('/').Any(segment => segment is "." or "..") ||
+            Uri.TryCreate(path, UriKind.Absolute, out _))
+        {
+            throw new InvalidOperationException(
+                "API 路径必须是站点内的相对路径，例如 /chat/completions，不能包含域名、查询参数或片段。");
+        }
+
+        return path;
+    }
+
+    public static string BuildApiEndpoint(string baseUrl, string? apiPath, string defaultPath)
+    {
+        string normalizedBaseUrl = NormalizeBaseUrl(baseUrl).TrimEnd('/');
+        string normalizedPath = NormalizeApiPath(apiPath, defaultPath);
+        return normalizedBaseUrl + normalizedPath;
+    }
+
     public static void ValidateForStorage(AiProviderProfile profile)
     {
         ArgumentNullException.ThrowIfNull(profile);
@@ -278,6 +307,10 @@ public sealed class AiProviderSettingsStore
                         BaseUrl = item.BaseUrl ?? "",
                         Model = item.Model ?? "",
                         ApiKey = Encoding.UTF8.GetString(keyBytes),
+                        ChatCompletionsPath = AiProviderProfileValidator.NormalizeApiPath(
+                            item.ChatCompletionsPath, "/chat/completions"),
+                        ModelsPath = AiProviderProfileValidator.NormalizeApiPath(
+                            item.ModelsPath, "/models"),
                         Protocol = AiProviderProtocol.OpenAiCompatible,
                         IsEnabled = item.IsEnabled,
                         IsBuiltIn = item.IsBuiltIn,
@@ -390,6 +423,10 @@ public sealed class AiProviderSettingsStore
                     Name = profile.Name,
                     BaseUrl = profile.BaseUrl,
                     Model = profile.Model,
+                    ChatCompletionsPath = AiProviderProfileValidator.NormalizeApiPath(
+                        profile.ChatCompletionsPath, "/chat/completions"),
+                    ModelsPath = AiProviderProfileValidator.NormalizeApiPath(
+                        profile.ModelsPath, "/models"),
                     Protocol = (int)AiProviderProtocol.OpenAiCompatible,
                     IsEnabled = profile.IsEnabled,
                     IsBuiltIn = profile.IsBuiltIn,
@@ -486,6 +523,8 @@ public sealed class AiProviderSettingsStore
         public string Name { get; set; } = "";
         public string BaseUrl { get; set; } = "";
         public string Model { get; set; } = "";
+        public string ChatCompletionsPath { get; set; } = "/chat/completions";
+        public string ModelsPath { get; set; } = "/models";
         public int Protocol { get; set; } = (int)AiProviderProtocol.OpenAiCompatible;
         public bool IsEnabled { get; set; } = true;
         public bool IsBuiltIn { get; set; }

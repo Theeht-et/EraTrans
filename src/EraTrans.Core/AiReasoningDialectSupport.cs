@@ -152,7 +152,7 @@ public static class AiReasoningDialectSupport
             dialect?.Equals(DeepSeek, StringComparison.OrdinalIgnoreCase) == true &&
             !documentedDeepSeekModel;
 
-        if (TryGetModelDefaults(id, out string[] levels, out bool canDisable))
+        if (TryGetModelDefaults(id, dialect, out string[] levels, out bool canDisable))
         {
             model.ReasoningSupport ??= true;
             model.SupportsReasoning = true;
@@ -272,21 +272,12 @@ public static class AiReasoningDialectSupport
 
     private static bool IsKnownReasoningFamily(string id)
     {
-        return Regex.IsMatch(id, @"^(?:o[134]|gpt-[56])(?:$|[-.])", RegexOptions.IgnoreCase) ||
-               Regex.IsMatch(id, @"^deepseek-(?:reasoner|r1|v3\.1|v3\.2|v4)(?:$|[-._:@])", RegexOptions.IgnoreCase) ||
-               Regex.IsMatch(id, @"^(?:qwq|qwen-?3)(?:$|[-.])", RegexOptions.IgnoreCase) ||
-               Regex.IsMatch(id, @"^kimi-k2-thinking(?:$|[-._:@])", RegexOptions.IgnoreCase) ||
-               Regex.IsMatch(id, @"^kimi-k2\.[567](?:$|[-._:@])", RegexOptions.IgnoreCase) ||
-               Regex.IsMatch(id, @"^kimi-k3(?:$|[-._:@])", RegexOptions.IgnoreCase) ||
-               Regex.IsMatch(id, @"^grok-4\.[567](?:$|[-._:@])", RegexOptions.IgnoreCase) ||
-               Regex.IsMatch(id, @"^gemini-(?:2\.5|3|4)(?:$|[-._:@])", RegexOptions.IgnoreCase) ||
+        // Keep broad capability-only hints for families whose reasoning
+        // transport is not implemented here. Families with explicit supported
+        // and unsupported variants are handled by TryGetModelDefaults.
+        return Regex.IsMatch(id, @"^gemini-(?:2\.5|3|4)(?:$|[-._:@])", RegexOptions.IgnoreCase) ||
                Regex.IsMatch(id, @"^claude-(?:(?:3[-.]7)|(?:opus|sonnet|haiku|fable|mythos)-[45])(?:$|[-._:@])", RegexOptions.IgnoreCase) ||
-               Regex.IsMatch(id, @"^glm-(?:4[.-][567]|5)(?:$|[-._:@])", RegexOptions.IgnoreCase) ||
-               Regex.IsMatch(id, @"^(?:minimax-m[23]|step-3|intern-s1|laguna)(?:$|[-._:@])", RegexOptions.IgnoreCase) ||
-               id.Contains("mimo-v2", StringComparison.OrdinalIgnoreCase) ||
-               (id.Contains("doubao", StringComparison.OrdinalIgnoreCase) &&
-                (id.Contains("seed-", StringComparison.OrdinalIgnoreCase) ||
-                 id.Contains("thinking", StringComparison.OrdinalIgnoreCase)));
+               Regex.IsMatch(id, @"^step-3(?:$|[-._:@])", RegexOptions.IgnoreCase);
     }
 
     private static bool TryGetModelDefaults(
@@ -297,6 +288,28 @@ public static class AiReasoningDialectSupport
     {
         levels = [];
         canDisable = false;
+
+        if (IsQwen4Model(id))
+        {
+            canDisable = true;
+            if (dialect == QwenReasoningEffort)
+                levels = ["low", "high", "xhigh"];
+            return true;
+        }
+
+        if (IsQwen38Model(id))
+        {
+            canDisable = true;
+            if (dialect == QwenReasoningEffort)
+                levels = ["low", "medium", "xhigh"];
+            return true;
+        }
+
+        if (Regex.IsMatch(id, @"^grok-4\.7(?:$|[-.])", RegexOptions.IgnoreCase))
+        {
+            levels = ["low", "medium", "high", "xhigh"];
+            return true;
+        }
 
         if (Regex.IsMatch(id, @"^deepseek-(?:reasoner|r1|v3\.1|v3\.2|v4)(?:$|[-._:@])", RegexOptions.IgnoreCase))
         {
@@ -455,7 +468,7 @@ public static class AiReasoningDialectSupport
             return true;
         }
 
-        if (Regex.IsMatch(id, @"^(?:qwq|qwen-?3)(?:$|[-.])", RegexOptions.IgnoreCase))
+        if (IsQwen3Model(id))
         {
             canDisable = !IsDashScopeThinkingOnlyModel(id);
             return true;
@@ -497,6 +510,14 @@ public static class AiReasoningDialectSupport
         }
 
         if (id.StartsWith("laguna-", StringComparison.OrdinalIgnoreCase))
+        {
+            canDisable = true;
+            return true;
+        }
+
+        if (Regex.IsMatch(id,
+                @"^intern-s(?:2(?:-preview(?:-(?:397b|35b))?)?|1(?:-pro|-mini)?)(?:$|[-._:@])",
+                RegexOptions.IgnoreCase))
         {
             canDisable = true;
             return true;
@@ -549,14 +570,64 @@ public static class AiReasoningDialectSupport
         return id.ToLowerInvariant();
     }
 
-    private static int ResolveBudget(string effort) => effort switch
+    private static bool IsQwen4Model(string id) =>
+        Regex.IsMatch(id, @"^qwen4-max(?:$|[-.])", RegexOptions.IgnoreCase);
+
+    private static bool IsQwen38Model(string id) =>
+        Regex.IsMatch(id, @"^qwen3\.8(?:$|[-.])", RegexOptions.IgnoreCase);
+
+    private static bool IsQwen3Model(string id) =>
+        Regex.IsMatch(id, @"^(?:qwq|qwen-?3)(?:$|[-.])", RegexOptions.IgnoreCase);
+
+    private static bool IsGlmModel(string id) =>
+        Regex.IsMatch(id, @"^(?:glm|zhipu/glm)-(?:4|5)(?:$|[-.])", RegexOptions.IgnoreCase);
+
+    private static bool IsAliyunModelStudioHost(string host)
     {
-        "minimal" => 512,
-        "low" => 1024,
-        "medium" => 4096,
-        "high" => 8192,
-        "xhigh" => 16000,
-        "max" => 32000,
-        _ => 4096
-    };
+        return host.Equals("dashscope.aliyuncs.com", StringComparison.OrdinalIgnoreCase) ||
+               host.Equals("dashscope-intl.aliyuncs.com", StringComparison.OrdinalIgnoreCase) ||
+               host.Equals("dashscope-us.aliyuncs.com", StringComparison.OrdinalIgnoreCase) ||
+               host.Equals("cn-hongkong.dashscope.aliyuncs.com", StringComparison.OrdinalIgnoreCase) ||
+               host.Equals("trial.cn-beijing.maas.aliyuncs.com", StringComparison.OrdinalIgnoreCase) ||
+               host.Equals("trial.ap-southeast-1.maas.aliyuncs.com", StringComparison.OrdinalIgnoreCase) ||
+               host.Equals("trial.cn-hongkong.maas.aliyuncs.com", StringComparison.OrdinalIgnoreCase) ||
+               host.EndsWith(".maas.aliyuncs.com", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static int ResolveBudget(AiProviderModel model, string effort)
+    {
+        string id = NormalizeModelId(model.Id);
+        if (IsQwen4Model(id))
+        {
+            return effort switch
+            {
+                "low" => 4096,
+                "high" => 131072,
+                "xhigh" => 262144,
+                _ => 131072
+            };
+        }
+
+        if (IsQwen38Model(id))
+        {
+            return effort switch
+            {
+                "low" => 4096,
+                "medium" => 16384,
+                "xhigh" => 262144,
+                _ => 16384
+            };
+        }
+
+        return effort switch
+        {
+            "minimal" => 512,
+            "low" => 1024,
+            "medium" => 4096,
+            "high" => 8192,
+            "xhigh" => 16000,
+            "max" => 32000,
+            _ => 4096
+        };
+    }
 }

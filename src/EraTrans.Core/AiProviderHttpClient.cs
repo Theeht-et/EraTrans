@@ -40,48 +40,11 @@ public static class AiProviderHttpRequestFactory
             }
         };
 
-        // Keep provider-specific reasoning payloads explicit. Metadata alone does
-        // not prove that an arbitrary OpenAI-compatible endpoint accepts a field.
         if (profile.ReasoningSettingsByModel.TryGetValue(profile.Model, out AiModelReasoningSettings? reasoning) &&
             profile.AvailableModels.FirstOrDefault(model =>
                 string.Equals(model.Id, profile.Model, StringComparison.OrdinalIgnoreCase)) is { ReasoningSupport: true } model)
         {
-            string host = new Uri(AiProviderProfileValidator.NormalizeBaseUrl(profile.BaseUrl)).Host;
-            bool isOpenAi = host.Equals("api.openai.com", StringComparison.OrdinalIgnoreCase);
-            bool isOpenRouter = host.Equals("openrouter.ai", StringComparison.OrdinalIgnoreCase);
-            bool isDeepSeek = host.Equals("api.deepseek.com", StringComparison.OrdinalIgnoreCase);
-            bool dialectMatches =
-                (isOpenAi && (string.IsNullOrWhiteSpace(model.ReasoningDialect) ||
-                    model.ReasoningDialect.Equals("openaiReasoningEffort", StringComparison.OrdinalIgnoreCase))) ||
-                (isOpenRouter && (string.IsNullOrWhiteSpace(model.ReasoningDialect) ||
-                    model.ReasoningDialect.Equals("openrouterReasoning", StringComparison.OrdinalIgnoreCase))) ||
-                (isDeepSeek && model.ReasoningDialect?.Equals("deepseekThinking", StringComparison.OrdinalIgnoreCase) == true);
-            string effort = reasoning.Effort.Trim().ToLowerInvariant();
-
-            if (dialectMatches && reasoning.Disabled && model.ReasoningCanDisable == true)
-            {
-                if (isOpenAi)
-                    payload["reasoning_effort"] = "none";
-                else if (isOpenRouter)
-                    payload["reasoning"] = new { enabled = false };
-                else if (isDeepSeek)
-                    payload["thinking"] = new { type = "disabled" };
-            }
-            else if (dialectMatches && reasoning.Enabled &&
-                     model.ReasoningLevels.Any(level =>
-                         string.Equals(level, effort, StringComparison.OrdinalIgnoreCase)))
-            {
-                if (isOpenAi)
-                    payload["reasoning_effort"] = effort;
-                else if (isOpenRouter)
-                    payload["reasoning"] = new { effort };
-                else if (isDeepSeek &&
-                         effort is "low" or "high" or "max")
-                {
-                    payload["thinking"] = new { type = "enabled" };
-                    payload["reasoning_effort"] = effort;
-                }
-            }
+            AiReasoningDialectSupport.Apply(payload, profile.BaseUrl, model, reasoning);
         }
 
         string json = JsonSerializer.Serialize(payload, JsonOptions);

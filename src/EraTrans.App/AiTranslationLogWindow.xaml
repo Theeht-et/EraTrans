@@ -6,7 +6,7 @@
         Height="800"
         MinWidth="900"
         MinHeight="620"
-        WindowStartupLocation="CenterOwner"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
         Background="#F4F6F8">
     <Grid Margin="18">
         <Grid.RowDefinitions>

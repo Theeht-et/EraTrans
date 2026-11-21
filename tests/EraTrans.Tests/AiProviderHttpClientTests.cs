@@ -339,6 +339,111 @@ public sealed class AiProviderHttpClientTests
         Assert.False(body.RootElement.TryGetProperty("reasoning", out _));
     }
 
+    [Fact]
+    public void RequestFactory_UsesDeepSeekThinkingDialectForEffortSelection()
+    {
+        var profile = new AiProviderProfile
+        {
+            Name = "DeepSeek",
+            BaseUrl = "https://api.deepseek.com/v1",
+            Model = "deepseek-flash",
+            ApiKey = "secret",
+            AvailableModels =
+            [
+                new AiProviderModel
+                {
+                    Id = "deepseek-flash",
+                    ReasoningSupport = true,
+                    ReasoningCanDisable = true,
+                    ReasoningDialect = "deepseekThinking",
+                    ReasoningLevels = ["low", "high", "max"]
+                }
+            ],
+            ReasoningSettingsByModel = new Dictionary<string, AiModelReasoningSettings>
+            {
+                ["deepseek-flash"] = new() { Enabled = true, Effort = "max" }
+            }
+        };
+
+        AiProviderHttpRequestDetails details =
+            AiProviderHttpRequestFactory.Create(profile, "system", "user");
+        using JsonDocument body = JsonDocument.Parse(details.JsonBody);
+        Assert.Equal("enabled", body.RootElement.GetProperty("thinking").GetProperty("type").GetString());
+        Assert.Equal("max", body.RootElement.GetProperty("reasoning_effort").GetString());
+        Assert.False(body.RootElement.TryGetProperty("reasoning", out _));
+    }
+
+    [Fact]
+    public void RequestFactory_DisablesDeepSeekThinkingOnlyWhenModelAllowsIt()
+    {
+        var profile = new AiProviderProfile
+        {
+            Name = "DeepSeek",
+            BaseUrl = "https://api.deepseek.com",
+            Model = "deepseek-v4-pro",
+            ApiKey = "secret",
+            AvailableModels =
+            [
+                new AiProviderModel
+                {
+                    Id = "deepseek-v4-pro",
+                    ReasoningSupport = true,
+                    ReasoningCanDisable = true,
+                    ReasoningDialect = "deepseekThinking",
+                    ReasoningLevels = ["low", "high", "max"]
+                }
+            ],
+            ReasoningSettingsByModel = new Dictionary<string, AiModelReasoningSettings>
+            {
+                ["deepseek-v4-pro"] = new() { Disabled = true }
+            }
+        };
+
+        AiProviderHttpRequestDetails details =
+            AiProviderHttpRequestFactory.Create(profile, "system", "user");
+        using JsonDocument body = JsonDocument.Parse(details.JsonBody);
+        Assert.Equal("disabled", body.RootElement.GetProperty("thinking").GetProperty("type").GetString());
+        Assert.False(body.RootElement.TryGetProperty("reasoning_effort", out _));
+
+        profile.AvailableModels[0].ReasoningCanDisable = false;
+        details = AiProviderHttpRequestFactory.Create(profile, "system", "user");
+        using JsonDocument notAllowed = JsonDocument.Parse(details.JsonBody);
+        Assert.False(notAllowed.RootElement.TryGetProperty("thinking", out _));
+    }
+
+    [Fact]
+    public void RequestFactory_DoesNotApplyDeepSeekDialectToAnotherHostOrMismatchedMetadata()
+    {
+        var profile = new AiProviderProfile
+        {
+            Name = "Custom",
+            BaseUrl = "https://proxy.example.com/v1",
+            Model = "deepseek-flash",
+            ApiKey = "secret",
+            AvailableModels =
+            [
+                new AiProviderModel
+                {
+                    Id = "deepseek-flash",
+                    ReasoningSupport = true,
+                    ReasoningCanDisable = true,
+                    ReasoningDialect = "deepseekThinking",
+                    ReasoningLevels = ["low", "high", "max"]
+                }
+            ],
+            ReasoningSettingsByModel = new Dictionary<string, AiModelReasoningSettings>
+            {
+                ["deepseek-flash"] = new() { Enabled = true, Effort = "high" }
+            }
+        };
+
+        AiProviderHttpRequestDetails details =
+            AiProviderHttpRequestFactory.Create(profile, "system", "user");
+        using JsonDocument body = JsonDocument.Parse(details.JsonBody);
+        Assert.False(body.RootElement.TryGetProperty("thinking", out _));
+        Assert.False(body.RootElement.TryGetProperty("reasoning_effort", out _));
+    }
+
     private static HttpResponseMessage JsonResponse(HttpStatusCode status, string json) =>
         new(status) { Content = new StringContent(json, Encoding.UTF8, "application/json") };
 

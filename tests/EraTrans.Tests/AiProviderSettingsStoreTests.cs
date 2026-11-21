@@ -269,6 +269,44 @@ public sealed class AiProviderSettingsPortablePersistenceTests
     }
 
     [Fact]
+    public void Store_LoadAppliesDefaultDisableMigrationUntilTheUserSavesTheirChoice()
+    {
+        using var temporary = new TemporaryDirectory();
+        string path = Path.Combine(temporary.Path, "Config", "ai-providers.json");
+        var store = new AiProviderSettingsStore(path);
+
+        store.Save(new AiProviderSettings
+        {
+            ActiveProviderId = "legacy-openai",
+            Providers =
+            [
+                new AiProviderProfile
+                {
+                    Id = "legacy-openai",
+                    Name = "OpenAI",
+                    BaseUrl = "https://api.openai.com/v1",
+                    Model = "model",
+                    ApiKey = "legacy-key",
+                    IsBuiltIn = true,
+                    IsEnabled = true
+                }
+            ]
+        });
+
+        AiProviderSettings migrated = store.Load();
+        AiProviderProfile provider = Assert.Single(migrated.Providers);
+        Assert.False(provider.IsEnabled);
+        Assert.True(migrated.BuiltInDefaultDisableMigrationApplied);
+
+        provider.IsEnabled = true;
+        migrated.ActiveProviderId = provider.Id;
+        store.Save(migrated);
+
+        AiProviderSettings reopened = store.Load();
+        Assert.True(Assert.Single(reopened.Providers).IsEnabled);
+    }
+
+    [Fact]
     public void EnsureBuiltInProviders_AddsMissingDefaultsAndKeepsCustomFirst()
     {
         var settings = new AiProviderSettings

@@ -36,6 +36,7 @@ public sealed class AiProviderSettingsPortablePersistenceTests
                             GroupName = "OpenAI",
                             OwnedBy = "openai",
                             Created = 1720000000,
+                            ReasoningLevels = ["low", "medium", "high"],
                             Family = "gpt-4o",
                             Status = "active",
                             SupportsTools = true,
@@ -98,6 +99,7 @@ public sealed class AiProviderSettingsPortablePersistenceTests
                 Assert.Equal("active", model.Status);
                 Assert.True(model.SupportsTools);
                 Assert.True(model.SupportsReasoning);
+                Assert.Equal(new[] { "low", "medium", "high" }, model.ReasoningLevels);
                 Assert.True(model.SupportsStructuredOutput);
                 Assert.True(model.SupportsAttachments);
                 Assert.True(model.SupportsTemperature);

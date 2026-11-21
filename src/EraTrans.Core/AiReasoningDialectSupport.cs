@@ -619,7 +619,7 @@ public static class AiReasoningDialectSupport
             return true;
         }
 
-        if (Regex.IsMatch(id, @"^kimi-k3(?:$|[-.])", RegexOptions.IgnoreCase))
+        if (Regex.IsMatch(id, @"^kimi-k3(?:$|[-.:])", RegexOptions.IgnoreCase))
         {
             levels = ["low", "high", "max"];
             return true;

@@ -206,6 +206,17 @@ public sealed class AiReasoningDialectSupportTests
     }
 
     [Fact]
+    public void KimiK3ColonSuffix_UsesKelivoEffortDefaults()
+    {
+        AiProviderModel model = new() { Id = "kimi-k3:latest" };
+        AiReasoningDialectSupport.ApplyKnownModelDefaults(
+            model, "https://api.moonshot.cn/v1");
+
+        Assert.Equal("openaiReasoningEffort", model.ReasoningDialect);
+        Assert.Equal(new[] { "low", "high", "max" }, model.ReasoningLevels);
+    }
+
+    [Fact]
     public void KimiForCodingGuess_RequiresKelivoModelIdBoundary()
     {
         AiProviderModel unrelated = new() { Id = "not-kimi-for-coding-experimental" };

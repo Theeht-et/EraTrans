@@ -115,7 +115,7 @@ public sealed class AiProviderHttpClientTests
         var profile = new AiProviderProfile
         {
             Name = "Test",
-            BaseUrl = "https://api.example.com/v1",
+            BaseUrl = "https://api.openai.com/v1",
             Model = "reasoning-model",
             ApiKey = "secret",
             AvailableModels =
@@ -177,6 +177,37 @@ public sealed class AiProviderHttpClientTests
         details = AiProviderHttpRequestFactory.Create(profile, "system", "user");
         using JsonDocument disabledBody = JsonDocument.Parse(details.JsonBody);
         Assert.False(disabledBody.RootElement.TryGetProperty("reasoning_effort", out _));
+    }
+
+    [Fact]
+    public void RequestFactory_UsesOpenRouterReasoningObjectForOpenRouterEndpoint()
+    {
+        var profile = new AiProviderProfile
+        {
+            Name = "OpenRouter",
+            BaseUrl = "https://openrouter.ai/api/v1",
+            Model = "reasoning-model",
+            ApiKey = "secret",
+            AvailableModels =
+            [
+                new AiProviderModel
+                {
+                    Id = "reasoning-model",
+                    ReasoningSupport = true,
+                    ReasoningLevels = ["low", "medium", "high"]
+                }
+            ],
+            ReasoningSettingsByModel = new Dictionary<string, AiModelReasoningSettings>
+            {
+                ["reasoning-model"] = new() { Enabled = true, Effort = "medium" }
+            }
+        };
+
+        AiProviderHttpRequestDetails details =
+            AiProviderHttpRequestFactory.Create(profile, "system", "user");
+        using JsonDocument body = JsonDocument.Parse(details.JsonBody);
+        Assert.Equal("medium", body.RootElement.GetProperty("reasoning").GetProperty("effort").GetString());
+        Assert.False(body.RootElement.TryGetProperty("reasoning_effort", out _));
     }
 
     private static HttpResponseMessage JsonResponse(HttpStatusCode status, string json) =>

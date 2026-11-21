@@ -180,6 +180,34 @@ public sealed class AiProviderHttpClientTests
     }
 
     [Fact]
+    public void RequestFactory_AppliesOpenRouterAutoWhenNoPerModelSettingExists()
+    {
+        var profile = new AiProviderProfile
+        {
+            Name = "OpenRouter",
+            BaseUrl = "https://openrouter.ai/api/v1",
+            ApiKey = "test-key",
+            Model = "reasoning-model",
+            AvailableModels =
+            [
+                new AiProviderModel
+                {
+                    Id = "reasoning-model",
+                    ReasoningSupport = true,
+                    ReasoningDialect = "openrouterReasoning"
+                }
+            ]
+        };
+
+        AiProviderHttpRequestDetails details =
+            AiProviderHttpRequestFactory.Create(profile, "system", "user");
+        using JsonDocument body = JsonDocument.Parse(details.JsonBody);
+
+        Assert.True(body.RootElement.GetProperty("reasoning").GetProperty("enabled").GetBoolean());
+        Assert.False(body.RootElement.GetProperty("reasoning").TryGetProperty("effort", out _));
+    }
+
+    [Fact]
     public void RequestFactory_UsesOpenRouterReasoningObjectForOpenRouterEndpoint()
     {
         var profile = new AiProviderProfile

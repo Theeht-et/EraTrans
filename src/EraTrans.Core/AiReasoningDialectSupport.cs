@@ -166,7 +166,7 @@ public static class AiReasoningDialectSupport
                 if (model.ReasoningLevels.Count > 0)
                     payload["reasoning"] = new { effort };
                 else
-                    payload["reasoning"] = new { enabled = true, max_tokens = ResolveBudget(effort) };
+                    payload["reasoning"] = new { enabled = true, max_tokens = ResolveBudget(model, effort) };
                 break;
             case DeepSeek:
                 if (effort is "low" or "high" or "max")
@@ -186,7 +186,7 @@ public static class AiReasoningDialectSupport
                 payload["thinking_budget"] = ResolveBudget(model, effort);
                 break;
             case SiliconFlow:
-                payload["thinking_budget"] = ResolveBudget(effort);
+                payload["thinking_budget"] = ResolveBudget(model, effort);
                 break;
             case Kimi:
                 payload["thinking"] = new { type = "enabled", effort };
@@ -758,19 +758,26 @@ public static class AiReasoningDialectSupport
                host.EndsWith(".maas.aliyuncs.com", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static int ResolveBudget(string effort) => effort switch
-    {
-        "minimal" => 512,
-        "low" => 1024,
-        "medium" => 4096,
-        "high" => 8192,
-        "xhigh" => 16000,
-        "max" => 32000,
-        _ => 4096
-    };
-
     private static int ResolveBudget(AiProviderModel model, string effort)
     {
+        if (model.ReasoningBudgetMax is > 0)
+        {
+            double percentage = effort switch
+            {
+                "minimal" or "low" => 0.05,
+                "medium" => 0.5,
+                "high" => 0.8,
+                "xhigh" => 0.9,
+                "max" => 1.0,
+                _ => 0.5
+            };
+            int max = model.ReasoningBudgetMax.Value;
+            int floor = Math.Max(model.ReasoningBudgetMin ?? 0, 1024);
+            int raw = (int)Math.Floor(percentage * max);
+            int aligned = raw - raw % 256;
+            int lifted = Math.Max(aligned, floor);
+            return Math.Min(lifted, max);
+        }
         string id = NormalizeModelId(model.Id);
         if (IsQwen4Model(id))
         {

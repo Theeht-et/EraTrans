@@ -142,22 +142,24 @@ public static class AiReasoningDialectSupport
 
         string id = NormalizeModelId(model.Id);
         string? dialect = ResolveDialect(baseUrl, model.Id);
+        bool documentedDeepSeekModel =
+            id.Equals("deepseek-flash", StringComparison.OrdinalIgnoreCase) ||
+            id.Equals("deepseek-v4-pro", StringComparison.OrdinalIgnoreCase);
+        bool unverifiedOfficialDeepSeek =
+            dialect?.Equals(DeepSeek, StringComparison.OrdinalIgnoreCase) == true &&
+            !documentedDeepSeekModel;
+
         if (TryGetModelDefaults(id, out string[] levels, out bool canDisable))
         {
             model.ReasoningSupport ??= true;
             model.SupportsReasoning = true;
-            if (model.ReasoningLevels.Count == 0)
-                model.ReasoningLevels = [.. levels];
-            model.ReasoningCanDisable ??= canDisable;
-            bool documentedDeepSeekModel =
-                id.Equals("deepseek-flash", StringComparison.OrdinalIgnoreCase) ||
-                id.Equals("deepseek-v4-pro", StringComparison.OrdinalIgnoreCase);
-            if (model.ReasoningDialect is null &&
-                dialect is not null &&
-                (!dialect.Equals(DeepSeek, StringComparison.OrdinalIgnoreCase) ||
-                 documentedDeepSeekModel))
+            if (!unverifiedOfficialDeepSeek)
             {
-                model.ReasoningDialect = dialect;
+                if (model.ReasoningLevels.Count == 0)
+                    model.ReasoningLevels = [.. levels];
+                model.ReasoningCanDisable ??= canDisable;
+                if (model.ReasoningDialect is null && dialect is not null)
+                    model.ReasoningDialect = dialect;
             }
         }
         else if (IsKnownReasoningFamily(id))

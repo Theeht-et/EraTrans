@@ -393,7 +393,7 @@ public static class AiReasoningDialectSupport
         if (dialect == SiliconFlowReasoningEffort &&
             Regex.IsMatch(id, @"^glm-5\.2(?:$|[-.])", RegexOptions.IgnoreCase))
         {
-            levels = ["high", "max"];
+            levels = ["low", "medium", "high", "xhigh", "max"];
             canDisable = true;
             return true;
         }
@@ -604,9 +604,7 @@ public static class AiReasoningDialectSupport
         {
             // Alibaba Model Studio exposes high/max as effective GLM levels;
             // direct Zhipu-compatible endpoints keep the wider Kelivo ladder.
-            levels = dialect == DashScopeGlmEffort
-                ? ["high", "max"]
-                : ["low", "medium", "high", "xhigh", "max"];
+            levels = ["low", "medium", "high", "xhigh", "max"];
             canDisable = true;
             return true;
         }
@@ -627,12 +625,12 @@ public static class AiReasoningDialectSupport
             levels = ["low", "high", "max"];
             return true;
         }
-        if (id.Contains("kimi-for-coding-highspeed", StringComparison.OrdinalIgnoreCase))
+        if (Regex.IsMatch(id, @"(^|[/_:@])kimi-for-coding-highspeed(?:$|[:])", RegexOptions.IgnoreCase))
         {
             canDisable = true;
             return true;
         }
-        if (id.Contains("kimi-for-coding", StringComparison.OrdinalIgnoreCase) ||
+        if (Regex.IsMatch(id, @"(^|[/_:@])kimi-for-coding(?:$|[:])", RegexOptions.IgnoreCase) ||
             Regex.IsMatch(id, @"^k3(?:-256k)?$", RegexOptions.IgnoreCase) ||
             Regex.IsMatch(id, @"^kimi-k2\.8(?:$|[-.])", RegexOptions.IgnoreCase))
         {

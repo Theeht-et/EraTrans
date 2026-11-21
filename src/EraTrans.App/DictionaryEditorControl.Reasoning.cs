@@ -18,6 +18,19 @@ public partial class DictionaryEditorControl
     {
         base.OnInitialized(e);
         Loaded += (_, _) => SyncReasoningSelection();
+        CurrentFileChanged += _ => ShowTranslationWindowSummary();
+    }
+
+    /// <summary>
+    /// Shows how the loaded file would be cut into requests, so a wrong or stale
+    /// grouping file is visible before a translation run starts.
+    /// </summary>
+    private void ShowTranslationWindowSummary()
+    {
+        if (_document is null)
+            return;
+
+        StatusTextBlock.Text = DescribeTranslationWindows();
     }
 
     private void AiReasoningComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -25,7 +38,7 @@ public partial class DictionaryEditorControl
         if (_loadingReasoningSelection || _isTranslating)
             return;
 
-        AiProviderProfile? profile = TryGetEditingProvider();
+        AiProviderProfile? profile = TryGetActiveProvider();
         if (profile is null)
         {
             StatusTextBlock.Text = "还没有 AI 服务：请先在“AI 服务设置”里添加或启用一个服务商。";

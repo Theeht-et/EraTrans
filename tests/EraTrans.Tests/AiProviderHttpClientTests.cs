@@ -109,6 +109,76 @@ public sealed class AiProviderHttpClientTests
         Assert.DoesNotContain("secret", details.JsonBody);
     }
 
+    [Fact]
+    public void RequestFactory_AddsReasoningEffortOnlyWhenSelectedModelExplicitlyAdvertisesIt()
+    {
+        var profile = new AiProviderProfile
+        {
+            Name = "Test",
+            BaseUrl = "https://api.example.com/v1",
+            Model = "reasoning-model",
+            ApiKey = "secret",
+            AvailableModels =
+            [
+                new AiProviderModel
+                {
+                    Id = "reasoning-model",
+                    ReasoningSupport = true,
+                    ReasoningLevels = ["low", "medium", "high"]
+                }
+            ],
+            ReasoningSettingsByModel = new Dictionary<string, AiModelReasoningSettings>
+            {
+                ["reasoning-model"] = new() { Enabled = true, Effort = "high" }
+            }
+        };
+
+        AiProviderHttpRequestDetails details =
+            AiProviderHttpRequestFactory.Create(profile, "system", "user");
+        using JsonDocument body = JsonDocument.Parse(details.JsonBody);
+        Assert.Equal("high", body.RootElement.GetProperty("reasoning_effort").GetString());
+    }
+
+    [Fact]
+    public void RequestFactory_DoesNotSendReasoningForDisabledOrUnknownModelCapabilities()
+    {
+        var profile = new AiProviderProfile
+        {
+            Name = "Test",
+            BaseUrl = "https://api.example.com/v1",
+            Model = "unknown-model",
+            ApiKey = "secret",
+            ReasoningSettingsByModel = new Dictionary<string, AiModelReasoningSettings>
+            {
+                ["unknown-model"] = new() { Enabled = true, Effort = "high" }
+            }
+        };
+
+        AiProviderHttpRequestDetails details =
+            AiProviderHttpRequestFactory.Create(profile, "system", "user");
+        using JsonDocument body = JsonDocument.Parse(details.JsonBody);
+        Assert.False(body.RootElement.TryGetProperty("reasoning_effort", out _));
+
+        profile.AvailableModels =
+        [
+            new AiProviderModel
+            {
+                Id = "unknown-model",
+                ReasoningSupport = null,
+                ReasoningLevels = ["low", "medium", "high"]
+            }
+        ];
+        details = AiProviderHttpRequestFactory.Create(profile, "system", "user");
+        using JsonDocument unknownCapabilityBody = JsonDocument.Parse(details.JsonBody);
+        Assert.False(unknownCapabilityBody.RootElement.TryGetProperty("reasoning_effort", out _));
+
+        profile.AvailableModels[0].ReasoningSupport = true;
+        profile.ReasoningSettingsByModel["unknown-model"].Enabled = false;
+        details = AiProviderHttpRequestFactory.Create(profile, "system", "user");
+        using JsonDocument disabledBody = JsonDocument.Parse(details.JsonBody);
+        Assert.False(disabledBody.RootElement.TryGetProperty("reasoning_effort", out _));
+    }
+
     private static HttpResponseMessage JsonResponse(HttpStatusCode status, string json) =>
         new(status) { Content = new StringContent(json, Encoding.UTF8, "application/json") };
 

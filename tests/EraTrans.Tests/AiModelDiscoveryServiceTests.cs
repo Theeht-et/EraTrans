@@ -9,6 +9,18 @@ namespace EraTrans.Tests;
 public sealed class AiModelDiscoveryServiceTests
 {
     [Fact]
+    public void ContextLimitMetadata_IsHiddenWhenUnknownAndFormattedWhenKnown()
+    {
+        AiProviderModel unknown = new() { Id = "unknown-context-model" };
+        Assert.False(unknown.HasKnownContextLimit);
+        Assert.Equal("", unknown.ContextLimitLabel);
+
+        AiProviderModel known = new() { Id = "known-context-model", ContextLimit = 131072 };
+        Assert.True(known.HasKnownContextLimit);
+        Assert.Equal("上下文大小：128K", known.ContextLimitLabel);
+    }
+
+    [Fact]
     public void ParseModelsResponse_ExtractsMetadataDeduplicatesAndGroupsModels()
     {
         const string json = """

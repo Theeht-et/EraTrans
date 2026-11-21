@@ -870,6 +870,42 @@ public sealed class AiReasoningDialectSupportTests
         Assert.False(AiReasoningDialectSupport.IsCompatible(endpoint, model));
     }
 
+    [Fact]
+    public void ExplicitFalseReasoningMetadata_IsNotOverriddenByKelivoModelGuesses()
+    {
+        AiProviderModel unsupported = new()
+        {
+            Id = "gpt-5.6",
+            ReasoningSupport = false,
+            ReasoningCanDisable = false,
+            ReasoningLevels = ["provider-level"]
+        };
+        AiReasoningDialectSupport.ApplyKnownModelDefaults(
+            unsupported, "https://api.openai.com/v1");
+
+        Assert.False(unsupported.ReasoningSupport);
+        Assert.False(unsupported.SupportsReasoning);
+        Assert.False(unsupported.ReasoningCanDisable);
+        Assert.Equal(new[] { "provider-level" }, unsupported.ReasoningLevels);
+        Assert.Null(unsupported.ReasoningDialect);
+
+        AiProviderModel supportedButCannotDisable = new()
+        {
+            Id = "gpt-5.6",
+            ReasoningSupport = true,
+            ReasoningCanDisable = false
+        };
+        AiReasoningDialectSupport.ApplyKnownModelDefaults(
+            supportedButCannotDisable, "https://api.openai.com/v1");
+
+        Assert.True(supportedButCannotDisable.ReasoningSupport);
+        Assert.False(supportedButCannotDisable.ReasoningCanDisable);
+        Assert.Equal(
+            new[] { "low", "medium", "high", "xhigh", "max" },
+            supportedButCannotDisable.ReasoningLevels);
+        Assert.Equal("openaiReasoningEffort", supportedButCannotDisable.ReasoningDialect);
+    }
+
     private static JsonDocument CreateBody(
         string baseUrl,
         AiProviderModel model,

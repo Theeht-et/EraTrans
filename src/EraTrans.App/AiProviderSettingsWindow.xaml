@@ -251,10 +251,10 @@
                             </Grid.ColumnDefinitions>
                             <StackPanel VerticalAlignment="Center">
                                 <TextBlock Text="推理设置" FontSize="12" FontWeight="SemiBold" Foreground="#39414A"/>
-                                <TextBlock Text="仅对 OpenAI / OpenRouter 已知接口格式及明确提供档位的模型启用。关闭此项表示不覆盖服务商默认行为，不代表强制关闭模型推理。" Margin="0,3,10,0" FontSize="10" Foreground="#7A8490" TextWrapping="Wrap"/>
+                                <TextBlock Text="自动遵循服务商默认行为；关闭仅在模型明确允许且接口协议已验证时提供；强度选项来自模型能力数据。" Margin="0,3,10,0" FontSize="10" Foreground="#7A8490" TextWrapping="Wrap"/>
                             </StackPanel>
                             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                                <CheckBox x:Name="ReasoningEnabledCheckBox" Content="应用推理强度" VerticalAlignment="Center" Margin="0,0,12,0" IsEnabled="False" Checked="ReasoningCheckBoxChanged" Unchecked="ReasoningCheckBoxChanged"/>
+                                <ComboBox x:Name="ReasoningModeComboBox" Width="112" Height="30" IsEnabled="False" SelectionChanged="ReasoningModeChanged" Margin="0,0,8,0"/>
                                 <ComboBox x:Name="ReasoningEffortComboBox" Width="104" Height="30" IsEnabled="False" SelectionChanged="ReasoningEffortChanged"/>
                             </StackPanel>
                         </Grid>

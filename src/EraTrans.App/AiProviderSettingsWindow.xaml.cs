@@ -360,12 +360,13 @@ public partial class AiProviderSettingsWindow : Window
             return false;
 
         string? dialect = model.ReasoningDialect;
-        if (string.IsNullOrWhiteSpace(dialect))
-            return true;
-
         try
         {
             string host = new Uri(AiProviderProfileValidator.NormalizeBaseUrl(BaseUrlTextBox.Text)).Host;
+            if (string.IsNullOrWhiteSpace(dialect))
+                return host.Equals("api.openai.com", StringComparison.OrdinalIgnoreCase) ||
+                       host.Equals("openrouter.ai", StringComparison.OrdinalIgnoreCase);
+
             return (host.Equals("api.openai.com", StringComparison.OrdinalIgnoreCase) &&
                     dialect.Equals("openaiReasoningEffort", StringComparison.OrdinalIgnoreCase)) ||
                    (host.Equals("openrouter.ai", StringComparison.OrdinalIgnoreCase) &&

@@ -19,6 +19,11 @@ public sealed class EraTransUserSettings
     public bool WriteContext { get; set; } = true;
     public bool EnableErbSemanticGroupingTranslation { get; set; } = false;
 
+    // Last opened workspace. Empty values keep older settings files fully compatible.
+    public string LastGameDirectory { get; set; } = string.Empty;
+    public string LastOutputRootDirectory { get; set; } = string.Empty;
+    public string LastDictionaryFileRelativePath { get; set; } = string.Empty;
+
     public List<string> TargetFileExtensions { get; set; } =
     [
         ".csv", ".erb", ".erh", ".erd"

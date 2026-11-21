@@ -8,13 +8,16 @@ using System.Windows.Input;
 
 namespace EraTrans.App;
 
-public partial class DictionaryEditorWindow : Window
+public partial class DictionaryEditorControl : UserControl
 {
     private const int TranslationBatchSize = 12;
 
-    private readonly string _dictionaryDirectory;
-    private readonly string _gameDirectory;
-    private readonly EraTransUserSettings _settings;
+    private string _dictionaryDirectory = string.Empty;
+    private string _gameDirectory = string.Empty;
+    private EraTransUserSettings _settings;
+    public event Action<string?>? CurrentFileChanged;
+    public string? CurrentFileRelativePath => _currentFile?.RelativePath;
+    private Window OwnerWindow => Window.GetWindow(this) ?? Application.Current.MainWindow!;
     private readonly DictionaryEditorService _service = new();
     private readonly ErbTranslationGroupingService _groupingService = new();
     private readonly AiProviderSettingsStore _providerStore = new();
@@ -30,44 +33,259 @@ public partial class DictionaryEditorWindow : Window
     private bool _changingFileSelection;
     private bool _isTranslating;
 
-    public DictionaryEditorWindow(
-        string dictionaryDirectory,
-        string? gameDirectory,
-        EraTransUserSettings settings)
+    public DictionaryEditorControl(EraTransUserSettings settings)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(dictionaryDirectory);
         ArgumentNullException.ThrowIfNull(settings);
-        _dictionaryDirectory = Path.GetFullPath(dictionaryDirectory);
-        _gameDirectory = string.IsNullOrWhiteSpace(gameDirectory)
-            ? string.Empty
-            : Path.GetFullPath(gameDirectory);
         _settings = settings;
 
         InitializeComponent();
         _translationService = new AiTranslationService(logStore: _translationLogStore);
-        DictionaryDirectoryTextBlock.Text = _dictionaryDirectory;
         UpdateProviderStatus();
+        SetEmptyState(
+            "尚未打开工作区",
+            "选择原游戏目录和统一输出目录，然后打开工作区或提取字典。");
     }
 
-    private void Window_Loaded(object sender, RoutedEventArgs e)
+    public void UpdateSettings(EraTransUserSettings settings)
     {
+        ArgumentNullException.ThrowIfNull(settings);
+        _settings = settings;
+    }
+
+    public bool SwitchWorkspace(EraTransOutputLayout layout, string? preferredRelativePath)
+    {
+        ArgumentNullException.ThrowIfNull(layout);
+
+        string dictionaryDirectory = Path.GetFullPath(layout.DictionaryDirectory);
+        string gameDirectory = Path.GetFullPath(layout.GameDirectory);
+        if (PathsEqual(_dictionaryDirectory, dictionaryDirectory) &&
+            PathsEqual(_gameDirectory, gameDirectory))
+        {
+            return true;
+        }
+
+        if (!ResolvePendingDocument("切换工作区", reloadWhenDiscarded: false))
+        {
+            return false;
+        }
+
+        _dictionaryDirectory = dictionaryDirectory;
+        _gameDirectory = gameDirectory;
+        DictionaryDirectoryTextBlock.Text = _dictionaryDirectory;
+        RefreshDictionaryFiles(preferredRelativePath);
+        return true;
+    }
+
+    public bool TryPrepareForDiskOperation(string operationName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(operationName);
+        return ResolvePendingDocument(operationName, reloadWhenDiscarded: true);
+    }
+
+    public bool CanClose()
+    {
+        if (_isTranslating)
+        {
+            MessageBox.Show(
+                OwnerWindow,
+                "AI 翻译仍在进行。请先取消并等待当前请求结束，再关闭程序。",
+                "翻译任务进行中",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return false;
+        }
+
+        CommitActiveGridEdits();
+        if (_document?.IsDirty != true)
+        {
+            return true;
+        }
+
+        MessageBoxResult choice = MessageBox.Show(
+            OwnerWindow,
+            "当前字典有未保存的更改。关闭程序前是否保存？",
+            "存在未保存更改",
+            MessageBoxButton.YesNoCancel,
+            MessageBoxImage.Warning);
+
+        return choice switch
+        {
+            MessageBoxResult.Yes => SaveCurrentDocument(),
+            MessageBoxResult.No => true,
+            _ => false
+        };
+    }
+
+    public void RefreshFiles(string? preferredRelativePath)
+    {
+        RefreshDictionaryFiles(preferredRelativePath);
+    }
+
+    private static bool PathsEqual(string first, string second)
+    {
+        if (string.IsNullOrWhiteSpace(first) || string.IsNullOrWhiteSpace(second))
+        {
+            return string.IsNullOrWhiteSpace(first) && string.IsNullOrWhiteSpace(second);
+        }
+
+        return string.Equals(
+            Path.TrimEndingDirectorySeparator(Path.GetFullPath(first)),
+            Path.TrimEndingDirectorySeparator(Path.GetFullPath(second)),
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool ResolvePendingDocument(string operationName, bool reloadWhenDiscarded)
+    {
+        if (_isTranslating)
+        {
+            MessageBox.Show(
+                OwnerWindow,
+                "AI 翻译仍在进行。请先取消并等待当前请求结束，再执行此操作。",
+                "翻译任务进行中",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return false;
+        }
+
+        CommitActiveGridEdits();
+        if (_document?.IsDirty != true)
+        {
+            return true;
+        }
+
+        MessageBoxResult choice = MessageBox.Show(
+            OwnerWindow,
+            $"当前字典有未保存的更改。{operationName}前是否保存？选择“否”将丢弃尚未保存的修改。",
+            "存在未保存更改",
+            MessageBoxButton.YesNoCancel,
+            MessageBoxImage.Warning);
+
+        if (choice == MessageBoxResult.Cancel)
+        {
+            return false;
+        }
+
+        if (choice == MessageBoxResult.Yes)
+        {
+            return SaveCurrentDocument();
+        }
+
+        return !reloadWhenDiscarded ||
+               _currentFile is null ||
+               LoadDictionary(_currentFile);
+    }
+
+    private void CommitActiveGridEdits()
+    {
+        EntriesDataGrid.CommitEdit(DataGridEditingUnit.Cell, true);
+        EntriesDataGrid.CommitEdit(DataGridEditingUnit.Row, true);
+    }
+
+    private void SetEmptyState(string title, string description)
+    {
+        EmptyStateTitleTextBlock.Text = title;
+        EmptyStateDescriptionTextBlock.Text = description;
+        EmptyStateBorder.Visibility = Visibility.Visible;
+    }
+
+    private void RefreshDictionaryFiles(string? preferredRelativePath)
+    {
+        if (_document is not null)
+        {
+            _document.PropertyChanged -= Document_PropertyChanged;
+        }
+
+        _document = null;
+        _currentFile = null;
+        _entriesView = null;
+        _activeGroupingIndex = null;
+        _groupingFallbackReason = null;
+        EntriesDataGrid.ItemsSource = null;
+        EntrySearchTextBox.Text = string.Empty;
+        EntryGroupTextBox.Text = string.Empty;
+        EntryContextTextBox.Text = string.Empty;
+        EntryGroupLabelTextBlock.Text = "同组条目";
+        SelectedFileTextBlock.Text = "请选择左侧字典文件";
+        UpdateDocumentStatus();
+        UpdateTranslationButtons();
+
+        _changingFileSelection = true;
+        DictionaryFilesTreeView.Items.Clear();
+        _fileTreeItems.Clear();
+
         try
         {
-            IReadOnlyList<DictionaryEditorFile> files = _service.ListDictionaryFiles(_dictionaryDirectory);
-            BuildDictionaryTree(files);
-
-            if (files.Count == 0)
+            if (string.IsNullOrWhiteSpace(_dictionaryDirectory))
             {
-                StatusTextBlock.Text = "此目录及其子目录中没有找到 JSON 字典文件。";
+                DictionaryDirectoryTextBlock.Text = "尚未设置字典目录";
+                StatusTextBlock.Text = "请先选择原游戏目录和统一输出目录。";
+                SetEmptyState("尚未打开工作区", "选择原游戏目录和统一输出目录，然后打开工作区或提取字典。");
+                CurrentFileChanged?.Invoke(null);
                 return;
             }
 
-            _fileTreeItems[files[0].FullPath].IsSelected = true;
+            DictionaryDirectoryTextBlock.Text = _dictionaryDirectory;
+            if (!Directory.Exists(_dictionaryDirectory))
+            {
+                StatusTextBlock.Text = "字典目录尚未创建；可以先提取字典。";
+                SetEmptyState("尚未提取字典", "当前工作区还没有字典文件。点击主窗口的“提取/更新字典”开始提取。");
+                CurrentFileChanged?.Invoke(null);
+                return;
+            }
+
+            IReadOnlyList<DictionaryEditorFile> files = _service.ListDictionaryFiles(_dictionaryDirectory);
+            BuildDictionaryTree(files);
+            if (files.Count == 0)
+            {
+                StatusTextBlock.Text = "此目录及其子目录中没有找到 JSON 字典文件。";
+                SetEmptyState("尚未找到字典文件", "此工作区目前没有 JSON 字典。可以从主窗口提取字典，提取后文件会自动出现在这里。");
+                CurrentFileChanged?.Invoke(null);
+                return;
+            }
+
+            DictionaryEditorFile? selectedFile = string.IsNullOrWhiteSpace(preferredRelativePath)
+                ? null
+                : files.FirstOrDefault(file => string.Equals(
+                    NormalizeRelativePath(file.RelativePath),
+                    NormalizeRelativePath(preferredRelativePath),
+                    StringComparison.OrdinalIgnoreCase));
+            selectedFile ??= files[0];
+
+            if (_fileTreeItems.TryGetValue(selectedFile.FullPath, out TreeViewItem? selectedNode))
+            {
+                selectedNode.IsSelected = true;
+                ExpandParentFolders(selectedNode);
+                selectedNode.BringIntoView();
+            }
+
+            _changingFileSelection = false;
+            LoadDictionary(selectedFile);
         }
         catch (Exception ex)
         {
             StatusTextBlock.Text = "读取字典目录失败。";
-            MessageBox.Show(this, ex.Message, "读取失败", MessageBoxButton.OK, MessageBoxImage.Error);
+            SetEmptyState("读取字典目录失败", "请检查输出目录是否存在，以及当前用户是否具有读取权限。");
+            CurrentFileChanged?.Invoke(null);
+            MessageBox.Show(OwnerWindow, ex.Message, "读取失败", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            _changingFileSelection = false;
+        }
+    }
+
+    private static string NormalizeRelativePath(string path) =>
+        path.Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar)
+            .Replace('/', Path.DirectorySeparatorChar)
+            .Replace('\\', Path.DirectorySeparatorChar);
+
+    private static void ExpandParentFolders(TreeViewItem item)
+    {
+        ItemsControl? parent = ItemsControl.ItemsControlFromItemContainer(item);
+        while (parent is TreeViewItem folder)
+        {
+            folder.IsExpanded = true;
+            parent = ItemsControl.ItemsControlFromItemContainer(folder);
         }
     }
 
@@ -83,26 +301,10 @@ public partial class DictionaryEditorWindow : Window
             return;
         }
 
-        if (_document?.IsDirty == true)
+        if (!ResolvePendingDocument("切换字典文件", reloadWhenDiscarded: false))
         {
-            MessageBoxResult choice = MessageBox.Show(
-                this,
-                "当前字典有未保存的更改。切换文件前是否保存？",
-                "存在未保存更改",
-                MessageBoxButton.YesNoCancel,
-                MessageBoxImage.Warning);
-
-            if (choice == MessageBoxResult.Cancel)
-            {
-                RestoreFileSelection();
-                return;
-            }
-
-            if (choice == MessageBoxResult.Yes && !SaveCurrentDocument())
-            {
-                RestoreFileSelection();
-                return;
-            }
+            RestoreFileSelection();
+            return;
         }
 
         LoadDictionary(selectedFile);
@@ -186,7 +388,7 @@ public partial class DictionaryEditorWindow : Window
         }
     }
 
-    private void LoadDictionary(DictionaryEditorFile file)
+    private bool LoadDictionary(DictionaryEditorFile file)
     {
         try
         {
@@ -259,6 +461,9 @@ public partial class DictionaryEditorWindow : Window
             }
             UpdateDocumentStatus();
             UpdateTranslationButtons();
+            EmptyStateBorder.Visibility = Visibility.Collapsed;
+            CurrentFileChanged?.Invoke(file.RelativePath);
+            return true;
         }
         catch (Exception ex)
         {
@@ -273,8 +478,11 @@ public partial class DictionaryEditorWindow : Window
             SummaryTextBlock.Text = "无法加载此字典";
             SaveButton.IsEnabled = false;
             StatusTextBlock.Text = "文件未被修改。请检查 JSON 格式。";
-            MessageBox.Show(this, ex.Message, "字典加载失败", MessageBoxButton.OK, MessageBoxImage.Error);
+            SetEmptyState("无法加载此字典", "文件未被修改。请检查 JSON 格式，修复后可重新选择该文件。");
+            CurrentFileChanged?.Invoke(null);
+            MessageBox.Show(OwnerWindow, ex.Message, "字典加载失败", MessageBoxButton.OK, MessageBoxImage.Error);
             RestoreFileSelection();
+            return false;
         }
     }
 
@@ -360,7 +568,7 @@ public partial class DictionaryEditorWindow : Window
 
         var dialog = new TranslationEditWindow(entry.Key, entry.Original, entry.Translation)
         {
-            Owner = this
+            Owner = OwnerWindow
         };
 
         if (dialog.ShowDialog() != true)
@@ -462,7 +670,7 @@ public partial class DictionaryEditorWindow : Window
         catch (Exception ex)
         {
             StatusTextBlock.Text = "保存失败；原字典文件未被本次操作覆盖。";
-            MessageBox.Show(this, ex.Message, "字典保存失败", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show(OwnerWindow, ex.Message, "字典保存失败", MessageBoxButton.OK, MessageBoxImage.Error);
             return false;
         }
     }
@@ -472,14 +680,9 @@ public partial class DictionaryEditorWindow : Window
         SaveCurrentDocument();
     }
 
-    private void CloseButton_Click(object sender, RoutedEventArgs e)
-    {
-        Close();
-    }
-
     private void AiSettingsButton_Click(object sender, RoutedEventArgs e)
     {
-        var window = new AiProviderSettingsWindow { Owner = this };
+        var window = new AiProviderSettingsWindow { Owner = OwnerWindow };
         if (window.ShowDialog() == true)
         {
             UpdateProviderStatus();
@@ -489,7 +692,7 @@ public partial class DictionaryEditorWindow : Window
 
     private void AiLogsButton_Click(object sender, RoutedEventArgs e)
     {
-        var window = new AiTranslationLogWindow(_translationLogStore) { Owner = this };
+        var window = new AiTranslationLogWindow(_translationLogStore) { Owner = OwnerWindow };
         window.ShowDialog();
     }
 
@@ -508,8 +711,7 @@ public partial class DictionaryEditorWindow : Window
 
         if (selected.Length == 0)
         {
-            MessageBox.Show(
-                this,
+            MessageBox.Show(OwnerWindow,
                 "请先选中至少一个尚未填写译文、状态为未翻译的非变量词条。",
                 "没有可翻译的选中项",
                 MessageBoxButton.OK,
@@ -534,8 +736,7 @@ public partial class DictionaryEditorWindow : Window
 
         if (pending.Length == 0)
         {
-            MessageBox.Show(
-                this,
+            MessageBox.Show(OwnerWindow,
                 "当前字典没有可批量翻译的词条。已有译文、变量和已忽略词条不会被覆盖。",
                 "没有待翻译项",
                 MessageBoxButton.OK,
@@ -543,8 +744,7 @@ public partial class DictionaryEditorWindow : Window
             return;
         }
 
-        MessageBoxResult confirm = MessageBox.Show(
-            this,
+        MessageBoxResult confirm = MessageBox.Show(OwnerWindow,
             $"将为当前字典中的 {pending.Length} 个未翻译词条请求 AI 翻译。译文只回填编辑器，不会自动保存。是否继续？",
             "确认批量翻译",
             MessageBoxButton.YesNo,
@@ -570,14 +770,13 @@ public partial class DictionaryEditorWindow : Window
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, ex.Message, "读取 AI 配置失败", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show(OwnerWindow, ex.Message, "读取 AI 配置失败", MessageBoxButton.OK, MessageBoxImage.Error);
             return;
         }
 
         if (profile is null)
         {
-            MessageBoxResult configure = MessageBox.Show(
-                this,
+            MessageBoxResult configure = MessageBox.Show(OwnerWindow,
                 "尚未配置 AI 服务商。是否现在打开设置？",
                 "AI 服务未配置",
                 MessageBoxButton.YesNo,
@@ -594,8 +793,7 @@ public partial class DictionaryEditorWindow : Window
             _activeGroupingIndex is null &&
             !string.IsNullOrWhiteSpace(_groupingFallbackReason))
         {
-            MessageBox.Show(
-                this,
+            MessageBox.Show(OwnerWindow,
                 _groupingFallbackReason + "\n\n本次将使用现有的 AI 翻译方式，不会使用未经验证的分组关系。",
                 "ERB 语义分组不可用",
                 MessageBoxButton.OK,
@@ -633,8 +831,7 @@ public partial class DictionaryEditorWindow : Window
                     _groupingFallbackReason =
                         $"当前待翻译词条无法完整匹配分组文件：{ex.Message}";
                     batches = CreateLegacyTranslationBatches(entries);
-                    MessageBox.Show(
-                        this,
+                    MessageBox.Show(OwnerWindow,
                         _groupingFallbackReason + "\n\n本次将使用现有的 AI 翻译方式继续。",
                         "ERB 语义分组回退",
                         MessageBoxButton.OK,
@@ -704,7 +901,7 @@ public partial class DictionaryEditorWindow : Window
         catch (Exception ex)
         {
             StatusTextBlock.Text = $"AI 翻译中断：已回填 {applied} 项，尚未自动保存。";
-            MessageBox.Show(this, ex.Message, "AI 翻译失败", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show(OwnerWindow, ex.Message, "AI 翻译失败", MessageBoxButton.OK, MessageBoxImage.Error);
         }
         finally
         {
@@ -754,46 +951,19 @@ public partial class DictionaryEditorWindow : Window
         _changingFileSelection = false;
     }
 
-    private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
+    private void Control_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key == Key.S && Keyboard.Modifiers == ModifierKeys.Control)
+        if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.S)
         {
             SaveCurrentDocument();
             e.Handled = true;
         }
+        else if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.F)
+        {
+            EntrySearchTextBox.Focus();
+            EntrySearchTextBox.SelectAll();
+            e.Handled = true;
+        }
     }
 
-    protected override void OnClosing(CancelEventArgs e)
-    {
-        if (_isTranslating)
-        {
-            MessageBox.Show(
-                this,
-                "AI 翻译仍在进行。请先取消并等待当前请求结束，再关闭窗口。",
-                "翻译任务进行中",
-                MessageBoxButton.OK,
-                MessageBoxImage.Information);
-            e.Cancel = true;
-            return;
-        }
-
-        if (_document?.IsDirty == true)
-        {
-            MessageBoxResult choice = MessageBox.Show(
-                this,
-                "当前字典有未保存的更改。关闭前是否保存？",
-                "存在未保存更改",
-                MessageBoxButton.YesNoCancel,
-                MessageBoxImage.Warning);
-
-            if (choice == MessageBoxResult.Cancel ||
-                (choice == MessageBoxResult.Yes && !SaveCurrentDocument()))
-            {
-                e.Cancel = true;
-                return;
-            }
-        }
-
-        base.OnClosing(e);
-    }
 }

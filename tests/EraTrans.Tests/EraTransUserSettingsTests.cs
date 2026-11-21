@@ -35,6 +35,9 @@ public sealed class EraTransUserSettingsTests
         Assert.True(settings.MergeConcatenatedStrings);
         Assert.True(settings.WriteContext);
         Assert.False(settings.EnableErbSemanticGroupingTranslation);
+        Assert.Equal(string.Empty, settings.LastGameDirectory);
+        Assert.Equal(string.Empty, settings.LastOutputRootDirectory);
+        Assert.Equal(string.Empty, settings.LastDictionaryFileRelativePath);
         Assert.True(new EraParserOptions().HideVariableEntries);
         Assert.Equal(new[] { ".csv", ".erb", ".erh", ".erd" }, settings.TargetFileExtensions);
         Assert.Equal(
@@ -65,6 +68,9 @@ public sealed class EraTransUserSettingsTests
         settings.MergeConcatenatedStrings = false;
         settings.WriteContext = false;
         settings.EnableErbSemanticGroupingTranslation = true;
+        settings.LastGameDirectory = @"D:\Games\Sample";
+        settings.LastOutputRootDirectory = @"E:\EraTransOutput";
+        settings.LastDictionaryFileRelativePath = @"ERB\EVENT.JSON";
         settings.TargetFileExtensions = [".erb", ".erh"];
         settings.AutoReplaceReferenceFiles = ["Abl", "Base"];
         settings.VariableNameCharacters = ["☆", "※"];
@@ -83,11 +89,28 @@ public sealed class EraTransUserSettingsTests
         Assert.Equal(settings.MergeConcatenatedStrings, loaded.MergeConcatenatedStrings);
         Assert.Equal(settings.WriteContext, loaded.WriteContext);
         Assert.Equal(settings.EnableErbSemanticGroupingTranslation, loaded.EnableErbSemanticGroupingTranslation);
+        Assert.Equal(settings.LastGameDirectory, loaded.LastGameDirectory);
+        Assert.Equal(settings.LastOutputRootDirectory, loaded.LastOutputRootDirectory);
+        Assert.Equal(settings.LastDictionaryFileRelativePath, loaded.LastDictionaryFileRelativePath);
         Assert.Equal(settings.TargetFileExtensions, loaded.TargetFileExtensions);
         Assert.Equal(settings.AutoReplaceReferenceFiles, loaded.AutoReplaceReferenceFiles);
         Assert.Equal(settings.VariableNameCharacters, loaded.VariableNameCharacters);
         Assert.Equal(settings.Operators, loaded.Operators);
         Assert.Equal(932, loaded.ToParserOptions().FileEncoding.CodePage);
+    }
+
+    [Fact]
+    public void Store_LoadLegacySettingsWithoutWorkspaceFields_UsesEmptyWorkspaceDefaults()
+    {
+        using var temporary = new TemporaryDirectory();
+        string path = Path.Combine(temporary.Path, "settings.json");
+        File.WriteAllText(path, """{"FileEncodingId":"utf8-bom"}""");
+
+        EraTransUserSettings loaded = new EraTransUserSettingsStore(path).Load();
+
+        Assert.Equal(string.Empty, loaded.LastGameDirectory);
+        Assert.Equal(string.Empty, loaded.LastOutputRootDirectory);
+        Assert.Equal(string.Empty, loaded.LastDictionaryFileRelativePath);
     }
 
     [Fact]

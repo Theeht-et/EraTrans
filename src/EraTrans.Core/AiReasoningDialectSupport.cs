@@ -254,8 +254,7 @@ public static class AiReasoningDialectSupport
             return null;
         }
 
-        if (host.Equals("api.openai.com", StringComparison.OrdinalIgnoreCase) ||
-            host.Equals("api.x.ai", StringComparison.OrdinalIgnoreCase))
+        if (host.Equals("api.openai.com", StringComparison.OrdinalIgnoreCase))
             return OpenAiEffort;
 
         if (host.Equals("openrouter.ai", StringComparison.OrdinalIgnoreCase) ||

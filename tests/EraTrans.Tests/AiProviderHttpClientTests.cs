@@ -444,6 +444,37 @@ public sealed class AiProviderHttpClientTests
         Assert.False(body.RootElement.TryGetProperty("reasoning_effort", out _));
     }
 
+    [Fact]
+    public void RequestFactory_DoesNotInferDeepSeekDialectFromHostAlone()
+    {
+        var profile = new AiProviderProfile
+        {
+            Name = "DeepSeek",
+            BaseUrl = "https://api.deepseek.com/v1",
+            Model = "unverified-reasoning-model",
+            ApiKey = "secret",
+            AvailableModels =
+            [
+                new AiProviderModel
+                {
+                    Id = "unverified-reasoning-model",
+                    ReasoningSupport = true,
+                    ReasoningLevels = ["low", "high", "max"]
+                }
+            ],
+            ReasoningSettingsByModel = new Dictionary<string, AiModelReasoningSettings>
+            {
+                ["unverified-reasoning-model"] = new() { Enabled = true, Effort = "high" }
+            }
+        };
+
+        AiProviderHttpRequestDetails details =
+            AiProviderHttpRequestFactory.Create(profile, "system", "user");
+        using JsonDocument body = JsonDocument.Parse(details.JsonBody);
+        Assert.False(body.RootElement.TryGetProperty("thinking", out _));
+        Assert.False(body.RootElement.TryGetProperty("reasoning_effort", out _));
+    }
+
     private static HttpResponseMessage JsonResponse(HttpStatusCode status, string json) =>
         new(status) { Content = new StringContent(json, Encoding.UTF8, "application/json") };
 

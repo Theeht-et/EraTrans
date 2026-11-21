@@ -97,14 +97,6 @@
                             Click="BrowseOutputDirectory_Click" />
                 </Grid>
 
-                <TextBlock x:Name="OutputLayoutPreviewTextBlock"
-                           Grid.Row="3"
-                           Margin="0,0,0,14"
-                           Text="选择原游戏目录和统一输出目录后，这里会显示本游戏的分类输出位置。"
-                           TextWrapping="Wrap"
-                           Foreground="#68717D"
-                           FontSize="12" />
-
                 <StackPanel Grid.Row="4"
                             Orientation="Horizontal"
                             Margin="0,0,0,4">

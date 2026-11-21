@@ -1,0 +1,265 @@
+<Window x:Class="EraTrans.App.AiTranslationLogWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="AI 翻译记录"
+        Width="1240"
+        Height="800"
+        MinWidth="900"
+        MinHeight="620"
+        WindowStartupLocation="CenterOwner"
+        Background="#F4F6F8">
+    <Grid Margin="18">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Grid Margin="0,0,0,14">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel>
+                <TextBlock Text="AI 请求与回复记录"
+                           FontSize="22"
+                           FontWeight="SemiBold"
+                           Foreground="#20242A" />
+                <TextBlock Margin="0,5,0,0"
+                           Text="每次 AI 接口请求单独保存，包括完整请求内容、AI 原始回复和失败信息。API Key 不会写入记录。"
+                           FontSize="12"
+                           Foreground="#68717D" />
+            </StackPanel>
+            <StackPanel Grid.Column="1"
+                        Orientation="Horizontal"
+                        VerticalAlignment="Center">
+                <Button Content="刷新"
+                        Width="72"
+                        Height="32"
+                        Margin="0,0,8,0"
+                        Click="Refresh_Click" />
+                <Button Content="打开记录目录"
+                        Width="112"
+                        Height="32"
+                        Margin="0,0,8,0"
+                        Click="OpenDirectory_Click" />
+                <Button Content="清空记录"
+                        Width="88"
+                        Height="32"
+                        Margin="0,0,8,0"
+                        Click="Clear_Click" />
+                <Button Content="关闭"
+                        Width="72"
+                        Height="32"
+                        Click="Close_Click" />
+            </StackPanel>
+        </Grid>
+
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="340" MinWidth="260" />
+                <ColumnDefinition Width="10" />
+                <ColumnDefinition Width="*" MinWidth="500" />
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0"
+                    Background="White"
+                    BorderBrush="#E1E5E9"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="10">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top"
+                               Text="请求历史"
+                               FontSize="15"
+                               FontWeight="SemiBold"
+                               Foreground="#303740"
+                               Margin="2,0,0,8" />
+                    <ListBox x:Name="LogsListBox"
+                             BorderThickness="0"
+                             Background="Transparent"
+                             SelectionChanged="LogsListBox_SelectionChanged"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="{x:Type ListBoxItem}">
+                                <Setter Property="Padding" Value="8" />
+                                <Setter Property="Margin" Value="0,0,0,5" />
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                <Setter Property="Background" Value="Transparent" />
+                                <Setter Property="BorderBrush" Value="Transparent" />
+                                <Setter Property="BorderThickness" Value="1" />
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="{x:Type ListBoxItem}">
+                                            <Border x:Name="ItemBorder"
+                                                    Background="{TemplateBinding Background}"
+                                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                                    CornerRadius="6"
+                                                    Padding="{TemplateBinding Padding}">
+                                                <ContentPresenter ContentSource="Content" />
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsSelected" Value="True">
+                                                    <Setter TargetName="ItemBorder" Property="Background" Value="#FFF6DF" />
+                                                    <Setter TargetName="ItemBorder" Property="BorderBrush" Value="#E5B64B" />
+                                                </Trigger>
+                                                <MultiTrigger>
+                                                    <MultiTrigger.Conditions>
+                                                        <Condition Property="IsMouseOver" Value="True" />
+                                                        <Condition Property="IsSelected" Value="False" />
+                                                    </MultiTrigger.Conditions>
+                                                    <Setter TargetName="ItemBorder" Property="Background" Value="#F4F6F8" />
+                                                </MultiTrigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel>
+                                    <TextBlock Text="{Binding DisplayTime}"
+                                               FontSize="11"
+                                               Foreground="#7A8490" />
+                                    <TextBlock Text="{Binding DisplayTitle}"
+                                               Margin="0,4,0,0"
+                                               FontSize="13"
+                                               FontWeight="SemiBold"
+                                               Foreground="#252B33"
+                                               TextTrimming="CharacterEllipsis" />
+                                    <DockPanel Margin="0,4,0,0">
+                                        <TextBlock Text="{Binding Summary}"
+                                                   FontSize="11"
+                                                   Foreground="#68717D" />
+                                        <TextBlock Text="{Binding StatusDescription}"
+                                                   DockPanel.Dock="Right"
+                                                   FontSize="11"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="#68717D" />
+                                    </DockPanel>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </DockPanel>
+            </Border>
+
+            <GridSplitter Grid.Column="1"
+                          Width="10"
+                          HorizontalAlignment="Stretch"
+                          VerticalAlignment="Stretch"
+                          ResizeDirection="Columns"
+                          ResizeBehavior="PreviousAndNext"
+                          ShowsPreview="False"
+                          Cursor="SizeWE">
+                <GridSplitter.Template>
+                    <ControlTemplate TargetType="{x:Type GridSplitter}">
+                        <Border Background="Transparent">
+                            <Border Width="2"
+                                    HorizontalAlignment="Center"
+                                    Background="#D5DAE0"
+                                    CornerRadius="1" />
+                        </Border>
+                    </ControlTemplate>
+                </GridSplitter.Template>
+            </GridSplitter>
+
+            <Border Grid.Column="2"
+                    Background="White"
+                    BorderBrush="#E1E5E9"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="14">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Margin="0,0,0,10">
+                        <TextBlock x:Name="SelectedLogSummaryTextBlock"
+                                   Text="选择一条记录查看详情。"
+                                   FontSize="13"
+                                   FontWeight="SemiBold"
+                                   Foreground="#303740"
+                                   TextWrapping="Wrap" />
+                        <TextBlock x:Name="EndpointTextBlock"
+                                   Margin="0,4,0,0"
+                                   FontSize="11"
+                                   Foreground="#7A8490"
+                                   TextWrapping="Wrap" />
+                    </StackPanel>
+
+                    <TabControl Grid.Row="1">
+                        <TabItem Header="发送给 AI 的请求">
+                            <TextBox x:Name="RequestTextBox"
+                                     IsReadOnly="True"
+                                     AcceptsReturn="True"
+                                     TextWrapping="Wrap"
+                                     VerticalScrollBarVisibility="Auto"
+                                     HorizontalScrollBarVisibility="Disabled"
+                                     FontFamily="Consolas"
+                                     FontSize="12"
+                                     Padding="10"
+                                     Background="#FBFCFD"
+                                     BorderThickness="0" />
+                        </TabItem>
+                        <TabItem Header="AI 原始回复">
+                            <TextBox x:Name="ResponseTextBox"
+                                     IsReadOnly="True"
+                                     AcceptsReturn="True"
+                                     TextWrapping="Wrap"
+                                     VerticalScrollBarVisibility="Auto"
+                                     HorizontalScrollBarVisibility="Disabled"
+                                     FontFamily="Consolas"
+                                     FontSize="12"
+                                     Padding="10"
+                                     Background="#FBFCFD"
+                                     BorderThickness="0" />
+                        </TabItem>
+                        <TabItem Header="错误与执行信息">
+                            <TextBox x:Name="ErrorTextBox"
+                                     IsReadOnly="True"
+                                     AcceptsReturn="True"
+                                     TextWrapping="Wrap"
+                                     VerticalScrollBarVisibility="Auto"
+                                     HorizontalScrollBarVisibility="Auto"
+                                     FontSize="12"
+                                     Padding="10"
+                                     Background="#FBFCFD"
+                                     BorderThickness="0" />
+                        </TabItem>
+                    </TabControl>
+
+                    <StackPanel Grid.Row="2"
+                                Orientation="Horizontal"
+                                HorizontalAlignment="Right"
+                                Margin="0,10,0,0">
+                        <Button x:Name="CopyRequestButton"
+                                Content="复制请求"
+                                Width="92"
+                                Height="32"
+                                Margin="0,0,8,0"
+                                IsEnabled="False"
+                                Click="CopyRequest_Click" />
+                        <Button x:Name="CopyResponseButton"
+                                Content="复制回复"
+                                Width="92"
+                                Height="32"
+                                IsEnabled="False"
+                                Click="CopyResponse_Click" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <TextBlock Grid.Row="2"
+                   Margin="2,10,0,0"
+                   Text="记录保存在本机 Config/ai-translation-logs 目录。提示词和游戏文本以普通文本保存，分享日志前请检查内容。"
+                   FontSize="11"
+                   Foreground="#7A8490" />
+    </Grid>
+</Window>

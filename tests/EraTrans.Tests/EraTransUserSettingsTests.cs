@@ -15,6 +15,9 @@ public sealed class EraTransUserSettingsTests
         Assert.Equal(
             Path.Combine(AppContext.BaseDirectory, "Config", "ai-providers.json"),
             EraTransPaths.AiProviderSettingsFilePath);
+        Assert.Equal(
+            Path.Combine(AppContext.BaseDirectory, "Config", "ai-translation-logs"),
+            EraTransPaths.AiTranslationLogDirectoryPath);
     }
 
     [Fact]

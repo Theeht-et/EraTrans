@@ -144,6 +144,13 @@
                                     Height="32"
                                     Margin="0,0,8,0"
                                     Click="AiSettingsButton_Click" />
+                            <Button x:Name="AiLogsButton"
+                                    Content="AI 翻译记录"
+                                    Width="110"
+                                    Height="32"
+                                    Margin="0,0,8,0"
+                                    Click="AiLogsButton_Click"
+                                    ToolTip="查看每次 AI 请求、原始回复和错误详情" />
                             <Button x:Name="TranslateSelectedButton"
                                     Content="翻译选中"
                                     Width="100"
@@ -188,10 +195,17 @@
                               SelectionChanged="EntriesDataGrid_SelectionChanged"
                               CurrentCellChanged="EntriesDataGrid_CurrentCellChanged">
                         <DataGrid.Columns>
-                            <DataGridTextColumn Header="Key"
-                                                Binding="{Binding Key}"
-                                                IsReadOnly="True"
-                                                Width="190" />
+                            <DataGridTemplateColumn Header="编号" Width="82" IsReadOnly="True">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding DisplayKey}"
+                                                   ToolTip="{Binding Key}"
+                                                   HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center"
+                                                   Padding="4,2" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
                             <DataGridTextColumn Header="语义组"
                                                 Binding="{Binding SemanticGroupLabel}"
                                                 IsReadOnly="True"

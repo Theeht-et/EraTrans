@@ -7,6 +7,21 @@ namespace EraTrans.Tests;
 public sealed class DictionaryEditorServiceTests
 {
     [Fact]
+    public void ListDictionaryFiles_SortsNumericFileNamesNaturally()
+    {
+        string root = CreateTempDirectory();
+        foreach (string name in new[] { "0.json", "10.json", "11.json", "12.json", "1.json", "2.json", "3.json" })
+            Write(Path.Combine(root, name), "[]");
+
+        IReadOnlyList<DictionaryEditorFile> files =
+            new DictionaryEditorService().ListDictionaryFiles(root);
+
+        Assert.Equal(
+            new[] { "0.json", "1.json", "2.json", "3.json", "10.json", "11.json", "12.json" },
+            files.Select(file => Path.GetFileName(file.RelativePath)));
+    }
+
+    [Fact]
     public void LoadAndSave_ChangesOnlyTranslationAndStage_PreservesUnknownFieldsAndContext()
     {
         string root = CreateTempDirectory();
@@ -51,6 +66,29 @@ public sealed class DictionaryEditorServiceTests
         Assert.Equal("第一行\n第二行", (string?)saved["context"]);
         Assert.True((bool?)saved["custom"]?["keep"]);
         Assert.Equal(new JArray(1, "two").ToString(), saved["custom"]?["items"]?.ToString());
+        Assert.False(document.IsDirty);
+    }
+
+    [Fact]
+    public void DisplayKey_ShowsOnlyTrailingFiveDigitIndex_AndPreservesFullKey()
+    {
+        string root = CreateTempDirectory();
+        string path = Path.Combine(root, "keys.json");
+        Write(path,
+            """
+            [
+              { "key": "文本ERB\\OPENING00001", "original": "甲", "translation": "", "stage": 0 },
+              { "key": "CSV\\items00042", "original": "乙", "translation": "", "stage": 0 },
+              { "key": "custom-key", "original": "丙", "translation": "", "stage": 0 }
+            ]
+            """);
+
+        DictionaryEditorDocument document = new DictionaryEditorService().Load(path);
+
+        Assert.Equal(new[] { "00001", "00042", "custom-key" },
+            document.Entries.Select(entry => entry.DisplayKey));
+        Assert.Equal("文本ERB\\OPENING00001", document.Entries[0].Key);
+        Assert.Equal("CSV\\items00042", document.Entries[1].Key);
         Assert.False(document.IsDirty);
     }
 

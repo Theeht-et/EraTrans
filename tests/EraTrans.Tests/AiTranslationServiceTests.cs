@@ -272,6 +272,135 @@ public sealed class AiTranslationServiceTests
             AiTranslationService.ParseResponse(response, requests));
     }
 
+
+    [Fact]
+    public async Task TranslateAsync_PersistsRequestAndRawResponse_AndRedactsApiKey()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "EraTransAiLogTests", Guid.NewGuid().ToString("N"));
+        var store = new AiTranslationLogStore(Path.Combine(root, "logs"));
+        var fake = new FakeChatClient(
+            """
+            [{ "id": 1, "translation": "测试译文" }] provider echoed test-key
+            """);
+        var service = new AiTranslationService(fake, store);
+        AiProviderProfile profile = CreateProfile();
+
+        await service.TranslateAsync(
+            profile,
+            [new AiTranslationRequest(1, "测试 key", "原文中包含 test-key", "上下文")]);
+
+        AiTranslationLogEntry log = Assert.Single(store.LoadAll());
+        Assert.Equal(AiTranslationLogStatus.Succeeded, log.Status);
+        Assert.Equal("Translation", log.RequestKind);
+        Assert.Equal("Test", log.ProviderName);
+        Assert.Equal("test-model", log.Model);
+        Assert.Equal("POST", log.RequestMethod);
+        Assert.EndsWith("/chat/completions", log.Endpoint);
+        Assert.Equal(1, log.RequestedEntryCount);
+        Assert.Contains("JSON 数组", log.SystemPrompt);
+        Assert.Contains("原文中包含", log.UserPrompt);
+        Assert.Contains("test-model", log.RequestJson);
+        Assert.Contains("[已隐藏]", log.RequestJson);
+        Assert.Contains("测试译文", log.RawResponse);
+        Assert.Contains("[已隐藏]", log.RawResponse);
+        Assert.Null(log.ErrorMessage);
+        Assert.True(log.DurationMilliseconds >= 0);
+
+        string savedJson = File.ReadAllText(Directory.GetFiles(store.DirectoryPath, "*.json").Single());
+        Assert.DoesNotContain("test-key", savedJson);
+    }
+
+    [Fact]
+    public async Task TranslateAsync_RedactsTrimmedApiKeyWhenProviderEchoesIt()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "EraTransAiLogTests", Guid.NewGuid().ToString("N"));
+        var store = new AiTranslationLogStore(Path.Combine(root, "logs"));
+        var fake = new FakeChatClient(
+            """[{ "id": 1, "translation": "测试译文" }] provider echoed secret-key""");
+        var service = new AiTranslationService(fake, store);
+        AiProviderProfile profile = CreateProfile();
+        profile.ApiKey = "  secret-key  ";
+
+        await service.TranslateAsync(
+            profile,
+            [new AiTranslationRequest(1, "测试 key", "原文", "上下文")]);
+
+        AiTranslationLogEntry log = Assert.Single(store.LoadAll());
+        Assert.Contains("[已隐藏]", log.RawResponse);
+        Assert.DoesNotContain("secret-key", log.RawResponse);
+        string savedJson = File.ReadAllText(Directory.GetFiles(store.DirectoryPath, "*.json").Single());
+        Assert.DoesNotContain("secret-key", savedJson);
+    }
+
+    [Fact]
+    public async Task TranslateAsync_PersistsRawReplyWhenResponseParsingFails()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "EraTransAiLogTests", Guid.NewGuid().ToString("N"));
+        var store = new AiTranslationLogStore(Path.Combine(root, "logs"));
+        var service = new AiTranslationService(new FakeChatClient("not a JSON response"), store);
+
+        await Assert.ThrowsAsync<InvalidDataException>(() =>
+            service.TranslateAsync(
+                CreateProfile(),
+                [new AiTranslationRequest(1, "文本1", "原文", "")]));
+
+        AiTranslationLogEntry log = Assert.Single(store.LoadAll());
+        Assert.Equal(AiTranslationLogStatus.Failed, log.Status);
+        Assert.Equal("not a JSON response", log.RawResponse);
+        Assert.Contains("JSON 数组", log.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task TranslateAsync_PersistsProviderErrors()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "EraTransAiLogTests", Guid.NewGuid().ToString("N"));
+        var store = new AiTranslationLogStore(Path.Combine(root, "logs"));
+        var service = new AiTranslationService(new FailingChatClient(), store);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.TranslateAsync(
+                CreateProfile(),
+                [new AiTranslationRequest(1, "文本1", "原文", "")]));
+
+        AiTranslationLogEntry log = Assert.Single(store.LoadAll());
+        Assert.Equal(AiTranslationLogStatus.Failed, log.Status);
+        Assert.Null(log.RawResponse);
+        Assert.Equal(typeof(InvalidOperationException).FullName, log.ErrorType);
+        Assert.Contains("模拟服务商错误", log.ErrorMessage);
+        Assert.NotNull(log.CompletedAtUtc);
+    }
+
+
+    [Fact]
+    public async Task TranslateAsync_LogsActualOpenAiCompatibleRequestShape()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "EraTransAiLogTests", Guid.NewGuid().ToString("N"));
+        var store = new AiTranslationLogStore(Path.Combine(root, "logs"));
+        var service = new AiTranslationService(
+            new FakeChatClient("""[{ "id": 1, "translation": "测试译文" }]"""),
+            store);
+        var profile = new AiProviderProfile
+        {
+            Name = "Compatible test",
+            BaseUrl = "https://api.example.com/v1",
+            Model = "translation-model",
+            ApiKey = "private-key"
+        };
+
+        await service.TranslateAsync(
+            profile,
+            [new AiTranslationRequest(1, "key", "原文", "上下文")]);
+
+        AiTranslationLogEntry log = Assert.Single(store.LoadAll());
+        Assert.Equal("OpenAI-compatible", log.Protocol);
+        Assert.Equal("POST", log.RequestMethod);
+        Assert.Equal("https://api.example.com/v1/chat/completions", log.Endpoint);
+        Assert.Contains("\"messages\"", log.RequestJson);
+        Assert.Contains("原文", log.RequestJson);
+        Assert.DoesNotContain("private-key", log.RequestJson);
+        Assert.Contains("测试译文", log.RawResponse);
+    }
+
     [Fact]
     public void NormalizeBaseUrl_AddsHttpsAndRemovesChatCompletionSuffix()
     {
@@ -342,11 +471,14 @@ public sealed class AiTranslationServiceTests
 
         Assert.Equal("原始文本", target.Original);
         Assert.Equal("文本ERB\\OPENING00001", target.Key);
-        Assert.Equal(0, target.Stage);
+        Assert.Equal("00001", target.DisplayKey);
+        Assert.Equal(1, target.Stage);
+        Assert.Equal("已翻译", target.StageDescription);
         document.Save();
 
         string saved = File.ReadAllText(path);
         Assert.Contains("AI 译文", saved);
+        Assert.Contains("\"stage\": 1", saved);
         Assert.Contains("手工译文", saved);
         Assert.Contains("preserve", saved);
         Assert.Contains("上下文", saved);
@@ -359,6 +491,16 @@ public sealed class AiTranslationServiceTests
         Model = "test-model",
         ApiKey = "test-key"
     };
+
+    private sealed class FailingChatClient : IAiChatCompletionClient
+    {
+        public Task<string> CompleteAsync(
+            AiProviderProfile profile,
+            string systemPrompt,
+            string userPrompt,
+            CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("模拟服务商错误");
+    }
 
     private sealed class FakeChatClient(string response) : IAiChatCompletionClient
     {

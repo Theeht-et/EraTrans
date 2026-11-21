@@ -33,9 +33,83 @@ public sealed class DictionaryEditorService
             .Select(path => new DictionaryEditorFile(
                 path,
                 Path.GetRelativePath(root, path)))
-            .OrderBy(file => file.RelativePath, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(file => file.RelativePath, NaturalPathComparer.Instance)
             .ThenBy(file => file.RelativePath, StringComparer.Ordinal)
             .ToArray();
+    }
+
+    private sealed class NaturalPathComparer : IComparer<string>
+    {
+        public static NaturalPathComparer Instance { get; } = new();
+
+        public int Compare(string? left, string? right)
+        {
+            if (ReferenceEquals(left, right))
+                return 0;
+            if (left is null)
+                return -1;
+            if (right is null)
+                return 1;
+
+            int leftIndex = 0;
+            int rightIndex = 0;
+            while (leftIndex < left.Length && rightIndex < right.Length)
+            {
+                if (IsAsciiDigit(left[leftIndex]) && IsAsciiDigit(right[rightIndex]))
+                {
+                    int leftEnd = leftIndex;
+                    int rightEnd = rightIndex;
+                    while (leftEnd < left.Length && IsAsciiDigit(left[leftEnd]))
+                        leftEnd++;
+                    while (rightEnd < right.Length && IsAsciiDigit(right[rightEnd]))
+                        rightEnd++;
+
+                    int leftNumberStart = leftIndex;
+                    int rightNumberStart = rightIndex;
+                    while (leftNumberStart < leftEnd - 1 && left[leftNumberStart] == '0')
+                        leftNumberStart++;
+                    while (rightNumberStart < rightEnd - 1 && right[rightNumberStart] == '0')
+                        rightNumberStart++;
+
+                    int leftNumberLength = leftEnd - leftNumberStart;
+                    int rightNumberLength = rightEnd - rightNumberStart;
+                    int numberLengthComparison = leftNumberLength.CompareTo(rightNumberLength);
+                    if (numberLengthComparison != 0)
+                        return numberLengthComparison;
+
+                    int numberComparison = string.CompareOrdinal(
+                        left, leftNumberStart, right, rightNumberStart, leftNumberLength);
+                    if (numberComparison != 0)
+                        return numberComparison;
+
+                    int digitRunLengthComparison =
+                        (leftEnd - leftIndex).CompareTo(rightEnd - rightIndex);
+                    if (digitRunLengthComparison != 0)
+                        return digitRunLengthComparison;
+
+                    leftIndex = leftEnd;
+                    rightIndex = rightEnd;
+                    continue;
+                }
+
+                int characterComparison =
+                    char.ToUpperInvariant(left[leftIndex]).CompareTo(
+                        char.ToUpperInvariant(right[rightIndex]));
+                if (characterComparison != 0)
+                    return characterComparison;
+
+                leftIndex++;
+                rightIndex++;
+            }
+
+            int remainingLengthComparison =
+                (left.Length - leftIndex).CompareTo(right.Length - rightIndex);
+            return remainingLengthComparison != 0
+                ? remainingLengthComparison
+                : StringComparer.Ordinal.Compare(left, right);
+        }
+
+        private static bool IsAsciiDigit(char value) => value is >= '0' and <= '9';
     }
 
     public DictionaryEditorDocument Load(string filePath)
@@ -146,6 +220,10 @@ public sealed class DictionaryEditorEntry : INotifyPropertyChanged
 
     public int Index { get; }
     public string Key { get; }
+    public string DisplayKey =>
+        Key.Length >= 5 && Key[^5..].All(char.IsDigit)
+            ? Key[^5..]
+            : Key;
     public string Original { get; }
     public string Context { get; }
     public bool IsVariable { get; }
@@ -223,7 +301,14 @@ public sealed class DictionaryEditorEntry : INotifyPropertyChanged
             return false;
         }
 
-        Translation = translation;
+        _translation = translation;
+        _source["translation"] = translation;
+        _stage = 1;
+        _source["stage"] = 1;
+        _markDocumentDirty();
+        OnPropertyChanged(nameof(Translation));
+        OnPropertyChanged(nameof(Stage));
+        OnPropertyChanged(nameof(StageDescription));
         return true;
     }
 

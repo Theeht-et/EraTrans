@@ -1,9 +1,7 @@
-using System.ClientModel;
+using System.Diagnostics;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
-using OpenAI;
-using OpenAI.Chat;
 
 namespace EraTrans.Core;
 
@@ -31,48 +29,6 @@ public interface IAiChatCompletionClient
         string systemPrompt,
         string userPrompt,
         CancellationToken cancellationToken);
-}
-
-/// <summary>
-/// Thin adapter over the official OpenAI .NET SDK. The SDK handles compatible
-/// Chat Completions HTTP requests, authentication, retries, and cancellation.
-/// </summary>
-public sealed class OpenAiCompatibleChatCompletionClient : IAiChatCompletionClient
-{
-    public async Task<string> CompleteAsync(
-        AiProviderProfile profile,
-        string systemPrompt,
-        string userPrompt,
-        CancellationToken cancellationToken)
-    {
-        AiProviderProfileValidator.Validate(profile);
-        var client = new ChatClient(
-            model: profile.Model,
-            credential: new ApiKeyCredential(profile.ApiKey),
-            options: new OpenAIClientOptions
-            {
-                Endpoint = new Uri(profile.BaseUrl)
-            });
-
-        ChatCompletion completion = await client.CompleteChatAsync(
-            [
-                new SystemChatMessage(systemPrompt),
-                new UserChatMessage(userPrompt)
-            ],
-            cancellationToken: cancellationToken);
-
-        string response = string.Concat(
-            completion.Content
-                .Where(part => !string.IsNullOrWhiteSpace(part.Text))
-                .Select(part => part.Text));
-
-        if (string.IsNullOrWhiteSpace(response))
-        {
-            throw new InvalidDataException("模型没有返回可用的文本内容。");
-        }
-
-        return response;
-    }
 }
 
 /// <summary>
@@ -106,10 +62,14 @@ public sealed class AiTranslationService
     };
 
     private readonly IAiChatCompletionClient _client;
+    private readonly IAiTranslationLogStore? _logStore;
 
-    public AiTranslationService(IAiChatCompletionClient? client = null)
+    public AiTranslationService(
+        IAiChatCompletionClient? client = null,
+        IAiTranslationLogStore? logStore = null)
     {
         _client = client ?? new OpenAiCompatibleChatCompletionClient();
+        _logStore = logStore;
     }
 
     public Task<IReadOnlyList<AiTranslationResult>> TranslateAsync(
@@ -156,13 +116,141 @@ public sealed class AiTranslationService
             : BuildSemanticPayload(requests, semanticContextGroups);
 
         string userPrompt = JsonSerializer.Serialize(payload, PromptJsonOptions);
-        string response = await _client.CompleteAsync(
+        string systemPrompt = semanticContextGroups is null ? SystemPrompt : SemanticSystemPrompt;
+        return await CompleteWithLogAsync(
             profile,
-            semanticContextGroups is null ? SystemPrompt : SemanticSystemPrompt,
+            systemPrompt,
             userPrompt,
+            requestKind: "Translation",
+            requestedEntryCount: requests.Count,
+            response => ParseResponse(response, requests),
             cancellationToken);
+    }
 
-        return ParseResponse(response, requests);
+
+    private async Task<T> CompleteWithLogAsync<T>(
+        AiProviderProfile profile,
+        string systemPrompt,
+        string userPrompt,
+        string requestKind,
+        int requestedEntryCount,
+        Func<string, T> processResponse,
+        CancellationToken cancellationToken)
+    {
+        AiTranslationLogEntry? log = null;
+        string apiKey = profile.ApiKey.Trim();
+
+        if (_logStore is not null)
+        {
+            AiProviderHttpRequestDetails requestDetails =
+                AiProviderHttpRequestFactory.Create(profile, systemPrompt, userPrompt);
+            string endpoint = requestDetails.Endpoint;
+            using JsonDocument requestDocument = JsonDocument.Parse(requestDetails.JsonBody);
+            string requestJson = JsonSerializer.Serialize(
+                requestDocument.RootElement,
+                new JsonSerializerOptions
+                {
+                    WriteIndented = true,
+                    Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+                });
+
+            log = new AiTranslationLogEntry
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                StartedAtUtc = DateTimeOffset.UtcNow,
+                RequestKind = requestKind,
+                ProviderName = RedactSecret(profile.Name, apiKey),
+                Protocol = "OpenAI-compatible",
+                RequestMethod = requestDetails.Method,
+                Endpoint = endpoint,
+                Model = RedactSecret(profile.Model, apiKey),
+                RequestedEntryCount = requestedEntryCount,
+                SystemPrompt = RedactSecret(systemPrompt, apiKey),
+                UserPrompt = RedactSecret(userPrompt, apiKey),
+                RequestJson = RedactSecret(requestJson, apiKey),
+                Status = AiTranslationLogStatus.InProgress
+            };
+
+            try
+            {
+                // Persist before sending so interrupted requests still have a durable record.
+                _logStore.Save(log);
+            }
+            catch (Exception ex)
+            {
+                throw new IOException(
+                    "无法保存 AI 请求记录，因此本次请求未发送。请检查 Config/ai-translation-logs 目录的写入权限和磁盘空间。",
+                    ex);
+            }
+        }
+
+        Stopwatch? stopwatch = log is null ? null : Stopwatch.StartNew();
+        try
+        {
+            string response = await _client.CompleteAsync(
+                profile,
+                systemPrompt,
+                userPrompt,
+                cancellationToken);
+
+            if (log is not null)
+                log.RawResponse = RedactSecret(response, apiKey);
+
+            T result = processResponse(response);
+            if (log is not null)
+                log.Status = AiTranslationLogStatus.Succeeded;
+
+            return result;
+        }
+        catch (OperationCanceledException ex)
+        {
+            if (log is not null)
+            {
+                log.Status = AiTranslationLogStatus.Cancelled;
+                log.ErrorType = ex.GetType().FullName;
+                log.ErrorMessage = RedactSecret(ex.Message, apiKey);
+                log.ErrorDetails = RedactSecret(ex.ToString(), apiKey);
+            }
+
+            throw;
+        }
+        catch (Exception ex)
+        {
+            if (log is not null)
+            {
+                log.Status = AiTranslationLogStatus.Failed;
+                log.ErrorType = ex.GetType().FullName;
+                log.ErrorMessage = RedactSecret(ex.Message, apiKey);
+                log.ErrorDetails = RedactSecret(ex.ToString(), apiKey);
+            }
+
+            throw;
+        }
+        finally
+        {
+            if (log is not null)
+            {
+                stopwatch!.Stop();
+                log.CompletedAtUtc = DateTimeOffset.UtcNow;
+                log.DurationMilliseconds = stopwatch.ElapsedMilliseconds;
+                try
+                {
+                    _logStore!.Save(log);
+                }
+                catch
+                {
+                    // Do not turn a successful model reply into a translation failure.
+                }
+            }
+        }
+    }
+
+    private static string RedactSecret(string value, string secret)
+    {
+        if (string.IsNullOrEmpty(value) || string.IsNullOrEmpty(secret))
+            return value;
+
+        return value.Replace(secret, "[已隐藏]", StringComparison.Ordinal);
     }
 
     private static Dictionary<string, object> BuildSemanticPayload(
@@ -233,14 +321,20 @@ public sealed class AiTranslationService
         CancellationToken cancellationToken = default)
     {
         AiProviderProfileValidator.Validate(profile);
-        string response = await _client.CompleteAsync(
+        await CompleteWithLogAsync(
             profile,
             "你正在执行 API 连通性测试。请只回复 OK。",
             "请回复 OK。",
-            cancellationToken);
+            requestKind: "ConnectionTest",
+            requestedEntryCount: 0,
+            response =>
+            {
+                if (string.IsNullOrWhiteSpace(response))
+                    throw new InvalidDataException("模型连接成功，但没有返回文本。");
 
-        if (string.IsNullOrWhiteSpace(response))
-            throw new InvalidDataException("模型连接成功，但没有返回文本。");
+                return response;
+            },
+            cancellationToken);
     }
 
     public static IReadOnlyList<AiTranslationResult> ParseResponse(

@@ -336,6 +336,14 @@ public partial class AiProviderSettingsWindow : Window
         if (model?.ReasoningSupport != true)
             return [];
 
+        if (model.ReasoningLevels.Count == 0 &&
+            model.ReasoningDialect is "openrouterReasoning" or "qwenEnableThinking" or "siliconflowEnableThinking")
+        {
+            // The current settings UI exposes discrete presets for budget-style
+            // dialects; Kelivo also supports an arbitrary token-budget control.
+            return ["minimal", "low", "medium", "high", "xhigh", "max"];
+        }
+
         return model.ReasoningLevels
             .Select(level => level.Trim().ToLowerInvariant())
             .Where(level => level is "minimal" or "low" or "medium" or "high" or "xhigh" or "max")

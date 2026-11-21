@@ -40,35 +40,39 @@ public static class AiProviderHttpRequestFactory
             }
         };
 
-        if (profile.ReasoningSettingsByModel.TryGetValue(profile.Model, out AiModelReasoningSettings? reasoning))
+        AiModelReasoningSettings reasoning =
+            profile.ReasoningSettingsByModel.TryGetValue(profile.Model, out AiModelReasoningSettings? savedSetting)
+                ? savedSetting
+                : new AiModelReasoningSettings();
+
+        if (profile.ReasoningCapabilitiesByModel.TryGetValue(
+                profile.Model, out AiModelReasoningCapabilityOverride? capability))
         {
-            if (profile.ReasoningCapabilitiesByModel.TryGetValue(
-                    profile.Model, out AiModelReasoningCapabilityOverride? capability))
+            // A custom override is an explicit user declaration. It can
+            // enable reasoning for a manually-entered model that is absent
+            // from /models or has no public capability metadata.
+            var customModel = new AiProviderModel
             {
-                // A custom override is an explicit user declaration. It can
-                // enable reasoning for a manually-entered model that is absent
-                // from /models or has no public capability metadata.
-                var customModel = new AiProviderModel
-                {
-                    Id = profile.Model,
-                    ReasoningSupport = true,
-                    ReasoningLevels = capability.Levels
-                        .Select(level => level.Trim().ToLowerInvariant())
-                        .Where(level => !string.IsNullOrWhiteSpace(level))
-                        .Distinct(StringComparer.OrdinalIgnoreCase)
-                        .ToList(),
-                    ReasoningCanDisable = capability.CanDisable,
-                    ReasoningDialect = capability.Dialect
-                };
-                AiReasoningDialectSupport.Apply(
-                    payload, profile.BaseUrl, customModel, reasoning, capability.Dialect);
-            }
-            else if (profile.AvailableModels.FirstOrDefault(model =>
-                         string.Equals(model.Id, profile.Model, StringComparison.OrdinalIgnoreCase))
-                     is { ReasoningSupport: true } model)
-            {
-                AiReasoningDialectSupport.Apply(payload, profile.BaseUrl, model, reasoning);
-            }
+                Id = profile.Model,
+                ReasoningSupport = true,
+                ReasoningLevels = capability.Levels
+                    .Select(level => level.Trim().ToLowerInvariant())
+                    .Where(level => !string.IsNullOrWhiteSpace(level))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList(),
+                ReasoningCanDisable = capability.CanDisable,
+                ReasoningDialect = capability.Dialect
+            };
+            AiReasoningDialectSupport.Apply(
+                payload, profile.BaseUrl, customModel, reasoning, capability.Dialect);
+        }
+        else if (profile.AvailableModels.FirstOrDefault(model =>
+                     string.Equals(model.Id, profile.Model, StringComparison.OrdinalIgnoreCase))
+                 is { ReasoningSupport: true } model)
+        {
+            // Kelivo resolves the model/assistant default even without a
+            // saved per-model choice. Its default request is Auto.
+            AiReasoningDialectSupport.Apply(payload, profile.BaseUrl, model, reasoning);
         }
 
         string json = JsonSerializer.Serialize(payload, JsonOptions);

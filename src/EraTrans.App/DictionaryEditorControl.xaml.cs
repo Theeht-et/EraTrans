@@ -61,6 +61,12 @@ public partial class DictionaryEditorControl : UserControl
         if (PathsEqual(_dictionaryDirectory, dictionaryDirectory) &&
             PathsEqual(_gameDirectory, gameDirectory))
         {
+            if (!ResolvePendingDocument("重新打开工作区", reloadWhenDiscarded: true))
+            {
+                return false;
+            }
+
+            RefreshDictionaryFiles(preferredRelativePath ?? _currentFile?.RelativePath);
             return true;
         }
 

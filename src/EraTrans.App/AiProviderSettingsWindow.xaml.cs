@@ -354,48 +354,9 @@ public partial class AiProviderSettingsWindow : Window
                (model.ReasoningCanDisable == true || GetSupportedReasoningEfforts().Count > 0);
     }
 
-    private bool IsModelReasoningDialectCompatible(AiProviderModel? model)
-    {
-        if (model?.ReasoningSupport != true || !IsKnownReasoningEndpoint())
-            return false;
-
-        string? dialect = model.ReasoningDialect;
-        try
-        {
-            string host = new Uri(AiProviderProfileValidator.NormalizeBaseUrl(BaseUrlTextBox.Text)).Host;
-            if (string.IsNullOrWhiteSpace(dialect))
-                return host.Equals("api.openai.com", StringComparison.OrdinalIgnoreCase) ||
-                       host.Equals("openrouter.ai", StringComparison.OrdinalIgnoreCase);
-
-            return (host.Equals("api.openai.com", StringComparison.OrdinalIgnoreCase) &&
-                    dialect.Equals("openaiReasoningEffort", StringComparison.OrdinalIgnoreCase)) ||
-                   (host.Equals("openrouter.ai", StringComparison.OrdinalIgnoreCase) &&
-                    dialect.Equals("openrouterReasoning", StringComparison.OrdinalIgnoreCase)) ||
-                   (host.Equals("api.deepseek.com", StringComparison.OrdinalIgnoreCase) &&
-                    dialect.Equals("deepseekThinking", StringComparison.OrdinalIgnoreCase));
-        }
-        catch (Exception ex) when (
-            ex is ArgumentException or InvalidOperationException or UriFormatException)
-        {
-            return false;
-        }
-    }
-
-    private bool IsKnownReasoningEndpoint()
-    {
-        try
-        {
-            string host = new Uri(AiProviderProfileValidator.NormalizeBaseUrl(BaseUrlTextBox.Text)).Host;
-            return host.Equals("api.openai.com", StringComparison.OrdinalIgnoreCase) ||
-                   host.Equals("openrouter.ai", StringComparison.OrdinalIgnoreCase) ||
-                   host.Equals("api.deepseek.com", StringComparison.OrdinalIgnoreCase);
-        }
-        catch (Exception ex) when (
-            ex is ArgumentException or InvalidOperationException or UriFormatException)
-        {
-            return false;
-        }
-    }
+    private bool IsModelReasoningDialectCompatible(AiProviderModel? model) =>
+        model?.ReasoningSupport == true &&
+        AiReasoningDialectSupport.IsCompatible(BaseUrlTextBox.Text, model);
 
     private void UpdateReasoningControls()
     {

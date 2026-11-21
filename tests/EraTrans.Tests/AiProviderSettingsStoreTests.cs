@@ -30,6 +30,15 @@ public sealed class AiProviderSettingsPortablePersistenceTests
                     {
                         ["gpt-4o-mini"] = new() { Enabled = true, Disabled = true, Effort = "xhigh" }
                     },
+                    ReasoningCapabilitiesByModel = new Dictionary<string, AiModelReasoningCapabilityOverride>
+                    {
+                        ["custom-reasoner"] = new()
+                        {
+                            Dialect = AiReasoningDialectSupport.CustomOpenAiEffortDialect,
+                            CanDisable = true,
+                            Levels = ["low", "high"]
+                        }
+                    },
                     ChatCompletionsPath = "/v2/chat/respond",
                     ModelsPath = "/v2/models",
                     AvailableModels =
@@ -97,6 +106,12 @@ public sealed class AiProviderSettingsPortablePersistenceTests
         Assert.True(provider.ReasoningSettingsByModel["gpt-4o-mini"].Enabled);
         Assert.True(provider.ReasoningSettingsByModel["gpt-4o-mini"].Disabled);
         Assert.Equal("xhigh", provider.ReasoningSettingsByModel["gpt-4o-mini"].Effort);
+        AiModelReasoningCapabilityOverride customCapability =
+            Assert.Single(provider.ReasoningCapabilitiesByModel.Values);
+        Assert.Equal("custom-reasoner", provider.ReasoningCapabilitiesByModel.Keys.Single());
+        Assert.Equal(AiReasoningDialectSupport.CustomOpenAiEffortDialect, customCapability.Dialect);
+        Assert.True(customCapability.CanDisable);
+        Assert.Equal(new[] { "low", "high" }, customCapability.Levels);
         Assert.Collection(
             provider.AvailableModels,
             model =>

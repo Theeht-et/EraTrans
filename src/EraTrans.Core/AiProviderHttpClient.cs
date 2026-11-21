@@ -40,11 +40,35 @@ public static class AiProviderHttpRequestFactory
             }
         };
 
-        if (profile.ReasoningSettingsByModel.TryGetValue(profile.Model, out AiModelReasoningSettings? reasoning) &&
-            profile.AvailableModels.FirstOrDefault(model =>
-                string.Equals(model.Id, profile.Model, StringComparison.OrdinalIgnoreCase)) is { ReasoningSupport: true } model)
+        if (profile.ReasoningSettingsByModel.TryGetValue(profile.Model, out AiModelReasoningSettings? reasoning))
         {
-            AiReasoningDialectSupport.Apply(payload, profile.BaseUrl, model, reasoning);
+            if (profile.ReasoningCapabilitiesByModel.TryGetValue(
+                    profile.Model, out AiModelReasoningCapabilityOverride? capability))
+            {
+                // A custom override is an explicit user declaration. It can
+                // enable reasoning for a manually-entered model that is absent
+                // from /models or has no public capability metadata.
+                var customModel = new AiProviderModel
+                {
+                    Id = profile.Model,
+                    ReasoningSupport = true,
+                    ReasoningLevels = capability.Levels
+                        .Select(level => level.Trim().ToLowerInvariant())
+                        .Where(level => !string.IsNullOrWhiteSpace(level))
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToList(),
+                    ReasoningCanDisable = capability.CanDisable,
+                    ReasoningDialect = capability.Dialect
+                };
+                AiReasoningDialectSupport.Apply(
+                    payload, profile.BaseUrl, customModel, reasoning, capability.Dialect);
+            }
+            else if (profile.AvailableModels.FirstOrDefault(model =>
+                         string.Equals(model.Id, profile.Model, StringComparison.OrdinalIgnoreCase))
+                     is { ReasoningSupport: true } model)
+            {
+                AiReasoningDialectSupport.Apply(payload, profile.BaseUrl, model, reasoning);
+            }
         }
 
         string json = JsonSerializer.Serialize(payload, JsonOptions);

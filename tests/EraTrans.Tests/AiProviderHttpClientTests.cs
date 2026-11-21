@@ -208,6 +208,46 @@ public sealed class AiProviderHttpClientTests
     }
 
     [Fact]
+    public void RequestFactory_DoesNotCarryReasoningFieldsAcrossModelRequests()
+    {
+        var profile = new AiProviderProfile
+        {
+            Name = "OpenRouter",
+            BaseUrl = "https://openrouter.ai/api/v1",
+            ApiKey = "test-key",
+            Model = "reasoning-model",
+            AvailableModels =
+            [
+                new AiProviderModel
+                {
+                    Id = "reasoning-model",
+                    ReasoningSupport = true,
+                    ReasoningDialect = "openrouterReasoning"
+                },
+                new AiProviderModel
+                {
+                    Id = "ordinary-model",
+                    ReasoningSupport = false
+                }
+            ]
+        };
+
+        AiProviderHttpRequestDetails reasoningRequest =
+            AiProviderHttpRequestFactory.Create(profile, "system", "user");
+        using JsonDocument reasoningBody = JsonDocument.Parse(reasoningRequest.JsonBody);
+        Assert.True(reasoningBody.RootElement.GetProperty("reasoning").GetProperty("enabled").GetBoolean());
+
+        profile.Model = "ordinary-model";
+        AiProviderHttpRequestDetails ordinaryRequest =
+            AiProviderHttpRequestFactory.Create(profile, "system", "user");
+        using JsonDocument ordinaryBody = JsonDocument.Parse(ordinaryRequest.JsonBody);
+        Assert.False(ordinaryBody.RootElement.TryGetProperty("reasoning", out _));
+        Assert.False(ordinaryBody.RootElement.TryGetProperty("reasoning_effort", out _));
+        Assert.False(ordinaryBody.RootElement.TryGetProperty("thinking", out _));
+        Assert.False(ordinaryBody.RootElement.TryGetProperty("thinking_budget", out _));
+    }
+
+    [Fact]
     public void RequestFactory_UsesOpenRouterReasoningObjectForOpenRouterEndpoint()
     {
         var profile = new AiProviderProfile

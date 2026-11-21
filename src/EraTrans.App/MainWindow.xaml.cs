@@ -125,7 +125,14 @@ public partial class MainWindow : Window
 
         if (!_editor.SwitchWorkspace(layout, preferredFile))
         {
-            StatusText.Text = "工作区切换已取消；当前编辑内容仍保留。";
+            if (_activeLayout is not null)
+            {
+                GameDirectoryTextBox.Text = _activeLayout.GameDirectory;
+                OutputDirectoryTextBox.Text = _activeLayout.OutputRoot;
+                SaveWorkspacePreferences();
+            }
+
+            StatusText.Text = "工作区切换已取消；已恢复当前工作区目录，当前编辑内容仍保留。";
             return false;
         }
 

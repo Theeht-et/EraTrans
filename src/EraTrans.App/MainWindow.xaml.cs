@@ -36,41 +36,11 @@ public partial class MainWindow : Window
     private void BrowseGameDirectory_Click(object sender, RoutedEventArgs e)
     {
         BrowseFolder(GameDirectoryTextBox, "选择原 ERA 游戏目录");
-        UpdateOutputLayoutPreview();
     }
 
     private void BrowseOutputDirectory_Click(object sender, RoutedEventArgs e)
     {
         BrowseFolder(OutputDirectoryTextBox, "选择统一输出目录");
-        UpdateOutputLayoutPreview();
-    }
-
-    private void UpdateOutputLayoutPreview()
-    {
-        string gameDirectory = GameDirectoryTextBox.Text.Trim();
-        string outputRoot = OutputDirectoryTextBox.Text.Trim();
-        if (string.IsNullOrWhiteSpace(gameDirectory) ||
-            string.IsNullOrWhiteSpace(outputRoot) ||
-            !Directory.Exists(gameDirectory))
-        {
-            OutputLayoutPreviewTextBlock.Text =
-                "选择原游戏目录和统一输出目录后，这里会显示本游戏的分类输出位置。";
-            return;
-        }
-
-        try
-        {
-            EraTransOutputLayout layout = EraTransOutputLayout.Create(outputRoot, gameDirectory);
-            OutputLayoutPreviewTextBlock.Text =
-                $"本次游戏：{layout.GameDirectoryName}\n" +
-                $"字典：{layout.DictionaryDirectory}\n" +
-                $"AI 上下文：{layout.AiContextDirectory}\n" +
-                $"游戏副本：{layout.GameCopyDirectory}";
-        }
-        catch (Exception ex)
-        {
-            OutputLayoutPreviewTextBlock.Text = "输出路径无效：" + ex.Message;
-        }
     }
 
     private bool TryGetGameOutputLayout(out EraTransOutputLayout layout)

@@ -165,11 +165,13 @@ public sealed class AiProviderSettingsPortablePersistenceTests
 
         JsonObject root = JsonNode.Parse(File.ReadAllText(path))!.AsObject();
         root["Providers"]![0]!.AsObject().Remove("Models");
+        root["Providers"]![0]!.AsObject().Remove("ReasoningSettingsByModel");
         File.WriteAllText(path, root.ToJsonString());
 
         AiProviderProfile loaded = Assert.Single(store.Load().Providers);
         Assert.Equal("legacy-model", loaded.Model);
         Assert.Empty(loaded.AvailableModels);
+        Assert.Empty(loaded.ReasoningSettingsByModel);
         Assert.Equal("legacy-secret", loaded.ApiKey);
     }
 

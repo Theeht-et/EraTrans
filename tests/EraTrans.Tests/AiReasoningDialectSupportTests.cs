@@ -194,6 +194,18 @@ public sealed class AiReasoningDialectSupportTests
     }
 
     [Fact]
+    public void KimiForCodingGuess_RequiresKelivoModelIdBoundary()
+    {
+        AiProviderModel unrelated = new() { Id = "not-kimi-for-coding-experimental" };
+        AiReasoningDialectSupport.ApplyKnownModelDefaults(
+            unrelated, "https://api.moonshot.cn/v1");
+
+        Assert.Null(unrelated.ReasoningSupport);
+        Assert.Empty(unrelated.ReasoningLevels);
+        Assert.Null(unrelated.ReasoningCanDisable);
+    }
+
+    [Fact]
     public void KimiForCodingHighspeed_HasNoEffortLadderButCanDisableLikeKelivo()
     {
         const string endpoint = "https://api.moonshot.cn/v1";
@@ -539,7 +551,7 @@ public sealed class AiReasoningDialectSupportTests
         AiReasoningDialectSupport.ApplyKnownModelDefaults(glm52, endpoint);
         Assert.Equal("dashScopeGlmEffort", glm52.ReasoningDialect);
         Assert.True(glm52.ReasoningCanDisable);
-        Assert.Equal(new[] { "high", "max" }, glm52.ReasoningLevels);
+        Assert.Equal(new[] { "low", "medium", "high", "xhigh", "max" }, glm52.ReasoningLevels);
 
         AiProviderModel unknown = new() { Id = "custom-reasoning-model", ReasoningSupport = true };
         AiReasoningDialectSupport.ApplyKnownModelDefaults(unknown, endpoint);
@@ -584,7 +596,7 @@ public sealed class AiReasoningDialectSupportTests
         AiReasoningDialectSupport.ApplyKnownModelDefaults(model, endpoint);
 
         Assert.True(model.ReasoningCanDisable);
-        Assert.Equal(new[] { "high", "max" }, model.ReasoningLevels);
+        Assert.Equal(new[] { "low", "medium", "high", "xhigh", "max" }, model.ReasoningLevels);
         using JsonDocument effortBody = CreateBody(
             endpoint, model, new AiModelReasoningSettings { Enabled = true, Effort = "max" });
         Assert.Equal("max", effortBody.RootElement.GetProperty("reasoning_effort").GetString());
@@ -779,7 +791,11 @@ public sealed class AiReasoningDialectSupportTests
 
         Assert.Equal("siliconFlowReasoningEffort", model.ReasoningDialect);
         Assert.True(model.ReasoningCanDisable);
-        Assert.Equal(new[] { "high", "max" }, model.ReasoningLevels);
+        Assert.Equal(
+            modelId.Contains("GLM", StringComparison.OrdinalIgnoreCase)
+                ? new[] { "low", "medium", "high", "xhigh", "max" }
+                : new[] { "high", "max" },
+            model.ReasoningLevels);
 
         using JsonDocument effortBody = CreateBody(
             endpoint, model, new AiModelReasoningSettings { Enabled = true, Effort = "high" });

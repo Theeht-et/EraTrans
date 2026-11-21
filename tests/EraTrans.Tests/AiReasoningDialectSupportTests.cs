@@ -959,6 +959,33 @@ public sealed class AiReasoningDialectSupportTests
         Assert.Equal("openaiReasoningEffort", supportedButCannotDisable.ReasoningDialect);
     }
 
+
+    [Theory]
+    [InlineData("relay_gpt-6", "low,medium,high,xhigh,max", false)]
+    [InlineData("relay_gpt-5.6", "low,medium,high,xhigh,max", true)]
+    [InlineData("relay_deepseek-v4", "low,high,max", true)]
+    [InlineData("relay_gemma-4", "minimal,high", false)]
+    [InlineData("relay_muse-spark-1.3", "low,medium,high,xhigh,max", false)]
+    [InlineData("relay_glm-5.2", "low,medium,high,xhigh,max", true)]
+    [InlineData("relay_grok-4.7", "low,medium,high,xhigh", false)]
+    [InlineData("relay_o3", "low,medium,high", false)]
+    [InlineData("relay_kimi-k3", "low,high,max", false)]
+    [InlineData("relay_mimo-v2", "low,medium,high", true)]
+    public void PrefixedModelIds_MatchKelivoFamilyBoundaries(
+        string modelId,
+        string expectedLevels,
+        bool canDisable)
+    {
+        AiProviderModel model = new() { Id = modelId };
+        AiReasoningDialectSupport.ApplyKnownModelDefaults(
+            model, "https://proxy.example.com/v1");
+
+        Assert.True(model.ReasoningSupport);
+        Assert.Equal(expectedLevels.Split(','), model.ReasoningLevels);
+        Assert.Equal(canDisable, model.ReasoningCanDisable);
+        Assert.Null(model.ReasoningDialect);
+    }
+
     private static JsonDocument CreateBody(
         string baseUrl,
         AiProviderModel model,

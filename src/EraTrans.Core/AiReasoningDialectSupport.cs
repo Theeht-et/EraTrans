@@ -424,14 +424,14 @@ public static class AiReasoningDialectSupport
             return true;
         }
 
-        if (Regex.IsMatch(id, @"^gemma-?4(?:$|[-._:@])", RegexOptions.IgnoreCase))
+        if (Regex.IsMatch(id, @"(^|[/:_-])gemma[-_]?4([._-]|$)", RegexOptions.IgnoreCase))
         {
             // Mirrors Kelivo ModelDefaultsGuesser._gemma4.
             levels = ["minimal", "high"];
             return true;
         }
 
-        if (Regex.IsMatch(id, @"^muse-spark-1\.3(?:$|[-._:@])", RegexOptions.IgnoreCase))
+        if (Regex.IsMatch(id, @"(^|[/_:@])muse-spark-1\.3(?:$|[-._:@])", RegexOptions.IgnoreCase))
         {
             // Mirrors Kelivo's Muse Spark 1.3 contributor-specific effort ladder.
             levels = id.Contains("contributor", StringComparison.OrdinalIgnoreCase)
@@ -440,174 +440,174 @@ public static class AiReasoningDialectSupport
             return true;
         }
 
-        if (Regex.IsMatch(id, @"^muse-spark-1(?:$|[-._:@])", RegexOptions.IgnoreCase))
+        if (Regex.IsMatch(id, @"(^|[/_:@])muse-spark-1(?:$|[-._:@])", RegexOptions.IgnoreCase))
         {
             // Mirrors Kelivo ModelDefaultsGuesser._museSpark1.
             levels = ["low", "medium", "high", "xhigh"];
             return true;
         }
 
-        if (Regex.IsMatch(id, @"^grok-4\.7(?:$|[-.])", RegexOptions.IgnoreCase))
+        if (Regex.IsMatch(id, @"(^|[/_:@])grok-4\.7(?:$|[-.])", RegexOptions.IgnoreCase))
         {
             levels = ["low", "medium", "high", "xhigh"];
             return true;
         }
 
-        if (Regex.IsMatch(id, @"^deepseek-(?:flash|reasoner|r1|v3\.1|v3\.2|v4)(?:$|[-._:@])", RegexOptions.IgnoreCase))
+        if (Regex.IsMatch(id, id.Contains("deepseek", StringComparison.OrdinalIgnoreCase), RegexOptions.IgnoreCase))
         {
             levels = ["low", "high", "max"];
             canDisable = true;
             return true;
         }
 
-        if (Regex.IsMatch(id, @"^gpt-6(?:$|[-.])", RegexOptions.IgnoreCase))
+        if (Regex.IsMatch(id, @"gpt-6(?=$|[-.])", RegexOptions.IgnoreCase))
         {
             levels = ["low", "medium", "high", "xhigh", "max"];
             return true;
         }
 
-        if (Regex.IsMatch(id, @"^gpt-5\.6(?:-(?:sol|terra|luna))?(?:$|[.@])", RegexOptions.IgnoreCase))
+        if (Regex.IsMatch(id, @"(^|[/_:@])gpt-5\.6(?:-(?:sol|terra|luna))?(?:$|[.@])", RegexOptions.IgnoreCase))
         {
             levels = ["low", "medium", "high", "xhigh", "max"];
             canDisable = true;
             return true;
         }
 
-        if (Regex.IsMatch(id, @"^gpt-5\.5-pro(?:$|[-.])", RegexOptions.IgnoreCase))
+        if (Regex.IsMatch(id, @"(^|[/_:@])gpt-5\.5-pro(?:$|[-.])", RegexOptions.IgnoreCase))
         {
             levels = ["medium", "high", "xhigh"];
             return true;
         }
-        if (Regex.IsMatch(id, @"^gpt-5\.5-(?:codex|chat-latest)(?:$|[-.])", RegexOptions.IgnoreCase))
+        if (Regex.IsMatch(id, @"(^|[/_:@])gpt-5\.5-(?:codex|chat-latest)(?:$|[-.])", RegexOptions.IgnoreCase))
             return false;
-        if (Regex.IsMatch(id, @"^gpt-5\.5(?:$|[-.])", RegexOptions.IgnoreCase))
+        if (Regex.IsMatch(id, @"(^|[/_:@])gpt-5\.5(?:$|[-.])", RegexOptions.IgnoreCase))
         {
             levels = ["low", "medium", "high", "xhigh"];
             canDisable = true;
             return true;
         }
 
-        if (Regex.IsMatch(id, @"^gpt-5\.4-pro(?:$|[-.])", RegexOptions.IgnoreCase))
+        if (Regex.IsMatch(id, @"(^|[/_:@])gpt-5\.4-pro(?:$|[-.])", RegexOptions.IgnoreCase))
         {
             levels = ["medium", "high", "xhigh"];
             return true;
         }
-        if (Regex.IsMatch(id, @"^gpt-5\.4-(?:codex|chat-latest)(?:$|[-.])", RegexOptions.IgnoreCase))
+        if (Regex.IsMatch(id, @"(^|[/_:@])gpt-5\.4-(?:codex|chat-latest)(?:$|[-.])", RegexOptions.IgnoreCase))
             return false;
-        if (Regex.IsMatch(id, @"^gpt-5\.4(?:$|[-.])", RegexOptions.IgnoreCase))
+        if (Regex.IsMatch(id, @"(^|[/_:@])gpt-5\.4(?:$|[-.])", RegexOptions.IgnoreCase))
         {
             levels = ["low", "medium", "high", "xhigh"];
             canDisable = true;
             return true;
         }
 
-        if (Regex.IsMatch(id, @"^gpt-5\.3-codex(?:$|[-.])", RegexOptions.IgnoreCase))
+        if (Regex.IsMatch(id, @"(^|[/_:@])gpt-5\.3-codex(?:$|[-.])", RegexOptions.IgnoreCase))
         {
             levels = ["low", "medium", "high", "xhigh"];
             return true;
         }
-        if (Regex.IsMatch(id, @"^gpt-5\.3-chat-latest(?:$|[-.])", RegexOptions.IgnoreCase))
+        if (Regex.IsMatch(id, @"(^|[/_:@])gpt-5\.3-chat-latest(?:$|[-.])", RegexOptions.IgnoreCase))
         {
             levels = ["low", "medium", "high", "xhigh"];
             canDisable = true;
             return true;
         }
-        if (Regex.IsMatch(id, @"^gpt-5\.3(?:$|[-.])", RegexOptions.IgnoreCase))
+        if (Regex.IsMatch(id, @"(^|[/_:@])gpt-5\.3(?:$|[-.])", RegexOptions.IgnoreCase))
             return false;
 
-        if (Regex.IsMatch(id, @"^gpt-5\.2-pro(?:$|[-.])", RegexOptions.IgnoreCase))
+        if (Regex.IsMatch(id, @"(^|[/_:@])gpt-5\.2-pro(?:$|[-.])", RegexOptions.IgnoreCase))
         {
             levels = ["medium", "high", "xhigh"];
             return true;
         }
-        if (Regex.IsMatch(id, @"^gpt-5\.2-codex(?:$|[-.])", RegexOptions.IgnoreCase))
+        if (Regex.IsMatch(id, @"(^|[/_:@])gpt-5\.2-codex(?:$|[-.])", RegexOptions.IgnoreCase))
         {
             levels = ["low", "medium", "high", "xhigh"];
             return true;
         }
-        if (Regex.IsMatch(id, @"^gpt-5\.2-chat-latest(?:$|[-.])", RegexOptions.IgnoreCase) ||
-            Regex.IsMatch(id, @"^gpt-5\.2(?:$|[-.])", RegexOptions.IgnoreCase))
+        if (Regex.IsMatch(id, @"(^|[/_:@])gpt-5\.2-chat-latest(?:$|[-.])", RegexOptions.IgnoreCase) ||
+            Regex.IsMatch(id, @"(^|[/_:@])gpt-5\.2(?:$|[-.])", RegexOptions.IgnoreCase))
         {
             levels = ["low", "medium", "high", "xhigh"];
             canDisable = true;
             return true;
         }
 
-        if (Regex.IsMatch(id, @"^gpt-5\.1-chat-latest(?:$|[-.])", RegexOptions.IgnoreCase))
+        if (Regex.IsMatch(id, @"(^|[/_:@])gpt-5\.1-chat-latest(?:$|[-.])", RegexOptions.IgnoreCase))
         {
             levels = ["low", "medium", "high"];
             canDisable = true;
             return true;
         }
-        if (Regex.IsMatch(id, @"^gpt-5\.1-codex-max(?:$|[-.])", RegexOptions.IgnoreCase))
+        if (Regex.IsMatch(id, @"(^|[/_:@])gpt-5\.1-codex-max(?:$|[-.])", RegexOptions.IgnoreCase))
         {
             levels = ["low", "medium", "high", "xhigh"];
             return true;
         }
-        if (Regex.IsMatch(id, @"^gpt-5\.1-codex(?:$|[-.])", RegexOptions.IgnoreCase))
+        if (Regex.IsMatch(id, @"(^|[/_:@])gpt-5\.1-codex(?:$|[-.])", RegexOptions.IgnoreCase))
         {
             levels = ["low", "medium", "high"];
             return true;
         }
-        if (Regex.IsMatch(id, @"^gpt-5\.1-pro(?:$|[-.])", RegexOptions.IgnoreCase))
+        if (Regex.IsMatch(id, @"(^|[/_:@])gpt-5\.1-pro(?:$|[-.])", RegexOptions.IgnoreCase))
             return false;
-        if (Regex.IsMatch(id, @"^gpt-5\.1(?:$|[-.])", RegexOptions.IgnoreCase))
+        if (Regex.IsMatch(id, @"(^|[/_:@])gpt-5\.1(?:$|[-.])", RegexOptions.IgnoreCase))
         {
             levels = ["low", "medium", "high"];
             canDisable = true;
             return true;
         }
 
-        if (Regex.IsMatch(id, @"^gpt-5-pro(?:$|[-.])", RegexOptions.IgnoreCase))
+        if (Regex.IsMatch(id, @"(^|[/_:@])gpt-5-pro(?:$|[-.])", RegexOptions.IgnoreCase))
         {
             levels = ["high"];
             return true;
         }
-        if (Regex.IsMatch(id, @"^gpt-5-codex(?:$|[-.])", RegexOptions.IgnoreCase))
+        if (Regex.IsMatch(id, @"(^|[/_:@])gpt-5-codex(?:$|[-.])", RegexOptions.IgnoreCase))
         {
             levels = ["low", "medium", "high"];
             return true;
         }
-        if (Regex.IsMatch(id, @"^gpt-5-chat-latest(?:$|[-.])", RegexOptions.IgnoreCase))
+        if (Regex.IsMatch(id, @"(^|[/_:@])gpt-5-chat-latest(?:$|[-.])", RegexOptions.IgnoreCase))
             return false;
-        if (Regex.IsMatch(id, @"^gpt-5(?:$|[-.])", RegexOptions.IgnoreCase))
+        if (Regex.IsMatch(id, @"(^|[/_:@])gpt-5(?:$|[-.])", RegexOptions.IgnoreCase))
         {
             levels = ["minimal", "low", "medium", "high"];
             return true;
         }
 
-        if (Regex.IsMatch(id, @"^(?:o1|o3|o4)(?:$|[-.])", RegexOptions.IgnoreCase))
+        if (Regex.IsMatch(id, @"(^|[/_:@])(?:o1|o3|o4)(?:$|[-.])", RegexOptions.IgnoreCase))
         {
             levels = ["low", "medium", "high"];
             return true;
         }
 
-        if (Regex.IsMatch(id, @"^grok-4\.6(?:$|[-.])", RegexOptions.IgnoreCase))
+        if (Regex.IsMatch(id, @"(^|[/_:@])grok-4\.6(?:$|[-.])", RegexOptions.IgnoreCase))
         {
             levels = ["low", "medium", "high", "xhigh"];
             return true;
         }
-        if (Regex.IsMatch(id, @"^grok-4\.5(?:$|[-.])", RegexOptions.IgnoreCase))
+        if (Regex.IsMatch(id, @"(^|[/_:@])grok-4\.5(?:$|[-.])", RegexOptions.IgnoreCase))
         {
             levels = ["low", "medium", "high"];
             return true;
         }
 
-        if (Regex.IsMatch(id, @"^glm-5\.3(?:$|[-.])", RegexOptions.IgnoreCase))
+        if (Regex.IsMatch(id, @"(^|[/_:@])glm-5\.3(?:$|[-.])", RegexOptions.IgnoreCase))
         {
             levels = ["low", "high", "max"];
             return true;
         }
-        if (Regex.IsMatch(id, @"^glm-5\.2(?:-fast-preview)?(?:$|[-.])", RegexOptions.IgnoreCase) ||
-            Regex.IsMatch(id, @"^glm-5\.[01](?:$|[-.])", RegexOptions.IgnoreCase) ||
-            Regex.IsMatch(id, @"^glm-5(?:$|[-.])", RegexOptions.IgnoreCase))
+        if (Regex.IsMatch(id, @"(^|[/_:@])glm-5\.2(?:-fast-preview)?(?:$|[-.])", RegexOptions.IgnoreCase) ||
+            Regex.IsMatch(id, @"(^|[/_:@])glm-5\.[01](?:$|[-.])", RegexOptions.IgnoreCase) ||
+            Regex.IsMatch(id, @"(^|[/_:@])glm-5(?:$|[-.])", RegexOptions.IgnoreCase))
         {
             // Match Kelivo's GLM-5.2 model-family effort ladder across providers.
             levels = ["low", "medium", "high", "xhigh", "max"];
             canDisable = true;
             return true;
         }
-        if (Regex.IsMatch(id, @"^glm-4[-.]?[567](?:$|[-.])", RegexOptions.IgnoreCase))
+        if (Regex.IsMatch(id, @"(^|[/_:@])glm-4[-.]?[567](?:$|[-.])", RegexOptions.IgnoreCase))
         {
             canDisable = true;
             return true;
@@ -619,7 +619,7 @@ public static class AiReasoningDialectSupport
             return true;
         }
 
-        if (Regex.IsMatch(id, @"^kimi-k3(?:$|[-.:])", RegexOptions.IgnoreCase))
+        if (Regex.IsMatch(id, @"(^|[/_:@])kimi-k3(?:$|[-.:])", RegexOptions.IgnoreCase))
         {
             levels = ["low", "high", "max"];
             return true;
@@ -631,7 +631,7 @@ public static class AiReasoningDialectSupport
         }
         if (Regex.IsMatch(id, @"(^|[/_:@])kimi-for-coding(?:$|[:])", RegexOptions.IgnoreCase) ||
             Regex.IsMatch(id, @"^k3(?:-256k)?$", RegexOptions.IgnoreCase) ||
-            Regex.IsMatch(id, @"^kimi-k2\.8(?:$|[-.])", RegexOptions.IgnoreCase))
+            Regex.IsMatch(id, @"(^|[/_:@])kimi-k2\.8(?:$|[-.])", RegexOptions.IgnoreCase))
         {
             levels = ["low", "high", "max"];
             canDisable = true;
@@ -647,7 +647,7 @@ public static class AiReasoningDialectSupport
             id.Contains("kimi-k2.7", StringComparison.OrdinalIgnoreCase))
             return true;
 
-        if (Regex.IsMatch(id, @"^mimo-v2(?:$|[-.])", RegexOptions.IgnoreCase))
+        if (Regex.IsMatch(id, @"(^|[/_:@])mimo-v2(?:$|[-.])", RegexOptions.IgnoreCase))
         {
             levels = ["low", "medium", "high"];
             canDisable = true;

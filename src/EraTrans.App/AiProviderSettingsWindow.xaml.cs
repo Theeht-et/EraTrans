@@ -75,6 +75,7 @@ public partial class AiProviderSettingsWindow : Window
         ModelsPathTextBox.Text = _currentProfile?.ModelsPath ?? "/models";
         ApiKeyPasswordBox.Password = _currentProfile?.ApiKey ?? "";
         ModelTextBox.Text = _currentProfile?.Model ?? "";
+        UpdateReasoningControls();
         UpdateEndpointPreview();
         LegacyProtocolWarning.Visibility = _currentProfile?.RequiresEndpointReview == true
             ? Visibility.Visible : Visibility.Collapsed;
@@ -100,6 +101,9 @@ public partial class AiProviderSettingsWindow : Window
         ModelsPathTextBox.IsEnabled = hasProfile && idle;
         ApiKeyPasswordBox.IsEnabled = hasProfile && idle;
         ModelTextBox.IsEnabled = hasProfile && idle;
+        bool reasoningAvailable = HasSupportedReasoningLevels();
+        ReasoningEnabledCheckBox.IsEnabled = hasProfile && idle && reasoningAvailable;
+        ReasoningEffortComboBox.IsEnabled = hasProfile && idle && reasoningAvailable && ReasoningEnabledCheckBox.IsChecked == true;
         FetchModelsButton.IsEnabled = hasProfile && idle;
         TestButton.IsEnabled = hasProfile && idle;
         RestoreDefaultBaseUrlButton.Visibility = _currentProfile?.IsBuiltIn == true
@@ -312,6 +316,88 @@ public partial class AiProviderSettingsWindow : Window
         return null;
     }
 
+    private AiProviderModel? GetSelectedReasoningModel()
+    {
+        if (_currentProfile is null || string.IsNullOrWhiteSpace(ModelTextBox.Text))
+            return null;
+
+        return _currentProfile.AvailableModels.FirstOrDefault(model =>
+            string.Equals(model.Id, ModelTextBox.Text.Trim(), StringComparison.OrdinalIgnoreCase));
+    }
+
+    private bool HasSupportedReasoningLevels()
+    {
+        AiProviderModel? model = GetSelectedReasoningModel();
+        return model?.ReasoningSupport == true &&
+               model.ReasoningLevels.Any(level =>
+                   level.Equals("low", StringComparison.OrdinalIgnoreCase) ||
+                   level.Equals("medium", StringComparison.OrdinalIgnoreCase) ||
+                   level.Equals("high", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private void UpdateReasoningControls()
+    {
+        if (_currentProfile is null)
+        {
+            ReasoningEnabledCheckBox.IsChecked = false;
+            ReasoningEffortComboBox.SelectedIndex = 1;
+            return;
+        }
+
+        bool supported = HasSupportedReasoningLevels();
+        AiModelReasoningSettings? setting = null;
+        if (supported)
+            _currentProfile.ReasoningSettingsByModel.TryGetValue(ModelTextBox.Text.Trim(), out setting);
+
+        ReasoningEnabledCheckBox.IsChecked = supported && setting?.Enabled == true;
+        string effort = setting?.Effort ?? "medium";
+        ReasoningEffortComboBox.SelectedIndex = effort switch
+        {
+            "low" => 0,
+            "high" => 2,
+            _ => 1
+        };
+        ReasoningEnabledCheckBox.IsEnabled = supported && !_loadFailed;
+        ReasoningEffortComboBox.IsEnabled = supported && setting?.Enabled == true && !_loadFailed;
+    }
+
+    private void SaveReasoningSetting()
+    {
+        if (_loadingProfile || _currentProfile is null || !HasSupportedReasoningLevels())
+            return;
+
+        string modelId = ModelTextBox.Text.Trim();
+        if (modelId.Length == 0)
+            return;
+
+        string effort = (ReasoningEffortComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "medium";
+        _currentProfile.ReasoningSettingsByModel[modelId] = new AiModelReasoningSettings
+        {
+            Enabled = ReasoningEnabledCheckBox.IsChecked == true,
+            Effort = effort
+        };
+        ReasoningEffortComboBox.IsEnabled =
+            ReasoningEnabledCheckBox.IsEnabled && ReasoningEnabledCheckBox.IsChecked == true;
+    }
+
+    private void ReasoningCheckBoxChanged(object sender, RoutedEventArgs e)
+    {
+        SaveReasoningSetting();
+        ReasoningEffortComboBox.IsEnabled =
+            ReasoningEnabledCheckBox.IsEnabled && ReasoningEnabledCheckBox.IsChecked == true;
+    }
+
+    private void ReasoningEffortChanged(object sender, SelectionChangedEventArgs e) =>
+        SaveReasoningSetting();
+
+    private void ModelTextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_loadingProfile)
+            return;
+        UpdateReasoningControls();
+        SetEditorEnabled(_currentProfile is not null);
+    }
+
     private void SaveFieldsToCurrentProfile()
     {
         if (_currentProfile is null || _loadingProfile)
@@ -331,6 +417,7 @@ public partial class AiProviderSettingsWindow : Window
         _currentProfile.ChatCompletionsPath = ChatCompletionsPathTextBox.Text.Trim();
         _currentProfile.ModelsPath = ModelsPathTextBox.Text.Trim();
         _currentProfile.Model = ModelTextBox.Text.Trim();
+        SaveReasoningSetting();
         _currentProfile.ApiKey = ApiKeyPasswordBox.Password;
         UpdateEndpointPreview();
 
@@ -458,6 +545,8 @@ public partial class AiProviderSettingsWindow : Window
                 {
                     ModelTextBox.Text = selected.Id;
                     profile.Model = selected.Id;
+                    UpdateReasoningControls();
+                    SetEditorEnabled(true);
                     StatusTextBlock.Text = $"已选择模型：{selected.Id}。保存后生效。";
                     UpdateActiveProviderStatus();
                 }

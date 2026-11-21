@@ -198,6 +198,18 @@ public static class AiReasoningDialectSupport
             model.ReasoningDialect = dialect;
         }
 
+        // The official GET /models response can advertise reasoning for models
+        // not covered by the small built-in default table. When it explicitly
+        // reports capability metadata, the exact official host supplies the
+        // DeepSeek wire dialect; no levels or disable support are invented.
+        if (dialect == DeepSeek &&
+            (model.ReasoningSupport == true || model.SupportsReasoning) &&
+            (model.ReasoningLevels.Count > 0 || model.ReasoningCanDisable == true))
+        {
+            model.ReasoningSupport ??= true;
+            model.ReasoningDialect ??= DeepSeek;
+        }
+
         // DeepSeek's documented current model list is intentionally narrow.
         if (dialect == DeepSeek &&
             (id.Equals("deepseek-flash", StringComparison.OrdinalIgnoreCase) ||

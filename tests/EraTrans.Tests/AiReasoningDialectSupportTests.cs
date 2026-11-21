@@ -302,6 +302,147 @@ public sealed class AiReasoningDialectSupportTests
         Assert.Equal("high", body.RootElement.GetProperty("reasoning").GetProperty("effort").GetString());
     }
 
+    [Fact]
+    public void Grok47_ExposesVerifiedEffortLevelsAndNeverOffersOff()
+    {
+        AiProviderModel model = new() { Id = "grok-4.7" };
+        const string endpoint = "https://api.x.ai/v1";
+        AiReasoningDialectSupport.ApplyKnownModelDefaults(model, endpoint);
+
+        Assert.True(model.ReasoningSupport);
+        Assert.False(model.ReasoningCanDisable);
+        Assert.Equal("openaiReasoningEffort", model.ReasoningDialect);
+        Assert.Equal(new[] { "low", "medium", "high", "xhigh" }, model.ReasoningLevels);
+
+        using JsonDocument body = CreateBody(
+            endpoint, model, new AiModelReasoningSettings { Enabled = true, Effort = "xhigh" });
+        Assert.Equal("xhigh", body.RootElement.GetProperty("reasoning_effort").GetString());
+
+        using JsonDocument offBody = CreateBody(
+            endpoint, model, new AiModelReasoningSettings { Disabled = true });
+        Assert.False(offBody.RootElement.TryGetProperty("reasoning_effort", out _));
+    }
+
+    [Fact]
+    public void Qwen4Max_UsesAliyunReasoningEffortAndModelSpecificLevels()
+    {
+        AiProviderModel model = new() { Id = "qwen4-max" };
+        const string endpoint = "https://dashscope.aliyuncs.com/compatible-mode/v1";
+        AiReasoningDialectSupport.ApplyKnownModelDefaults(model, endpoint);
+
+        Assert.True(model.ReasoningSupport);
+        Assert.True(model.ReasoningCanDisable);
+        Assert.Equal("qwenReasoningEffort", model.ReasoningDialect);
+        Assert.Equal(new[] { "low", "high", "xhigh" }, model.ReasoningLevels);
+
+        using JsonDocument effortBody = CreateBody(
+            endpoint, model, new AiModelReasoningSettings { Enabled = true, Effort = "xhigh" });
+        Assert.Equal("xhigh", effortBody.RootElement.GetProperty("reasoning_effort").GetString());
+        Assert.False(effortBody.RootElement.TryGetProperty("thinking_budget", out _));
+        Assert.False(effortBody.RootElement.TryGetProperty("enable_thinking", out _));
+
+        using JsonDocument offBody = CreateBody(
+            endpoint, model, new AiModelReasoningSettings { Disabled = true });
+        Assert.Equal("none", offBody.RootElement.GetProperty("reasoning_effort").GetString());
+    }
+
+    [Fact]
+    public void Qwen38_UsesOnlyItsDocumentedEffortLevelsAndNoBudgetCombination()
+    {
+        AiProviderModel model = new() { Id = "qwen3.8-flash" };
+        const string endpoint = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1";
+        AiReasoningDialectSupport.ApplyKnownModelDefaults(model, endpoint);
+
+        Assert.Equal("qwenReasoningEffort", model.ReasoningDialect);
+        Assert.True(model.ReasoningCanDisable);
+        Assert.Equal(new[] { "low", "medium", "xhigh" }, model.ReasoningLevels);
+
+        using JsonDocument effortBody = CreateBody(
+            endpoint, model, new AiModelReasoningSettings { Enabled = true, Effort = "medium" });
+        Assert.Equal("medium", effortBody.RootElement.GetProperty("reasoning_effort").GetString());
+        Assert.False(effortBody.RootElement.TryGetProperty("thinking_budget", out _));
+
+        using JsonDocument offBody = CreateBody(
+            endpoint, model, new AiModelReasoningSettings { Disabled = true });
+        Assert.Equal("none", offBody.RootElement.GetProperty("reasoning_effort").GetString());
+    }
+
+    [Fact]
+    public void AliyunWorkspaceDomain_ResolvesDialectFromModelFamilyNotHostAlone()
+    {
+        const string endpoint = "https://llm-abc123.cn-beijing.maas.aliyuncs.com/compatible-mode/v1";
+        AiProviderModel qwen = new() { Id = "qwen4-max" };
+        AiReasoningDialectSupport.ApplyKnownModelDefaults(qwen, endpoint);
+        Assert.Equal("qwenReasoningEffort", qwen.ReasoningDialect);
+
+        AiProviderModel glm = new() { Id = "glm-5.3" };
+        AiReasoningDialectSupport.ApplyKnownModelDefaults(glm, endpoint);
+        Assert.Equal("thinkingType", glm.ReasoningDialect);
+        Assert.False(glm.ReasoningCanDisable);
+        Assert.Equal(new[] { "low", "high", "max" }, glm.ReasoningLevels);
+
+        AiProviderModel unknown = new() { Id = "custom-reasoning-model", ReasoningSupport = true };
+        AiReasoningDialectSupport.ApplyKnownModelDefaults(unknown, endpoint);
+        Assert.Null(unknown.ReasoningDialect);
+        Assert.False(AiReasoningDialectSupport.IsCompatible(endpoint, unknown));
+
+        AiProviderModel unrelatedVendor = new() { Id = "deepseek-v4-pro", ReasoningSupport = true };
+        AiReasoningDialectSupport.ApplyKnownModelDefaults(unrelatedVendor, endpoint);
+        Assert.Null(unrelatedVendor.ReasoningDialect);
+        Assert.False(AiReasoningDialectSupport.IsCompatible(endpoint, unrelatedVendor));
+    }
+
+    [Fact]
+    public void DashScopeGlm53_UsesThinkingTypeAndDoesNotAllowDisable()
+    {
+        AiProviderModel model = new() { Id = "glm-5.3" };
+        const string endpoint = "https://dashscope.aliyuncs.com/compatible-mode/v1";
+        AiReasoningDialectSupport.ApplyKnownModelDefaults(model, endpoint);
+
+        Assert.Equal("thinkingType", model.ReasoningDialect);
+        Assert.False(model.ReasoningCanDisable);
+        Assert.Equal(new[] { "low", "high", "max" }, model.ReasoningLevels);
+
+        using JsonDocument effortBody = CreateBody(
+            endpoint, model, new AiModelReasoningSettings { Enabled = true, Effort = "max" });
+        Assert.Equal("enabled", effortBody.RootElement.GetProperty("thinking").GetProperty("type").GetString());
+        Assert.Equal("max", effortBody.RootElement.GetProperty("reasoning_effort").GetString());
+
+        using JsonDocument offBody = CreateBody(
+            endpoint, model, new AiModelReasoningSettings { Disabled = true });
+        Assert.False(offBody.RootElement.TryGetProperty("thinking", out _));
+    }
+
+    [Fact]
+    public void InternS2_UsesDocumentedThinkingModeSwitch()
+    {
+        AiProviderModel model = new() { Id = "intern-s2" };
+        const string endpoint = "https://chat.intern-ai.org.cn/v1";
+        AiReasoningDialectSupport.ApplyKnownModelDefaults(model, endpoint);
+
+        Assert.True(model.ReasoningSupport);
+        Assert.True(model.ReasoningCanDisable);
+        Assert.Equal("internThinkingMode", model.ReasoningDialect);
+        Assert.Empty(model.ReasoningLevels);
+
+        using JsonDocument offBody = CreateBody(
+            endpoint, model, new AiModelReasoningSettings { Disabled = true });
+        Assert.False(offBody.RootElement.GetProperty("thinking_mode").GetBoolean());
+    }
+
+    [Fact]
+    public void UnsupportedOpenAiGptVariantsRemainUnknownInsteadOfBeingOverclassified()
+    {
+        foreach (string id in new[] { "gpt-5.5-codex", "gpt-5.4-codex", "gpt-5.3-pro", "gpt-5.1-pro" })
+        {
+            AiProviderModel model = new() { Id = id };
+            AiReasoningDialectSupport.ApplyKnownModelDefaults(model, "https://api.openai.com/v1");
+            Assert.Null(model.ReasoningSupport);
+            Assert.Null(model.ReasoningCanDisable);
+            Assert.Empty(model.ReasoningLevels);
+        }
+    }
+
     private static JsonDocument CreateBody(
         string baseUrl,
         AiProviderModel model,

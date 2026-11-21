@@ -53,8 +53,7 @@ public sealed class AiModelCatalogEnrichmentService
             ["api.moonshot.ai"] = ["moonshotai"],
             ["ark.cn-beijing.volces.com"] = ["volcengine"],
             ["api.siliconflow.cn"] = ["siliconflow"],
-            ["openrouter.ai"] = ["openrouter"],
-            ["api.x.ai"] = ["xai"]
+            ["openrouter.ai"] = ["openrouter"]
         };
 
     private static readonly IReadOnlyDictionary<string, string> CatalogVendorPrefixToProviderId =

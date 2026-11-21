@@ -134,6 +134,18 @@ public sealed class AiReasoningDialectSupportTests
     }
 
     [Fact]
+    public void Qwen3ModelGuess_MatchesKelivoSubstringDetection()
+    {
+        AiProviderModel model = new() { Id = "relay-qwen3-custom" };
+        AiReasoningDialectSupport.ApplyKnownModelDefaults(
+            model, "https://custom.example/v1");
+
+        Assert.True(model.ReasoningSupport);
+        Assert.True(model.ReasoningCanDisable);
+        Assert.Null(model.ReasoningDialect);
+    }
+
+    [Fact]
     public void QwenThinkingOnlyModel_DoesNotSendDisableFlag()
     {
         AiProviderModel model = new() { Id = "qwen3.7-max-preview" };

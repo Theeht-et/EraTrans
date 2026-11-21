@@ -28,7 +28,7 @@ public sealed class AiProviderSettingsPortablePersistenceTests
                     ApiKey = "secret-test-api-key",
                     ReasoningSettingsByModel = new Dictionary<string, AiModelReasoningSettings>
                     {
-                        ["gpt-4o-mini"] = new() { Enabled = true, Effort = "high" }
+                        ["gpt-4o-mini"] = new() { Enabled = true, Disabled = true, Effort = "xhigh" }
                     },
                     ChatCompletionsPath = "/v2/chat/respond",
                     ModelsPath = "/v2/models",
@@ -41,7 +41,9 @@ public sealed class AiProviderSettingsPortablePersistenceTests
                             GroupName = "OpenAI",
                             OwnedBy = "openai",
                             Created = 1720000000,
-                            ReasoningLevels = ["low", "medium", "high"],
+                            ReasoningLevels = ["low", "medium", "high", "xhigh"],
+                            ReasoningCanDisable = true,
+                            ReasoningDialect = "openaiReasoningEffort",
                             Family = "gpt-4o",
                             Status = "active",
                             SupportsTools = true,
@@ -93,7 +95,8 @@ public sealed class AiProviderSettingsPortablePersistenceTests
         Assert.Equal("/v2/chat/respond", provider.ChatCompletionsPath);
         Assert.Equal("/v2/models", provider.ModelsPath);
         Assert.True(provider.ReasoningSettingsByModel["gpt-4o-mini"].Enabled);
-        Assert.Equal("high", provider.ReasoningSettingsByModel["gpt-4o-mini"].Effort);
+        Assert.True(provider.ReasoningSettingsByModel["gpt-4o-mini"].Disabled);
+        Assert.Equal("xhigh", provider.ReasoningSettingsByModel["gpt-4o-mini"].Effort);
         Assert.Collection(
             provider.AvailableModels,
             model =>
@@ -107,7 +110,9 @@ public sealed class AiProviderSettingsPortablePersistenceTests
                 Assert.Equal("active", model.Status);
                 Assert.True(model.SupportsTools);
                 Assert.True(model.SupportsReasoning);
-                Assert.Equal(new[] { "low", "medium", "high" }, model.ReasoningLevels);
+                Assert.Equal(new[] { "low", "medium", "high", "xhigh" }, model.ReasoningLevels);
+                Assert.True(model.ReasoningCanDisable);
+                Assert.Equal("openaiReasoningEffort", model.ReasoningDialect);
                 Assert.True(model.SupportsStructuredOutput);
                 Assert.True(model.SupportsAttachments);
                 Assert.True(model.SupportsTemperature);

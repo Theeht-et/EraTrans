@@ -323,9 +323,11 @@ public sealed class AiModelCatalogEnrichmentService
                         ?? ReadNestedString(row, "reasoning", "dialect"),
                     ReasoningSupport = ReadNullableBoolean(row, "reasoning")
                         ?? ReadNullableBoolean(row, "rsn")
+                        ?? ReadNestedNullableBoolean(row, "reasoning", "supported")
                         ?? (HasCatalogReasoningOptions(row) ? true : null),
                     SupportsReasoning = ReadNullableBoolean(row, "reasoning")
                         ?? ReadNullableBoolean(row, "rsn")
+                        ?? ReadNestedNullableBoolean(row, "reasoning", "supported")
                         ?? HasCatalogReasoningOptions(row),
                     SupportsStructuredOutput = ReadBoolean(row, "structured_output") || ReadBoolean(row, "so"),
                     SupportsAttachments = ReadBoolean(row, "attachment"),
@@ -380,6 +382,23 @@ public sealed class AiModelCatalogEnrichmentService
                     values.ValueKind != JsonValueKind.Array)
                     continue;
 
+                foreach (JsonElement value in values.EnumerateArray())
+                {
+                    if (value.ValueKind == JsonValueKind.String &&
+                        !string.IsNullOrWhiteSpace(value.GetString()))
+                        levels.Add(value.GetString()!);
+                }
+            }
+        }
+
+        if (TryGetProperty(row, "reasoning", out JsonElement reasoning) &&
+            reasoning.ValueKind == JsonValueKind.Object)
+        {
+            foreach (string propertyName in new[] { "effort", "levels", "supported_levels" })
+            {
+                if (!TryGetProperty(reasoning, propertyName, out JsonElement values) ||
+                    values.ValueKind != JsonValueKind.Array)
+                    continue;
                 foreach (JsonElement value in values.EnumerateArray())
                 {
                     if (value.ValueKind == JsonValueKind.String &&

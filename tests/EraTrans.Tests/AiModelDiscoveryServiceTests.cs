@@ -63,6 +63,34 @@ public sealed class AiModelDiscoveryServiceTests
     }
 
     [Fact]
+    public void ReasoningSupportDescription_ShowsOnlyKnownCapabilityWithoutEffortLevels()
+    {
+        AiProviderModel unknown = new() { Id = "custom-model" };
+        Assert.False(unknown.HasKnownReasoningSupport);
+        Assert.Equal("", unknown.ReasoningSupportDescription);
+
+        AiProviderModel supported = new()
+        {
+            Id = "reasoning-model",
+            ReasoningSupport = true,
+            ReasoningLevels = ["low", "medium", "high"]
+        };
+        Assert.True(supported.HasKnownReasoningSupport);
+        Assert.True(supported.IsReasoningSupported);
+        Assert.Equal("推理支持", supported.ReasoningSupportDescription);
+        Assert.DoesNotContain("low", supported.ReasoningSupportDescription);
+
+        AiProviderModel unsupported = new()
+        {
+            Id = "plain-model",
+            ReasoningSupport = false
+        };
+        Assert.True(unsupported.HasKnownReasoningSupport);
+        Assert.False(unsupported.IsReasoningSupported);
+        Assert.Equal("不支持推理", unsupported.ReasoningSupportDescription);
+    }
+
+    [Fact]
     public void ParseModelsResponse_AcceptsModelsEnvelopeAndEmptyList()
     {
         IReadOnlyList<AiProviderModel> models =

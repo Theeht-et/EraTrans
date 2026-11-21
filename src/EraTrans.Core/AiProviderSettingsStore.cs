@@ -351,6 +351,7 @@ public sealed class AiProviderSettingsStore
                                 OwnedBy = model.OwnedBy,
                                 Created = model.Created,
                                 ReasoningSupport = model.ReasoningSupport,
+                                ReasoningLevels = [.. (model.ReasoningLevels ?? [])],
                                 IsEmbedding = model.IsEmbedding,
                                 IsRerank = model.IsRerank,
                                 Family = model.Family,
@@ -463,6 +464,7 @@ public sealed class AiProviderSettingsStore
                             OwnedBy = model.OwnedBy,
                             Created = model.Created,
                             ReasoningSupport = model.ReasoningSupport,
+                            ReasoningLevels = [.. (model.ReasoningLevels ?? [])],
                             IsEmbedding = model.IsEmbedding,
                             IsRerank = model.IsRerank,
                             Family = model.Family,
@@ -562,6 +564,7 @@ public sealed class AiProviderSettingsStore
         public string? OwnedBy { get; set; }
         public long? Created { get; set; }
         public bool? ReasoningSupport { get; set; }
+        public List<string>? ReasoningLevels { get; set; } = [];
         public bool IsEmbedding { get; set; }
         public bool IsRerank { get; set; }
         public string? Family { get; set; }

@@ -47,6 +47,27 @@ public sealed class AiReasoningDialectSupportTests
         Assert.Equal("qwenEnableThinking", qwenModel.ReasoningDialect);
     }
 
+    [Theory]
+    [InlineData("gemma-4", "minimal,high")]
+    [InlineData("muse-spark-1", "low,medium,high,xhigh")]
+    [InlineData("muse-spark-1.3", "low,medium,high,xhigh,max")]
+    [InlineData("muse-spark-1.3-contributor", "low,medium,high,xhigh")]
+    public void GemmaAndMuseSpark_UseKelivoModelReasoningDefaults(
+        string modelId,
+        string expectedLevels)
+    {
+        AiProviderModel model = new() { Id = modelId };
+        AiReasoningDialectSupport.ApplyKnownModelDefaults(
+            model, "https://proxy.example.com/v1");
+
+        Assert.True(model.ReasoningSupport);
+        Assert.Equal(
+            expectedLevels.Split(','),
+            model.ReasoningLevels);
+        Assert.False(model.ReasoningCanDisable);
+        Assert.Null(model.ReasoningDialect);
+    }
+
     [Fact]
     public void OpenAiGpt56_UsesNoneOnlyWhenModelAllowsDisabling()
     {

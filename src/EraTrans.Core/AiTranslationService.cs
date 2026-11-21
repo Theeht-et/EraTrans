@@ -29,6 +29,18 @@ public interface IAiChatCompletionClient
         string systemPrompt,
         string userPrompt,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Reasoning is optional: implementations that do not care about it keep
+    /// working through this default forwarder.
+    /// </summary>
+    Task<string> CompleteAsync(
+        AiProviderProfile profile,
+        string systemPrompt,
+        string userPrompt,
+        AiReasoningOptions? reasoning,
+        CancellationToken cancellationToken = default) =>
+        CompleteAsync(profile, systemPrompt, userPrompt, cancellationToken);
 }
 
 /// <summary>
@@ -76,22 +88,39 @@ public sealed class AiTranslationService
         AiProviderProfile profile,
         IReadOnlyList<AiTranslationRequest> requests,
         CancellationToken cancellationToken = default) =>
-        TranslateCoreAsync(profile, requests, null, cancellationToken);
+        TranslateAsync(profile, requests, reasoning: null, cancellationToken);
+
+    public Task<IReadOnlyList<AiTranslationResult>> TranslateAsync(
+        AiProviderProfile profile,
+        IReadOnlyList<AiTranslationRequest> requests,
+        AiReasoningOptions? reasoning,
+        CancellationToken cancellationToken = default) =>
+        TranslateCoreAsync(profile, requests, null, reasoning, cancellationToken);
 
     public Task<IReadOnlyList<AiTranslationResult>> TranslateWithSemanticContextAsync(
         AiProviderProfile profile,
         IReadOnlyList<AiTranslationRequest> requests,
         IReadOnlyList<AiTranslationSemanticContextGroup> semanticContextGroups,
+        CancellationToken cancellationToken = default) =>
+        TranslateWithSemanticContextAsync(
+            profile, requests, semanticContextGroups, reasoning: null, cancellationToken);
+
+    public Task<IReadOnlyList<AiTranslationResult>> TranslateWithSemanticContextAsync(
+        AiProviderProfile profile,
+        IReadOnlyList<AiTranslationRequest> requests,
+        IReadOnlyList<AiTranslationSemanticContextGroup> semanticContextGroups,
+        AiReasoningOptions? reasoning,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(semanticContextGroups);
-        return TranslateCoreAsync(profile, requests, semanticContextGroups, cancellationToken);
+        return TranslateCoreAsync(profile, requests, semanticContextGroups, reasoning, cancellationToken);
     }
 
     private async Task<IReadOnlyList<AiTranslationResult>> TranslateCoreAsync(
         AiProviderProfile profile,
         IReadOnlyList<AiTranslationRequest> requests,
         IReadOnlyList<AiTranslationSemanticContextGroup>? semanticContextGroups,
+        AiReasoningOptions? reasoning,
         CancellationToken cancellationToken)
     {
         AiProviderProfileValidator.Validate(profile);
@@ -117,16 +146,46 @@ public sealed class AiTranslationService
 
         string userPrompt = JsonSerializer.Serialize(payload, PromptJsonOptions);
         string systemPrompt = semanticContextGroups is null ? SystemPrompt : SemanticSystemPrompt;
-        return await CompleteWithLogAsync(
+        return await CompleteWithReasoningFallbackAsync(
             profile,
             systemPrompt,
             userPrompt,
             requestKind: "Translation",
             requestedEntryCount: requests.Count,
-            response => ParseResponse(response, requests),
+            processResponse: response => ParseResponse(response, requests),
+            reasoning,
             cancellationToken);
     }
 
+    /// <summary>
+    /// A rejected reasoning field fails the entire request, while the identical
+    /// request without reasoning usually succeeds. Retry once without it instead
+    /// of asking the user to understand provider dialects. Each attempt keeps its
+    /// own log entry, so the rejected request stays available for diagnosis.
+    /// </summary>
+    private async Task<T> CompleteWithReasoningFallbackAsync<T>(
+        AiProviderProfile profile,
+        string systemPrompt,
+        string userPrompt,
+        string requestKind,
+        int requestedEntryCount,
+        Func<string, T> processResponse,
+        AiReasoningOptions? reasoning,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await CompleteWithLogAsync(
+                profile, systemPrompt, userPrompt, requestKind, requestedEntryCount,
+                processResponse, reasoning, cancellationToken);
+        }
+        catch (Exception ex) when (AiReasoningFallback.IsRejection(ex, reasoning))
+        {
+            return await CompleteWithLogAsync(
+                profile, systemPrompt, userPrompt, requestKind, requestedEntryCount,
+                processResponse, AiReasoningOptions.Auto, cancellationToken);
+        }
+    }
 
     private async Task<T> CompleteWithLogAsync<T>(
         AiProviderProfile profile,
@@ -135,6 +194,7 @@ public sealed class AiTranslationService
         string requestKind,
         int requestedEntryCount,
         Func<string, T> processResponse,
+        AiReasoningOptions? reasoning,
         CancellationToken cancellationToken)
     {
         AiTranslationLogEntry? log = null;
@@ -143,7 +203,7 @@ public sealed class AiTranslationService
         if (_logStore is not null)
         {
             AiProviderHttpRequestDetails requestDetails =
-                AiProviderHttpRequestFactory.Create(profile, systemPrompt, userPrompt);
+                AiProviderHttpRequestFactory.Create(profile, systemPrompt, userPrompt, reasoning);
             string endpoint = requestDetails.Endpoint;
             using JsonDocument requestDocument = JsonDocument.Parse(requestDetails.JsonBody);
             string requestJson = JsonSerializer.Serialize(
@@ -191,6 +251,7 @@ public sealed class AiTranslationService
                 profile,
                 systemPrompt,
                 userPrompt,
+                reasoning,
                 cancellationToken);
 
             if (log is not null)
@@ -316,12 +377,18 @@ public sealed class AiTranslationService
         return payload;
     }
 
+    public Task TestConnectionAsync(
+        AiProviderProfile profile,
+        CancellationToken cancellationToken = default) =>
+        TestConnectionAsync(profile, reasoning: null, cancellationToken);
+
     public async Task TestConnectionAsync(
         AiProviderProfile profile,
+        AiReasoningOptions? reasoning,
         CancellationToken cancellationToken = default)
     {
         AiProviderProfileValidator.Validate(profile);
-        await CompleteWithLogAsync(
+        await CompleteWithReasoningFallbackAsync(
             profile,
             "你正在执行 API 连通性测试。请只回复 OK。",
             "请回复 OK。",
@@ -334,6 +401,7 @@ public sealed class AiTranslationService
 
                 return response;
             },
+            reasoning,
             cancellationToken);
     }
 

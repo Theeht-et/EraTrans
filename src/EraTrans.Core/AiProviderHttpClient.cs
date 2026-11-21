@@ -65,15 +65,23 @@ public sealed class OpenAiCompatibleChatCompletionClient : IAiChatCompletionClie
         _httpClient = httpClient ?? SharedHttpClient;
     }
 
+    public Task<string> CompleteAsync(
+        AiProviderProfile profile,
+        string systemPrompt,
+        string userPrompt,
+        CancellationToken cancellationToken = default) =>
+        CompleteAsync(profile, systemPrompt, userPrompt, reasoning: null, cancellationToken);
+
     public async Task<string> CompleteAsync(
         AiProviderProfile profile,
         string systemPrompt,
         string userPrompt,
+        AiReasoningOptions? reasoning,
         CancellationToken cancellationToken = default)
     {
         AiProviderProfileValidator.Validate(profile);
         AiProviderHttpRequestDetails details =
-            AiProviderHttpRequestFactory.Create(profile, systemPrompt, userPrompt);
+            AiProviderHttpRequestFactory.Create(profile, systemPrompt, userPrompt, reasoning);
 
         using var request = new HttpRequestMessage(HttpMethod.Post, details.Endpoint);
         request.Content = new StringContent(details.JsonBody, Encoding.UTF8, "application/json");

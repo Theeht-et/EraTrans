@@ -252,13 +252,13 @@ public static class AiReasoningDialectSupport
     private static bool IsKnownReasoningFamily(string id)
     {
         return Regex.IsMatch(id, @"^(?:o[134]|gpt-[56])(?:$|[-.])", RegexOptions.IgnoreCase) ||
-               Regex.IsMatch(id, @"^deepseek-(?:reasoner|r1|v3\\.1|v3\\.2|v4)(?:$|[-._:@])", RegexOptions.IgnoreCase) ||
+               Regex.IsMatch(id, @"^deepseek-(?:reasoner|r1|v3\.1|v3\.2|v4)(?:$|[-._:@])", RegexOptions.IgnoreCase) ||
                Regex.IsMatch(id, @"^(?:qwq|qwen-?3)(?:$|[-.])", RegexOptions.IgnoreCase) ||
                Regex.IsMatch(id, @"^kimi-k2-thinking(?:$|[-._:@])", RegexOptions.IgnoreCase) ||
-               Regex.IsMatch(id, @"^kimi-k2\\.[567](?:$|[-._:@])", RegexOptions.IgnoreCase) ||
+               Regex.IsMatch(id, @"^kimi-k2\.[567](?:$|[-._:@])", RegexOptions.IgnoreCase) ||
                Regex.IsMatch(id, @"^kimi-k3(?:$|[-._:@])", RegexOptions.IgnoreCase) ||
-               Regex.IsMatch(id, @"^grok-4\\.[567](?:$|[-._:@])", RegexOptions.IgnoreCase) ||
-               Regex.IsMatch(id, @"^gemini-(?:2\\.5|3|4)(?:$|[-._:@])", RegexOptions.IgnoreCase) ||
+               Regex.IsMatch(id, @"^grok-4\.[567](?:$|[-._:@])", RegexOptions.IgnoreCase) ||
+               Regex.IsMatch(id, @"^gemini-(?:2\.5|3|4)(?:$|[-._:@])", RegexOptions.IgnoreCase) ||
                Regex.IsMatch(id, @"^claude-(?:(?:3[-.]7)|(?:opus|sonnet|haiku|fable|mythos)-[45])(?:$|[-._:@])", RegexOptions.IgnoreCase) ||
                Regex.IsMatch(id, @"^glm-(?:4[.-][567]|5)(?:$|[-._:@])", RegexOptions.IgnoreCase) ||
                Regex.IsMatch(id, @"^(?:minimax-m[23]|step-3|intern-s1|laguna)(?:$|[-._:@])", RegexOptions.IgnoreCase) ||

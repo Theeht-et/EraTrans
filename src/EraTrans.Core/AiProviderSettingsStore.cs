@@ -42,6 +42,7 @@ public sealed class AiProviderProfile
 public sealed class AiModelReasoningSettings
 {
     public bool Enabled { get; set; }
+    public bool Disabled { get; set; }
     public string Effort { get; set; } = "medium";
 }
 
@@ -374,6 +375,7 @@ public sealed class AiProviderSettingsStore
                             .ToDictionary(pair => pair.Key, pair => new AiModelReasoningSettings
                             {
                                 Enabled = pair.Value.Enabled,
+                                Disabled = pair.Value.Disabled,
                                 Effort = NormalizeReasoningEffort(pair.Value.Effort)
                             }, StringComparer.OrdinalIgnoreCase),
                         AvailableModels = (item.Models ?? [])
@@ -504,6 +506,7 @@ public sealed class AiProviderSettingsStore
                         .ToDictionary(pair => pair.Key, pair => new StoredReasoningSettings
                         {
                             Enabled = pair.Value.Enabled,
+                            Disabled = pair.Value.Disabled,
                             Effort = NormalizeReasoningEffort(pair.Value.Effort)
                         }, StringComparer.OrdinalIgnoreCase),
                     Models = (profile.AvailableModels ?? [])
@@ -602,6 +605,7 @@ public sealed class AiProviderSettingsStore
     private sealed class StoredReasoningSettings
     {
         public bool Enabled { get; set; }
+        public bool Disabled { get; set; }
         public string Effort { get; set; } = "medium";
     }
 

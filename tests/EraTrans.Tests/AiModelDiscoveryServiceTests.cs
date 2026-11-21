@@ -482,6 +482,8 @@ public sealed class AiModelDiscoveryServiceTests
         Assert.Equal(false, model.ReasoningSupport);
         Assert.Equal(new[] { "low", "medium", "high" }, model.ReasoningLevels);
         Assert.Equal("推理能力：不支持", model.ReasoningSupportDescription);
+        Assert.Equal(new[] { "low", "medium", "high" }, model.ReasoningLevels);
+        Assert.Equal("推理能力：不支持", model.ReasoningSupportDescription);
     }
 
     [Fact]

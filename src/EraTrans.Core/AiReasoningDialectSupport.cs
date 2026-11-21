@@ -540,9 +540,11 @@ public static class AiReasoningDialectSupport
             Regex.IsMatch(id, @"^glm-5\.[01](?:$|[-.])", RegexOptions.IgnoreCase) ||
             Regex.IsMatch(id, @"^glm-5(?:$|[-.])", RegexOptions.IgnoreCase))
         {
-            // Alibaba documents high/max as the effective GLM reasoning levels.
-            // low/medium and xhigh are compatibility aliases, not separate levels.
-            levels = ["high", "max"];
+            // Alibaba Model Studio exposes high/max as effective GLM levels;
+            // direct Zhipu-compatible endpoints keep the wider Kelivo ladder.
+            levels = dialect == DashScopeGlmEffort
+                ? ["high", "max"]
+                : ["low", "medium", "high", "xhigh", "max"];
             canDisable = true;
             return true;
         }

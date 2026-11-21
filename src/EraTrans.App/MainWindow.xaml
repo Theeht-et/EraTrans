@@ -6,6 +6,7 @@
         Height="1000"
         MinWidth="1200"
         MinHeight="760"
+        Icon="pack://application:,,,/Assets/EraTrans.ico"
         WindowStartupLocation="CenterScreen"
         Background="#F5F6F8"
         Closing="MainWindow_Closing">
@@ -13,26 +14,10 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <Grid Grid.Row="0" Margin="2,0,2,14">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-            <StackPanel>
-                <TextBlock Text="EraTrans" FontSize="25" FontWeight="SemiBold" Foreground="#20242A" />
-                <TextBlock Margin="0,4,0,0"
-                           Text="游戏字典工作区 · 原游戏目录只读，所有生成文件统一保存在输出目录"
-                           FontSize="13" Foreground="#68717D" />
-            </StackPanel>
-            <Button Grid.Column="1" x:Name="SettingsButton" Content="解析设置"
-                    Width="100" Height="34" VerticalAlignment="Center" Click="Settings_Click" />
-        </Grid>
-
-        <Grid Grid.Row="1">
+        <Grid Grid.Row="0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="14" />
@@ -70,23 +55,33 @@
             </Border>
         </Grid>
 
-        <Grid Grid.Row="2" Margin="0,12,0,0">
+        <Grid Grid.Row="1" Margin="0,12,0,0">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <Button x:Name="OpenWorkspaceButton" Content="打开工作区" Width="112" Height="38"
                     Margin="0,0,10,0" FontWeight="SemiBold" Click="OpenWorkspace_Click" />
             <Button x:Name="ExtractButton" Grid.Column="1" Content="提取/更新字典" Width="140" Height="38"
                     Margin="0,0,10,0" FontWeight="SemiBold" Click="Extract_Click" />
             <Button x:Name="ApplyTranslationsButton" Grid.Column="2" Content="生成游戏副本并应用译文"
-                    Width="205" Height="38" Margin="0,0,14,0" FontWeight="SemiBold"
+                    Width="205" Height="38" Margin="0,0,10,0" FontWeight="SemiBold"
                     Click="ApplyTranslations_Click" />
-            <TextBlock x:Name="StatusText" Grid.Column="3" VerticalAlignment="Center"
+            <Button x:Name="SaveCurrentDictionaryButton" Grid.Column="3" Content="保存当前字典"
+                    Width="128" Height="38" Margin="0,0,14,0" IsEnabled="False"
+                    Click="SaveCurrentDictionary_Click" />
+            <TextBlock x:Name="StatusText" Grid.Column="4" VerticalAlignment="Center"
                        Text="原游戏目录不会被修改；字典、AI 上下文和游戏副本会按游戏文件夹名称分类保存。"
                        TextWrapping="Wrap" Foreground="#68717D" FontSize="12" />
+            <Button Grid.Column="5" x:Name="SettingsButton" Content="解析设置"
+                    Width="100" Height="38" Margin="10,0,0,0"
+                    VerticalAlignment="Center" Click="Settings_Click" />
         </Grid>
 
-        <ContentControl x:Name="EditorHost" Grid.Row="3" Margin="0,14,0,0" />
+        <ContentControl x:Name="EditorHost" Grid.Row="2" Margin="0,14,0,0" />
     </Grid>
 </Window>

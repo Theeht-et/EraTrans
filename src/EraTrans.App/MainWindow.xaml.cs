@@ -40,6 +40,7 @@ public partial class MainWindow : Window
 
         _editor = new DictionaryEditorControl(_settings);
         _editor.CurrentFileChanged += Editor_CurrentFileChanged;
+        _editor.SaveAvailabilityChanged += Editor_SaveAvailabilityChanged;
         EditorHost.Content = _editor;
 
         GameDirectoryTextBox.Text = _settings.LastGameDirectory ?? string.Empty;
@@ -192,6 +193,17 @@ public partial class MainWindow : Window
         }
     }
 
+    private void Editor_SaveAvailabilityChanged(bool canSave)
+    {
+        SaveCurrentDictionaryButton.IsEnabled = canSave && !_isProcessing;
+    }
+
+    private void SaveCurrentDictionary_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_isProcessing)
+            _editor.SaveCurrentDictionary();
+    }
+
     private void SetBusy(bool busy)
     {
         _isProcessing = busy;
@@ -200,6 +212,7 @@ public partial class MainWindow : Window
         BrowseOutputDirectoryButton.IsEnabled = !busy;
         ExtractButton.IsEnabled = !busy;
         ApplyTranslationsButton.IsEnabled = !busy;
+        SaveCurrentDictionaryButton.IsEnabled = !busy && _editor.CanSaveCurrentDictionary;
         SettingsButton.IsEnabled = !busy;
         _editor.IsEnabled = !busy;
     }

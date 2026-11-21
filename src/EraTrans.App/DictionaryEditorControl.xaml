@@ -76,7 +76,6 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                         <RowDefinition Height="160" />
-                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
                     <Grid Margin="0,0,0,12">
@@ -107,12 +106,24 @@
                     </Grid>
 
                     <DockPanel Grid.Row="1" Margin="0,0,0,10">
-                        <TextBlock x:Name="AiProviderStatusTextBlock"
-                                   DockPanel.Dock="Right"
-                                   VerticalAlignment="Center"
-                                   Foreground="#68717D"
-                                   FontSize="11"
-                                   Text="AI 翻译未配置" />
+                        <StackPanel DockPanel.Dock="Right"
+                                    Width="235"
+                                    Margin="10,0,0,0"
+                                    VerticalAlignment="Center">
+                            <TextBlock x:Name="AiProviderStatusTextBlock"
+                                       Foreground="#68717D"
+                                       FontSize="11"
+                                       TextAlignment="Right"
+                                       TextTrimming="CharacterEllipsis"
+                                       Text="AI 翻译未配置" />
+                            <TextBlock x:Name="StatusTextBlock"
+                                       Foreground="#68717D"
+                                       FontSize="11"
+                                       TextAlignment="Right"
+                                       TextWrapping="Wrap"
+                                       MaxHeight="30"
+                                       Text="就绪" />
+                        </StackPanel>
                         <StackPanel Orientation="Horizontal">
                             <Button x:Name="AiSettingsButton"
                                     Content="AI 服务设置"
@@ -311,28 +322,7 @@
                             </Grid>
                         </Grid>
                     </Border>
-                    <Grid Grid.Row="4" Margin="0,12,0,0">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock x:Name="StatusTextBlock"
-                                   VerticalAlignment="Center"
-                                   Text="变量类词条只读；状态值：-1 忽略、0 未翻译、1 已翻译。"
-                                   TextWrapping="Wrap"
-                                   Foreground="#68717D"
-                                   FontSize="12" />
-                        <StackPanel Grid.Column="1"
-                                    Orientation="Horizontal">
-                            <Button x:Name="SaveButton"
-                                    Content="保存当前字典"
-                                    Width="140"
-                                    Height="36"
-                                    Margin="0,0,10,0"
-                                    IsEnabled="False"
-                                    Click="SaveButton_Click" />
-                        </StackPanel>
-                    </Grid>
+
                 </Grid>
             </Border>
         </Grid>

@@ -16,7 +16,9 @@ public partial class DictionaryEditorControl : UserControl
     private string _gameDirectory = string.Empty;
     private EraTransUserSettings _settings;
     public event Action<string?>? CurrentFileChanged;
+    public event Action<bool>? SaveAvailabilityChanged;
     public string? CurrentFileRelativePath => _currentFile?.RelativePath;
+    public bool CanSaveCurrentDictionary => _document?.IsDirty == true && !_isTranslating;
     private Window OwnerWindow => Window.GetWindow(this) ?? Application.Current.MainWindow!;
     private readonly DictionaryEditorService _service = new();
     private readonly ErbTranslationGroupingService _groupingService = new();
@@ -50,7 +52,10 @@ public partial class DictionaryEditorControl : UserControl
     {
         ArgumentNullException.ThrowIfNull(settings);
         _settings = settings;
+        UpdateDocumentStatus();
     }
+
+    public bool SaveCurrentDictionary() => SaveCurrentDocument();
 
     public bool SwitchWorkspace(EraTransOutputLayout layout, string? preferredRelativePath)
     {
@@ -460,17 +465,9 @@ public partial class DictionaryEditorControl : UserControl
                 EntryGroupTextBox.Text = "当前字典没有词条。";
                 EntryGroupLabelTextBlock.Text = "同组条目";
             }
-            StatusTextBlock.Text = "变量类词条只读；状态值：-1 忽略、0 未翻译、1 已翻译。";
-            if (_activeGroupingIndex is not null)
-            {
-                StatusTextBlock.Text += _settings.EnableErbSemanticGroupingTranslation
-                    ? " · 已加载 ERB 分组，语义分组翻译已启用"
-                    : " · 已加载 ERB 分组（语义分组翻译未启用）";
-            }
-            else if (!string.IsNullOrWhiteSpace(_groupingFallbackReason))
-            {
-                StatusTextBlock.Text += " · " + _groupingFallbackReason;
-            }
+            StatusTextBlock.Text = string.IsNullOrWhiteSpace(_groupingFallbackReason)
+                ? "字典已加载。"
+                : $"字典已加载；ERB 分组暂不可用：{_groupingFallbackReason}";
             UpdateDocumentStatus();
             UpdateTranslationButtons();
             EmptyStateBorder.Visibility = Visibility.Collapsed;
@@ -488,7 +485,7 @@ public partial class DictionaryEditorControl : UserControl
             EntryGroupLabelTextBlock.Text = "同组条目";
             SelectedFileTextBlock.Text = file.RelativePath;
             SummaryTextBlock.Text = "无法加载此字典";
-            SaveButton.IsEnabled = false;
+            SaveAvailabilityChanged?.Invoke(false);
             StatusTextBlock.Text = "文件未被修改。请检查 JSON 格式。";
             SetEmptyState("无法加载此字典", "文件未被修改。请检查 JSON 格式，修复后可重新选择该文件。");
             CurrentFileChanged?.Invoke(null);
@@ -630,13 +627,19 @@ public partial class DictionaryEditorControl : UserControl
         if (_document is null)
         {
             SummaryTextBlock.Text = "尚未加载字典";
-            SaveButton.IsEnabled = false;
+            SaveAvailabilityChanged?.Invoke(false);
             return;
         }
 
-        SummaryTextBlock.Text = _document.SummaryText +
+        string groupingStatus = _activeGroupingIndex is null
+            ? string.Empty
+            : _settings.EnableErbSemanticGroupingTranslation
+                ? " · 已加载 ERB 分组，语义分组翻译已启用"
+                : " · 已加载 ERB 分组，语义分组翻译未启用";
+
+        SummaryTextBlock.Text = _document.SummaryText + groupingStatus +
             (_document.IsDirty ? " · 有未保存更改" : " · 已保存");
-        SaveButton.IsEnabled = _document.IsDirty && !_isTranslating;
+        SaveAvailabilityChanged?.Invoke(CanSaveCurrentDictionary);
     }
 
     private void UpdateTranslationButtons()
@@ -689,11 +692,6 @@ public partial class DictionaryEditorControl : UserControl
             MessageBox.Show(OwnerWindow, ex.Message, "字典保存失败", MessageBoxButton.OK, MessageBoxImage.Error);
             return false;
         }
-    }
-
-    private void SaveButton_Click(object sender, RoutedEventArgs e)
-    {
-        SaveCurrentDocument();
     }
 
     private void AiSettingsButton_Click(object sender, RoutedEventArgs e)

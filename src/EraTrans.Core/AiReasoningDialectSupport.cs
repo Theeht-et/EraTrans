@@ -207,7 +207,8 @@ public static class AiReasoningDialectSupport
 
         if (host.Equals("open.bigmodel.cn", StringComparison.OrdinalIgnoreCase) ||
             host.Equals("api.z.ai", StringComparison.OrdinalIgnoreCase) ||
-            host.Equals("ark.cn-beijing.volces.com", StringComparison.OrdinalIgnoreCase))
+            host.Equals("ark.cn-beijing.volces.com", StringComparison.OrdinalIgnoreCase) ||
+            host.Contains("xiaomimimo", StringComparison.OrdinalIgnoreCase))
             return ThinkingType;
 
         if (host.Equals("api.siliconflow.cn", StringComparison.OrdinalIgnoreCase) ||

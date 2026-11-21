@@ -31,7 +31,7 @@ public partial class AiModelPickerWindow : Window
         _view.Filter = FilterModel;
         ModelsListView.ItemsSource = _view;
 
-        ModelCountTextBlock.Text = $"服务商返回 {_models.Count} 个模型。列表显示上下文窗口和推理能力；未知信息会明确标注。";
+        ModelCountTextBlock.Text = $"服务商返回 {_models.Count} 个模型。推理能力只显示已确认的支持状态；未知信息不显示。";
         ModelsListView.SelectedItem = _models.FirstOrDefault(model =>
             string.Equals(model.Id, currentModel, StringComparison.Ordinal));
         UpdateSelectionHint();

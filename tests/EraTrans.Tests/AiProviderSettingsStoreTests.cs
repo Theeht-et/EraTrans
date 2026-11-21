@@ -514,6 +514,22 @@ public sealed class AiProviderSettingsPortablePersistenceTests
             AiProviderProfileValidator.NormalizeApiPath("/models?key=secret", "/models"));
         Assert.Throws<InvalidOperationException>(() =>
             AiProviderProfileValidator.NormalizeApiPath("/v1/../admin", "/models"));
+
+        var manualModel = new AiProviderProfile
+        {
+            Name = "Manual model provider",
+            BaseUrl = "https://api.example.com/v1",
+            ChatCompletionsPath = "/chat/completions",
+            ModelsPath = "/models?unsupported-query",
+            Model = "manual-model",
+            ApiKey = "key",
+            IsEnabled = true
+        };
+        Assert.True(manualModel.IsReadyForTranslation);
+        AiProviderProfileValidator.ValidateForStorage(manualModel);
+        AiProviderProfileValidator.Validate(manualModel);
+        Assert.Throws<InvalidOperationException>(() =>
+            AiProviderProfileValidator.ValidateForModelDiscovery(manualModel));
     }
 
     [Fact]

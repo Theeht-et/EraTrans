@@ -10,8 +10,6 @@ namespace EraTrans.App;
 
 public partial class DictionaryEditorControl : UserControl
 {
-    private const int TranslationBatchSize = 12;
-
     private string _dictionaryDirectory = string.Empty;
     private string _gameDirectory = string.Empty;
     private EraTransUserSettings _settings;
@@ -467,7 +465,7 @@ public partial class DictionaryEditorControl : UserControl
             }
             StatusTextBlock.Text = string.IsNullOrWhiteSpace(_groupingFallbackReason)
                 ? "字典已加载。"
-                : $"字典已加载；ERB 分组暂不可用：{_groupingFallbackReason}";
+                : $"字典已加载；分组文件不可用：{_groupingFallbackReason}";
             UpdateDocumentStatus();
             UpdateTranslationButtons();
             EmptyStateBorder.Visibility = Visibility.Collapsed;
@@ -633,9 +631,7 @@ public partial class DictionaryEditorControl : UserControl
 
         string groupingStatus = _activeGroupingIndex is null
             ? string.Empty
-            : _settings.EnableErbSemanticGroupingTranslation
-                ? " · 已加载 ERB 分组，语义分组翻译已启用"
-                : " · 已加载 ERB 分组，语义分组翻译未启用";
+            : " · 已加载分组文件，将按原文顺序整段翻译";
 
         SummaryTextBlock.Text = _document.SummaryText + groupingStatus +
             (_document.IsDirty ? " · 有未保存更改" : " · 已保存");
@@ -763,7 +759,7 @@ public partial class DictionaryEditorControl : UserControl
         }
 
         MessageBoxResult confirm = MessageBox.Show(OwnerWindow,
-            $"将为当前字典中的 {pending.Length} 个未翻译词条请求 AI 翻译。译文只回填编辑器，不会自动保存。是否继续？",
+            $"将为当前字典中的 {pending.Length} 个未翻译词条按原文顺序请求 AI 翻译。译文只回填编辑器，不会自动保存。是否继续？",
             "确认批量翻译",
             MessageBoxButton.YesNo,
             MessageBoxImage.Question);
@@ -779,168 +775,12 @@ public partial class DictionaryEditorControl : UserControl
         string.IsNullOrWhiteSpace(entry.Translation) &&
         !string.IsNullOrWhiteSpace(entry.Original);
 
-    private async Task TranslateEntriesAsync(IReadOnlyList<DictionaryEditorEntry> entries)
-    {
-        AiProviderProfile? profile;
-        try
-        {
-            profile = _providerStore.Load().ActiveProvider;
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show(OwnerWindow, ex.Message, "读取 AI 配置失败", MessageBoxButton.OK, MessageBoxImage.Error);
-            return;
-        }
-
-        if (profile is null)
-        {
-            MessageBoxResult configure = MessageBox.Show(OwnerWindow,
-                "尚未配置 AI 服务商。是否现在打开设置？",
-                "AI 服务未配置",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Information);
-            if (configure == MessageBoxResult.Yes)
-                AiSettingsButton_Click(this, new RoutedEventArgs());
-            return;
-        }
-
-        if (_document is null)
-            return;
-
-        if (_settings.EnableErbSemanticGroupingTranslation &&
-            _activeGroupingIndex is null &&
-            !string.IsNullOrWhiteSpace(_groupingFallbackReason))
-        {
-            MessageBox.Show(OwnerWindow,
-                _groupingFallbackReason + "\n\n本次将使用现有的 AI 翻译方式，不会使用未经验证的分组关系。",
-                "ERB 语义分组不可用",
-                MessageBoxButton.OK,
-                MessageBoxImage.Information);
-        }
-
-        using var cancellation = new CancellationTokenSource();
-        _translationCancellation = cancellation;
-        _isTranslating = true;
-        SetTranslationControlsEnabled(false);
-        UpdateDocumentStatus();
-
-        int applied = 0;
-        int skipped = 0;
-        int completed = 0;
-        int total = entries.Count;
-        try
-        {
-            IReadOnlyList<ErbTranslationBatch> batches;
-            bool useSemanticGrouping = _settings.EnableErbSemanticGroupingTranslation &&
-                                       _activeGroupingIndex is not null &&
-                                       _document is not null;
-            if (useSemanticGrouping)
-            {
-                try
-                {
-                    batches = _groupingService.BuildTranslationBatches(
-                        entries,
-                        _document!.Entries.ToArray(),
-                        _activeGroupingIndex!);
-                }
-                catch (Exception ex) when (ex is InvalidDataException or ArgumentException or KeyNotFoundException)
-                {
-                    useSemanticGrouping = false;
-                    _groupingFallbackReason =
-                        $"当前待翻译词条无法完整匹配分组文件：{ex.Message}";
-                    batches = CreateLegacyTranslationBatches(entries);
-                    MessageBox.Show(OwnerWindow,
-                        _groupingFallbackReason + "\n\n本次将使用现有的 AI 翻译方式继续。",
-                        "ERB 语义分组回退",
-                        MessageBoxButton.OK,
-                        MessageBoxImage.Information);
-                }
-            }
-            else
-            {
-                batches = CreateLegacyTranslationBatches(entries);
-            }
-
-            int batchNumber = 0;
-            foreach (ErbTranslationBatch workBatch in batches)
-            {
-                cancellation.Token.ThrowIfCancellationRequested();
-                batchNumber++;
-
-                DictionaryEditorEntry[] batch = workBatch.Targets.ToArray();
-                AiTranslationRequest[] requests = batch
-                    .Select(entry => new AiTranslationRequest(
-                        entry.Index,
-                        entry.Key,
-                        entry.Original,
-                        entry.Context))
-                    .ToArray();
-
-                StatusTextBlock.Text =
-                    $"正在请求 AI 翻译：{completed}/{total}（第 {batchNumber}/{batches.Count} 批，本批 {batch.Length} 项、{workBatch.SemanticContextGroups.Count} 组上下文，{(useSemanticGrouping ? "语义分组" : "旧方式")}）……";
-
-                IReadOnlyList<AiTranslationResult> results =
-                    useSemanticGrouping
-                        ? await _translationService.TranslateWithSemanticContextAsync(
-                            profile,
-                            requests,
-                            workBatch.SemanticContextGroups,
-                            cancellation.Token)
-                        : await _translationService.TranslateAsync(
-                            profile,
-                            requests,
-                            cancellation.Token);
-
-                var entriesByIndex = batch.ToDictionary(entry => entry.Index);
-                var requestsById = requests.ToDictionary(request => request.Id);
-                foreach (AiTranslationResult result in results)
-                {
-                    DictionaryEditorEntry entry = entriesByIndex[result.Id];
-                    AiTranslationRequest request = requestsById[result.Id];
-                    if (entry.TryApplyAiTranslation(request.Key, request.Original, result.Translation))
-                        applied++;
-                    else
-                        skipped++;
-                }
-
-                completed += batch.Length;
-                EntriesDataGrid.Items.Refresh();
-                UpdateDocumentStatus();
-                StatusTextBlock.Text = $"AI 翻译进度：{completed}/{total}，已回填 {applied} 项。";
-            }
-
-            StatusTextBlock.Text =
-                $"AI 翻译完成：回填 {applied} 项，因词条状态变化或已有译文跳过 {skipped} 项。请检查译文并手动保存。";
-        }
-        catch (OperationCanceledException)
-        {
-            StatusTextBlock.Text = $"AI 翻译已取消：已回填 {applied} 项，尚未自动保存。";
-        }
-        catch (Exception ex)
-        {
-            StatusTextBlock.Text = $"AI 翻译中断：已回填 {applied} 项，尚未自动保存。";
-            MessageBox.Show(OwnerWindow, ex.Message, "AI 翻译失败", MessageBoxButton.OK, MessageBoxImage.Error);
-        }
-        finally
-        {
-            _translationCancellation = null;
-            _isTranslating = false;
-            SetTranslationControlsEnabled(true);
-            UpdateDocumentStatus();
-            UpdateTranslationButtons();
-            UpdateProviderStatus();
-        }
-    }
-
-    private static IReadOnlyList<ErbTranslationBatch> CreateLegacyTranslationBatches(
-        IReadOnlyList<DictionaryEditorEntry> entries) =>
-        entries
-            .Select((entry, index) => (entry, index))
-            .GroupBy(item => item.index / TranslationBatchSize)
-            .Select(group => new ErbTranslationBatch(
-                group.Select(item => item.entry).ToArray(),
-                Array.Empty<AiTranslationSemanticContextGroup>()))
-            .ToArray();
+    /// <summary>
+    /// Every translation run goes through the ordered window pipeline; the rules
+    /// for how the dictionary is grouped live in <c>DictionaryEditorControl.Windows</c>.
+    /// </summary>
+    private Task TranslateEntriesAsync(IReadOnlyList<DictionaryEditorEntry> entries) =>
+        TranslateWindowsAsync(entries);
 
     private void SetTranslationControlsEnabled(bool enabled)
     {
@@ -983,5 +823,4 @@ public partial class DictionaryEditorControl : UserControl
             e.Handled = true;
         }
     }
-
 }

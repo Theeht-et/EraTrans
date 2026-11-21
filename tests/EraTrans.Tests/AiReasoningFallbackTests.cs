@@ -6,20 +6,16 @@ namespace EraTrans.Tests;
 
 public sealed class AiReasoningFallbackTests
 {
-    private static readonly AiTranslationRequest[] Requests =
-        [new(1, "名前", "名前", "")];
-
     [Fact]
     public async Task RejectedReasoning_RetriesOnceWithoutItAndSucceeds()
     {
         var client = new RecordingClient(RejectMode.OnlyWithReasoning);
         var service = new AiTranslationService(client);
 
-        IReadOnlyList<AiTranslationResult> results = await service.TranslateAsync(
-            CreateProfile(), Requests, new AiReasoningOptions(AiReasoningMode.On));
+        WindowTranslationOutcome outcome = await service.TranslateWindowAsync(
+            CreateProfile(), Window(), new AiReasoningOptions(AiReasoningMode.On));
 
-        AiTranslationResult result = Assert.Single(results);
-        Assert.Equal("译文", result.Translation);
+        Assert.Equal("译文", Assert.Single(outcome.Translations).Translation);
         Assert.Equal(2, client.Attempts.Count);
         Assert.Equal(AiReasoningMode.On, client.Attempts[0]!.Mode);
         Assert.Equal(AiReasoningMode.Auto, client.Attempts[1]!.Mode);
@@ -34,7 +30,7 @@ public sealed class AiReasoningFallbackTests
         var service = new AiTranslationService(client);
 
         await Assert.ThrowsAsync<HttpRequestException>(() =>
-            service.TranslateAsync(CreateProfile(), Requests, AiReasoningOptions.Auto));
+            service.TranslateWindowAsync(CreateProfile(), Window(), AiReasoningOptions.Auto));
 
         Assert.Single(client.Attempts);
     }
@@ -45,8 +41,8 @@ public sealed class AiReasoningFallbackTests
         var client = new RecordingClient(RejectMode.Never);
         var service = new AiTranslationService(client);
 
-        await service.TranslateAsync(
-            CreateProfile(), Requests, new AiReasoningOptions(AiReasoningMode.Off));
+        await service.TranslateWindowAsync(
+            CreateProfile(), Window(), new AiReasoningOptions(AiReasoningMode.Off));
 
         Assert.Single(client.Attempts);
         Assert.Equal(AiReasoningMode.Off, client.Attempts[0]!.Mode);
@@ -71,6 +67,13 @@ public sealed class AiReasoningFallbackTests
             new InvalidOperationException("bad"),
             new AiReasoningOptions(AiReasoningMode.On)));
     }
+
+    private static TranslationWindow Window() =>
+        new("@A", 1,
+        [
+            new WindowLine(1, "文本1", "原文", "@A",
+                Translate: true, Reference: false, Join: 0, InlineCondition: false, AltGroup: null)
+        ]);
 
     private static AiProviderProfile CreateProfile() => new()
     {
@@ -120,7 +123,7 @@ public sealed class AiReasoningFallbackTests
                     "服务商返回 HTTP 400。", null, HttpStatusCode.BadRequest);
             }
 
-            return Task.FromResult("""[{"id":1,"translation":"译文"}]""");
+            return Task.FromResult("""{"1":"译文"}""");
         }
     }
 }

@@ -18,6 +18,19 @@ public partial class DictionaryEditorControl
     {
         base.OnInitialized(e);
         Loaded += (_, _) => SyncReasoningSelection();
+        CurrentFileChanged += _ => ShowTranslationWindowSummary();
+    }
+
+    /// <summary>
+    /// Shows how the loaded file would be cut into requests, so a wrong or stale
+    /// grouping file is visible before a translation run starts.
+    /// </summary>
+    private void ShowTranslationWindowSummary()
+    {
+        if (_document is null)
+            return;
+
+        StatusTextBlock.Text = DescribeTranslationWindows();
     }
 
     private void AiReasoningComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)

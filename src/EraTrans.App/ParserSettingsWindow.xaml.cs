@@ -42,6 +42,9 @@ public partial class ParserSettingsWindow : Window
         WriteContextCheckBox.IsChecked = settings.WriteContext;
         EnableErbSemanticGroupingTranslationCheckBox.IsChecked = settings.EnableErbSemanticGroupingTranslation;
 
+        WindowMaxCharactersTextBox.Text = settings.WindowMaxCharacters.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        WindowMaxLinesTextBox.Text = settings.WindowMaxLines.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
         TargetFileExtensionsTextBox.Text = string.Join(Environment.NewLine, settings.TargetFileExtensions);
         AutoReplaceReferenceFilesTextBox.Text = string.Join(Environment.NewLine, settings.AutoReplaceReferenceFiles);
         VariableNameCharactersTextBox.Text = string.Join(Environment.NewLine, settings.VariableNameCharacters);
@@ -54,6 +57,23 @@ public partial class ParserSettingsWindow : Window
             .Select(value => value.Trim())
             .Where(value => value.Length > 0)
             .ToList();
+
+    private static int ReadLimit(
+        TextBox textBox,
+        int minimum,
+        int maximum,
+        int fallback,
+        string displayName)
+    {
+        string text = textBox.Text.Trim();
+        if (text.Length == 0)
+            return fallback;
+
+        if (!int.TryParse(text, out int value))
+            throw new InvalidDataException($"{displayName}必须是整数。");
+
+        return Math.Clamp(value, minimum, maximum);
+    }
 
     private void Save_Click(object sender, RoutedEventArgs e)
     {
@@ -77,6 +97,18 @@ public partial class ParserSettingsWindow : Window
                 MergeConcatenatedStrings = MergeConcatenatedStringsCheckBox.IsChecked == true,
                 WriteContext = WriteContextCheckBox.IsChecked == true,
                 EnableErbSemanticGroupingTranslation = EnableErbSemanticGroupingTranslationCheckBox.IsChecked == true,
+                WindowMaxCharacters = ReadLimit(
+                    WindowMaxCharactersTextBox,
+                    EraTransUserSettings.MinimumWindowCharacters,
+                    EraTransUserSettings.MaximumWindowCharacters,
+                    EraTransUserSettings.DefaultWindowCharacters,
+                    "每个窗口的字符上限"),
+                WindowMaxLines = ReadLimit(
+                    WindowMaxLinesTextBox,
+                    EraTransUserSettings.MinimumWindowLines,
+                    EraTransUserSettings.MaximumWindowLines,
+                    EraTransUserSettings.DefaultWindowLines,
+                    "每个窗口的行数上限"),
                 LastGameDirectory = _settingsToPreserve.LastGameDirectory,
                 LastOutputRootDirectory = _settingsToPreserve.LastOutputRootDirectory,
                 LastDictionaryFileRelativePath = _settingsToPreserve.LastDictionaryFileRelativePath,

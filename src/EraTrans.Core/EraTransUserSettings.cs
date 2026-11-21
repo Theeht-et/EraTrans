@@ -8,6 +8,13 @@ namespace EraTrans.Core;
 /// </summary>
 public sealed class EraTransUserSettings
 {
+    public const int MinimumWindowCharacters = 500;
+    public const int MaximumWindowCharacters = 20000;
+    public const int MinimumWindowLines = 5;
+    public const int MaximumWindowLines = 500;
+    public const int DefaultWindowCharacters = 3000;
+    public const int DefaultWindowLines = 60;
+
     public string FileEncodingId { get; set; } = "utf8-bom";
     public bool ForceFilterVariableNames { get; set; } = true;
     public bool AutoOpenFolder { get; set; } = true;
@@ -18,6 +25,14 @@ public sealed class EraTransUserSettings
     public bool MergeConcatenatedStrings { get; set; } = true;
     public bool WriteContext { get; set; } = true;
     public bool EnableErbSemanticGroupingTranslation { get; set; } = false;
+
+    /// <summary>
+    /// Size of one ordered translation window. Only used when
+    /// <see cref="EnableErbSemanticGroupingTranslation"/> is enabled; the fixed
+    /// batch mode always sends 12 lines per request.
+    /// </summary>
+    public int WindowMaxCharacters { get; set; } = DefaultWindowCharacters;
+    public int WindowMaxLines { get; set; } = DefaultWindowLines;
 
     // Last opened workspace. Empty values keep older settings files fully compatible.
     public string LastGameDirectory { get; set; } = string.Empty;
@@ -93,6 +108,13 @@ public sealed class EraTransUserSettings
         {
             throw new InvalidDataException($"不支持的文件编码设置：{FileEncodingId}");
         }
+
+        // Keep older settings files usable: an out-of-range window size falls back
+        // to the allowed range instead of failing to load.
+        WindowMaxCharacters = Math.Clamp(
+            WindowMaxCharacters, MinimumWindowCharacters, MaximumWindowCharacters);
+        WindowMaxLines = Math.Clamp(
+            WindowMaxLines, MinimumWindowLines, MaximumWindowLines);
 
         ValidateList(TargetFileExtensions, "游戏文件扩展名", value =>
             value.StartsWith(".", StringComparison.Ordinal) &&

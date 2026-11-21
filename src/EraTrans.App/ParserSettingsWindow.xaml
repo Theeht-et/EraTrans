@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="解析与输出设置"
         Width="850"
-        Height="860"
+        Height="900"
         MinWidth="720"
         MinHeight="680"
         WindowStartupLocation="CenterOwner"
@@ -142,12 +142,50 @@
                                    FontSize="16"
                                    FontWeight="SemiBold"
                                    Foreground="#20242A" />
+
                         <CheckBox x:Name="EnableErbSemanticGroupingTranslationCheckBox"
-                                  Content="启用 ERB 语义分组翻译"
-                                  ToolTip="默认关闭时，继续使用普通逐词条上下文和每批 12 条翻译方式。开启后，ERB 词条会依据函数、条件分支和相邻输出片段分组；同组及互斥分支文本只作为参考上下文，AI 仍只能翻译本次指定的词条。"
+                                  Content="按原文顺序整段翻译（按 ERB 函数分窗）"
+                                  ToolTip="关闭时：按字典顺序每 12 条一批，不做任何顺序分析。开启时：按 ERB 函数切窗口，同一函数的连续内容一起发送，绝不把一个函数劈到两个窗口；单个函数过长时在条件分支处切开。"
                                   Margin="0,12,0,6"
                                   Foreground="#39414A" />
-                        <TextBlock Text="此选项只改变 AI 请求的上下文组织方式，不修改原有 JSON 字典格式、key、译文和词条状态。分组文件缺失、过期或校验失败时，该字典会自动退回现有翻译方式。"
+
+                        <TextBlock Text="两种方式共用同一套提示词与返回格式（{&quot;词条编号&quot;:&quot;译文&quot;}），区别只在于每一批包含哪些行。开启后需要当前字典配有分组文件；分组文件缺失或过期时会直接提示，可在字典编辑界面看到分窗结果。"
+                                   TextWrapping="Wrap"
+                                   FontSize="11"
+                                   Foreground="#68717D" />
+
+                        <Grid Margin="0,14,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="12" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="每个窗口的字符上限"
+                                           Margin="0,0,0,5"
+                                           FontWeight="SemiBold"
+                                           Foreground="#39414A" />
+                                <TextBox x:Name="WindowMaxCharactersTextBox"
+                                         Height="32"
+                                         Padding="8,0"
+                                         VerticalContentAlignment="Center"
+                                         ToolTip="默认 3000。越小越精细，请求次数越多。" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="每个窗口的行数上限"
+                                           Margin="0,0,0,5"
+                                           FontWeight="SemiBold"
+                                           Foreground="#39414A" />
+                                <TextBox x:Name="WindowMaxLinesTextBox"
+                                         Height="32"
+                                         Padding="8,0"
+                                         VerticalContentAlignment="Center"
+                                         ToolTip="默认 60。只作辅助限制，防止短行把窗口拉得过长。" />
+                            </StackPanel>
+                        </Grid>
+
+                        <TextBlock Text="两个上限只影响“按原文顺序整段翻译”；固定批次方式固定为每批 12 条。"
+                                   Margin="0,8,0,0"
                                    TextWrapping="Wrap"
                                    FontSize="11"
                                    Foreground="#68717D" />

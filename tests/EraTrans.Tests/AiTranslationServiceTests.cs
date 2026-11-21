@@ -1,6 +1,4 @@
 using EraTrans.Core;
-using System.Text;
-using System.Text.Json;
 using Xunit;
 
 namespace EraTrans.Tests;
@@ -36,10 +34,47 @@ public sealed class AiTranslationServiceTests
         Assert.Contains("测试译文", log.RawResponse);
         Assert.Contains("[已隐藏]", log.RawResponse);
         Assert.Null(log.ErrorMessage);
-        Assert.True(log.DurationMilliseconds >= 0);
+        Assert.NotNull(log.DurationMilliseconds);
+        Assert.EndsWith(" 秒", log.DurationDescription);
 
         string savedJson = File.ReadAllText(Directory.GetFiles(store.DirectoryPath, "*.json").Single());
         Assert.DoesNotContain("test-key", savedJson);
+    }
+
+    [Fact]
+    public async Task TranslateWindow_RedactsTrimmedApiKeyWhenProviderEchoesIt()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "EraTransAiLogTests", Guid.NewGuid().ToString("N"));
+        var store = new AiTranslationLogStore(Path.Combine(root, "logs"));
+        var fake = new FakeChatClient("""{"1":"测试译文"} echoed secret-key""");
+        var service = new AiTranslationService(fake, store);
+        AiProviderProfile profile = CreateProfile();
+        profile.ApiKey = "  secret-key  ";
+
+        await service.TranslateWindowAsync(profile, Window((1, "测试 key", "原文")));
+
+        AiTranslationLogEntry log = Assert.Single(store.LoadAll());
+        Assert.Contains("[已隐藏]", log.RawResponse);
+        Assert.DoesNotContain("secret-key", log.RawResponse);
+
+        string savedJson = File.ReadAllText(Directory.GetFiles(store.DirectoryPath, "*.json").Single());
+        Assert.DoesNotContain("secret-key", savedJson);
+    }
+
+    [Fact]
+    public async Task TranslateWindow_PersistsRawReplyWhenResponseParsingFails()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "EraTransAiLogTests", Guid.NewGuid().ToString("N"));
+        var store = new AiTranslationLogStore(Path.Combine(root, "logs"));
+        var service = new AiTranslationService(new FakeChatClient("not a JSON response"), store);
+
+        await Assert.ThrowsAsync<InvalidDataException>(() =>
+            service.TranslateWindowAsync(CreateProfile(), Window((1, "文本1", "原文"))));
+
+        AiTranslationLogEntry log = Assert.Single(store.LoadAll());
+        Assert.Equal(AiTranslationLogStatus.Failed, log.Status);
+        Assert.Equal("not a JSON response", log.RawResponse);
+        Assert.Contains("JSON", log.ErrorMessage);
     }
 
     [Fact]

@@ -81,7 +81,7 @@ public partial class AiTranslationLogWindow : Window
             $"状态：{entry.StatusDescription}",
             $"开始时间（UTC）：{entry.StartedAtUtc:O}",
             $"完成时间（UTC）：{entry.CompletedAtUtc?.ToString("O") ?? "未完成"}",
-            $"耗时：{(entry.DurationMilliseconds is long duration ? $"{duration:N0} ms" : "未知")}",
+            $"耗时：{entry.DurationDescription}",
             $"请求类型：{entry.RequestKindDescription}",
             $"目标词条数：{entry.RequestedEntryCount}",
             $"异常类型：{entry.ErrorType ?? "无"}",

@@ -602,8 +602,7 @@ public static class AiReasoningDialectSupport
             Regex.IsMatch(id, @"^glm-5\.[01](?:$|[-.])", RegexOptions.IgnoreCase) ||
             Regex.IsMatch(id, @"^glm-5(?:$|[-.])", RegexOptions.IgnoreCase))
         {
-            // Alibaba Model Studio exposes high/max as effective GLM levels;
-            // direct Zhipu-compatible endpoints keep the wider Kelivo ladder.
+            // Match Kelivo's GLM-5.2 model-family effort ladder across providers.
             levels = ["low", "medium", "high", "xhigh", "max"];
             canDisable = true;
             return true;

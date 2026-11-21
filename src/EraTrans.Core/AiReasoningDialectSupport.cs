@@ -26,10 +26,25 @@ public static class AiReasoningDialectSupport
     private const string Intern = "internThinkingMode";
     private const string ChatTemplate = "chatTemplateKwargs";
 
-    public static bool IsCompatible(string baseUrl, AiProviderModel model)
+    /// <summary>
+    /// Explicit opt-in route for custom OpenAI-compatible endpoints that document
+    /// the top-level Chat Completions reasoning_effort field.
+    /// </summary>
+    public const string CustomOpenAiEffortDialect = "customOpenAiReasoningEffort";
+
+    public static bool IsCompatible(
+        string baseUrl,
+        AiProviderModel model,
+        string? dialectOverride = null)
     {
         if (model.ReasoningSupport != true)
             return false;
+
+        if (string.Equals(
+                dialectOverride,
+                CustomOpenAiEffortDialect,
+                StringComparison.OrdinalIgnoreCase))
+            return true;
 
         string? expected = ResolveDialect(baseUrl, model.Id);
         if (expected is null)
@@ -45,12 +60,18 @@ public static class AiReasoningDialectSupport
         Dictionary<string, object?> payload,
         string baseUrl,
         AiProviderModel model,
-        AiModelReasoningSettings setting)
+        AiModelReasoningSettings setting,
+        string? dialectOverride = null)
     {
-        if (!IsCompatible(baseUrl, model))
+        if (!IsCompatible(baseUrl, model, dialectOverride))
             return;
 
-        string dialect = ResolveDialect(baseUrl, model.Id)!;
+        string dialect = string.Equals(
+            dialectOverride,
+            CustomOpenAiEffortDialect,
+            StringComparison.OrdinalIgnoreCase)
+                ? OpenAiEffort
+                : ResolveDialect(baseUrl, model.Id)!;
         string effort = setting.Effort.Trim().ToLowerInvariant();
 
         if (setting.Disabled)

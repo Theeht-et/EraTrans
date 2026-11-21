@@ -204,6 +204,7 @@
                                      FontFamily="Consolas"
                                      FontSize="12"
                                      Padding="10"
+                                     Background="#FBFCFD"
                                      BorderThickness="0" />
                         </TabItem>
                         <TabItem Header="AI 原始回复">
@@ -216,6 +217,7 @@
                                      FontFamily="Consolas"
                                      FontSize="12"
                                      Padding="10"
+                                     Background="#FBFCFD"
                                      BorderThickness="0" />
                         </TabItem>
                         <TabItem Header="错误与执行信息">
@@ -227,6 +229,7 @@
                                      HorizontalScrollBarVisibility="Auto"
                                      FontSize="12"
                                      Padding="10"
+                                     Background="#FBFCFD"
                                      BorderThickness="0" />
                         </TabItem>
                     </TabControl>

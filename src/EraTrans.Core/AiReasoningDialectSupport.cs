@@ -99,9 +99,10 @@ public static class AiReasoningDialectSupport
                 payload["reasoning_effort"] = effort;
                 break;
             case OpenRouter:
-                payload["reasoning"] = model.ReasoningLevels.Count > 0
-                    ? new { effort }
-                    : new { enabled = true, max_tokens = ResolveBudget(effort) };
+                if (model.ReasoningLevels.Count > 0)
+                    payload["reasoning"] = new { effort };
+                else
+                    payload["reasoning"] = new { enabled = true, max_tokens = ResolveBudget(effort) };
                 break;
             case DeepSeek:
                 if (effort is "low" or "high" or "max")

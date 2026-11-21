@@ -149,7 +149,16 @@ public static class AiReasoningDialectSupport
             if (model.ReasoningLevels.Count == 0)
                 model.ReasoningLevels = [.. levels];
             model.ReasoningCanDisable ??= canDisable;
-            model.ReasoningDialect ??= dialect;
+            bool documentedDeepSeekModel =
+                id.Equals("deepseek-flash", StringComparison.OrdinalIgnoreCase) ||
+                id.Equals("deepseek-v4-pro", StringComparison.OrdinalIgnoreCase);
+            if (model.ReasoningDialect is null &&
+                dialect is not null &&
+                (!dialect.Equals(DeepSeek, StringComparison.OrdinalIgnoreCase) ||
+                 documentedDeepSeekModel))
+            {
+                model.ReasoningDialect = dialect;
+            }
         }
         else if (IsKnownReasoningFamily(id))
         {
@@ -275,6 +284,13 @@ public static class AiReasoningDialectSupport
     {
         levels = [];
         canDisable = false;
+
+        if (Regex.IsMatch(id, @"^deepseek-(?:reasoner|r1|v3\.1|v3\.2|v4)(?:$|[-._:@])", RegexOptions.IgnoreCase))
+        {
+            levels = ["low", "high", "max"];
+            canDisable = true;
+            return true;
+        }
 
         if (Regex.IsMatch(id, @"^gpt-6(?:$|[-.])", RegexOptions.IgnoreCase))
         {

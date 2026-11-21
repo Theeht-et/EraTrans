@@ -14,6 +14,7 @@ public static class AiReasoningDialectSupport
     private const string DeepSeek = "deepseekThinking";
     private const string Qwen = "qwenEnableThinking";
     private const string QwenReasoningEffort = "qwenReasoningEffort";
+    private const string DashScopeGlmEffort = "dashScopeGlmEffort";
     private const string ThinkingType = "thinkingType";
     private const string SiliconFlow = "siliconflowEnableThinking";
     private const string Kimi = "kimiThinking";
@@ -55,8 +56,16 @@ public static class AiReasoningDialectSupport
             switch (dialect)
             {
                 case OpenAiEffort:
-                case QwenReasoningEffort:
                     payload["reasoning_effort"] = "none";
+                    break;
+                case QwenReasoningEffort:
+                    if (IsQwen38Model(NormalizeModelId(model.Id)))
+                        payload["enable_thinking"] = false;
+                    else
+                        payload["reasoning_effort"] = "none";
+                    break;
+                case DashScopeGlmEffort:
+                    payload["enable_thinking"] = false;
                     break;
                 case OpenRouter:
                     payload["reasoning"] = new { enabled = false };
@@ -99,6 +108,7 @@ public static class AiReasoningDialectSupport
         {
             case OpenAiEffort:
             case QwenReasoningEffort:
+            case DashScopeGlmEffort:
                 payload["reasoning_effort"] = effort;
                 break;
             case OpenRouter:
@@ -236,7 +246,7 @@ public static class AiReasoningDialectSupport
             if (IsQwen3Model(normalizedModelId))
                 return Qwen;
             if (IsGlmModel(normalizedModelId))
-                return ThinkingType;
+                return IsZhipuGlm53Model(modelId) ? ThinkingType : DashScopeGlmEffort;
             // Model Studio serves multiple vendors. Do not infer the Qwen
             // payload shape for unrelated model IDs on a shared endpoint.
             return null;
@@ -456,13 +466,20 @@ public static class AiReasoningDialectSupport
             levels = ["low", "high", "max"];
             return true;
         }
-        if (Regex.IsMatch(id, @"^glm-5\.2(?:$|[-.])", RegexOptions.IgnoreCase))
+        if (Regex.IsMatch(id, @"^glm-5\.2(?:-fast-preview)?(?:$|[-.])", RegexOptions.IgnoreCase))
         {
-            levels = ["low", "medium", "high", "xhigh", "max"];
+            levels = ["minimal", "low", "medium", "high", "xhigh", "max"];
             canDisable = true;
             return true;
         }
-        if (Regex.IsMatch(id, @"^glm-(?:4[-.]?[567]|5)(?:$|[-.])", RegexOptions.IgnoreCase))
+        if (Regex.IsMatch(id, @"^glm-5\.[01](?:$|[-.])", RegexOptions.IgnoreCase) ||
+            Regex.IsMatch(id, @"^glm-5(?:$|[-.])", RegexOptions.IgnoreCase))
+        {
+            levels = ["minimal", "low", "medium", "high", "xhigh"];
+            canDisable = true;
+            return true;
+        }
+        if (Regex.IsMatch(id, @"^glm-4[-.]?[567](?:$|[-.])", RegexOptions.IgnoreCase))
         {
             canDisable = true;
             return true;
@@ -581,6 +598,11 @@ public static class AiReasoningDialectSupport
 
     private static bool IsGlmModel(string id) =>
         Regex.IsMatch(id, @"^(?:glm|zhipu/glm)-(?:4|5)(?:$|[-.])", RegexOptions.IgnoreCase);
+
+    private static bool IsZhipuGlm53Model(string modelId) =>
+        Regex.IsMatch(modelId.Trim(),
+            @"^zhipu/glm-5\\.3(?:-flash(?:x)?|$)(?:$|[-._:@])",
+            RegexOptions.IgnoreCase);
 
     private static bool IsAliyunModelStudioHost(string host)
     {

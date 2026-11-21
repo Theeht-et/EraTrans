@@ -101,14 +101,55 @@
                                            FontSize="11"
                                            FontWeight="SemiBold"
                                            Foreground="#39414A" />
-                                <TextBlock Text="{Binding ReasoningSupportDescription}"
-                                           Margin="12,0,0,0"
-                                           VerticalAlignment="Center"
-                                           FontSize="11"
-                                           FontWeight="SemiBold"
-                                           Foreground="#39414A" />
+                                <Border x:Name="ReasoningSupportIndicator"
+                                        Margin="12,0,0,0"
+                                        Padding="7,3"
+                                        CornerRadius="10"
+                                        Background="#EDF7F0"
+                                        BorderBrush="#D8EADB"
+                                        BorderThickness="1">
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <Grid Width="14" Height="14" Margin="0,0,5,0">
+                                            <Ellipse x:Name="ReasoningStatusCircle"
+                                                     Fill="#D8EEDF"/>
+                                            <Path x:Name="ReasoningStatusGlyph"
+                                                  Data="M2.5,7.5 L5.5,10.5 L11.5,3.5"
+                                                  Stroke="#267647"
+                                                  StrokeThickness="1.6"
+                                                  StrokeStartLineCap="Round"
+                                                  StrokeEndLineCap="Round"
+                                                  StrokeLineJoin="Round"/>
+                                        </Grid>
+                                        <TextBlock x:Name="ReasoningSupportLabel"
+                                                   Text="{Binding ReasoningSupportDescription}"
+                                                   VerticalAlignment="Center"
+                                                   FontSize="11"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="#267647"/>
+                                    </StackPanel>
+                                </Border>
                             </StackPanel>
                         </Grid>
+                        <DataTemplate.Triggers>
+                            <DataTrigger Binding="{Binding HasKnownReasoningSupport}" Value="False">
+                                <Setter TargetName="ReasoningSupportIndicator"
+                                        Property="Visibility" Value="Collapsed"/>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding IsReasoningSupported}" Value="False">
+                                <Setter TargetName="ReasoningSupportIndicator"
+                                        Property="Background" Value="#F3F4F5"/>
+                                <Setter TargetName="ReasoningSupportIndicator"
+                                        Property="BorderBrush" Value="#E2E4E7"/>
+                                <Setter TargetName="ReasoningStatusCircle"
+                                        Property="Fill" Value="#E2E4E7"/>
+                                <Setter TargetName="ReasoningStatusGlyph"
+                                        Property="Data" Value="M3.5,3.5 L10.5,10.5 M10.5,3.5 L3.5,10.5"/>
+                                <Setter TargetName="ReasoningStatusGlyph"
+                                        Property="Stroke" Value="#777F88"/>
+                                <Setter TargetName="ReasoningSupportLabel"
+                                        Property="Foreground" Value="#777F88"/>
+                            </DataTrigger>
+                        </DataTemplate.Triggers>
                     </DataTemplate>
                 </ListView.ItemTemplate>
             </ListView>

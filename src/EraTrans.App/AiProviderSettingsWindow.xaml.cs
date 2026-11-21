@@ -544,12 +544,23 @@ public partial class AiProviderSettingsWindow : Window
                      SelectedModelId, out AiModelReasoningCapabilityOverride? capability))
         {
             capability.CanDisable = CustomReasoningCanDisableCheckBox.IsChecked == true;
-            capability.Levels =
-            [
-                if (CustomReasoningLowCheckBox.IsChecked == true) "low",
-                if (CustomReasoningMediumCheckBox.IsChecked == true) "medium",
-                if (CustomReasoningHighCheckBox.IsChecked == true) "high"
-            ];
+            var selectedLevels = new List<string>();
+            if (CustomReasoningLowCheckBox.IsChecked == true)
+                selectedLevels.Add("low");
+            if (CustomReasoningMediumCheckBox.IsChecked == true)
+                selectedLevels.Add("medium");
+            if (CustomReasoningHighCheckBox.IsChecked == true)
+                selectedLevels.Add("high");
+            capability.Levels = selectedLevels;
+
+            if (!capability.CanDisable &&
+                _currentProfile.ReasoningSettingsByModel.TryGetValue(
+                    SelectedModelId, out AiModelReasoningSettings? existingSetting) &&
+                existingSetting.Disabled)
+            {
+                existingSetting.Disabled = false;
+                existingSetting.Enabled = false;
+            }
         }
 
         UpdateReasoningControls();

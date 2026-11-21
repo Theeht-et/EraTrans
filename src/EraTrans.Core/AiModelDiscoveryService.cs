@@ -59,11 +59,15 @@ public sealed class AiProviderModel
             ? ""
             : IsReasoningSupported ? "推理支持" : "不支持推理";
 
-    public string ContextLimitDescription => ContextLimit is > 0
-        ? FormatTokenLimit(ContextLimit.Value)
-        : "未知";
+    public bool HasKnownContextLimit => ContextLimit is > 0;
 
-    public string ContextLimitLabel => $"上下文大小：{ContextLimitDescription}";
+    public string ContextLimitDescription => HasKnownContextLimit
+        ? FormatTokenLimit(ContextLimit!.Value)
+        : "";
+
+    public string ContextLimitLabel => HasKnownContextLimit
+        ? $"上下文大小：{ContextLimitDescription}"
+        : "";
 
     public string MetadataSummary
     {

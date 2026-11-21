@@ -374,7 +374,7 @@ public partial class AiProviderSettingsWindow : Window
             }
 
             List<string> supportedEfforts = GetSupportedReasoningEfforts();
-            bool supported = supportedEfforts.Count > 0;
+            bool supported = IsKnownReasoningEndpoint() && supportedEfforts.Count > 0;
             AiModelReasoningSettings? setting = null;
             if (supported)
                 _currentProfile.ReasoningSettingsByModel.TryGetValue(ModelTextBox.Text.Trim(), out setting);

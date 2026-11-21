@@ -38,7 +38,7 @@ public partial class DictionaryEditorControl
         if (_loadingReasoningSelection || _isTranslating)
             return;
 
-        AiProviderProfile? profile = TryGetActiveProvider();
+        AiProviderProfile? profile = TryGetEditingProvider();
         if (profile is null)
         {
             StatusTextBlock.Text = "还没有 AI 服务：请先在“AI 服务设置”里添加或启用一个服务商。";

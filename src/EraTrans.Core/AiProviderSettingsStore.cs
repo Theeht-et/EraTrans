@@ -26,6 +26,7 @@ public sealed class AiProviderProfile
     [JsonIgnore]
     public bool RequiresEndpointReview { get; set; }
     public List<AiProviderModel> AvailableModels { get; set; } = [];
+    public Dictionary<string, AiModelReasoningSettings> ReasoningSettingsByModel { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
     [JsonIgnore]
     public bool IsReadyForTranslation =>
@@ -36,6 +37,12 @@ public sealed class AiProviderProfile
         AiProviderProfileValidator.IsValidApiPath(ChatCompletionsPath, "/chat/completions") &&
         !string.IsNullOrWhiteSpace(Model) &&
         !string.IsNullOrWhiteSpace(ApiKey);
+}
+
+public sealed class AiModelReasoningSettings
+{
+    public bool Enabled { get; set; }
+    public string Effort { get; set; } = "medium";
 }
 
 public sealed class AiProviderSettings
@@ -362,6 +369,13 @@ public sealed class AiProviderSettingsStore
                         IsBuiltIn = item.IsBuiltIn,
                         RequiresEndpointReview = item.RequiresEndpointReview ||
                             item.Protocol != (int)AiProviderProtocol.OpenAiCompatible,
+                        ReasoningSettingsByModel = (item.ReasoningSettingsByModel ?? new Dictionary<string, StoredReasoningSettings>())
+                            .Where(pair => !string.IsNullOrWhiteSpace(pair.Key))
+                            .ToDictionary(pair => pair.Key, pair => new AiModelReasoningSettings
+                            {
+                                Enabled = pair.Value.Enabled,
+                                Effort = NormalizeReasoningEffort(pair.Value.Effort)
+                            }, StringComparer.OrdinalIgnoreCase),
                         AvailableModels = (item.Models ?? [])
                             .Where(model => model is not null && !string.IsNullOrWhiteSpace(model.Id))
                             .Select(model => new AiProviderModel
@@ -481,6 +495,13 @@ public sealed class AiProviderSettingsStore
                     IsBuiltIn = profile.IsBuiltIn,
                     RequiresEndpointReview = profile.RequiresEndpointReview,
                     ProtectedApiKey = protectedKey.Length == 0 ? "" : Convert.ToBase64String(protectedKey),
+                    ReasoningSettingsByModel = (profile.ReasoningSettingsByModel ?? new Dictionary<string, AiModelReasoningSettings>())
+                        .Where(pair => !string.IsNullOrWhiteSpace(pair.Key))
+                        .ToDictionary(pair => pair.Key, pair => new StoredReasoningSettings
+                        {
+                            Enabled = pair.Value.Enabled,
+                            Effort = NormalizeReasoningEffort(pair.Value.Effort)
+                        }, StringComparer.OrdinalIgnoreCase),
                     Models = (profile.AvailableModels ?? [])
                         .Where(model => model is not null && !string.IsNullOrWhiteSpace(model.Id))
                         .Select(model => new StoredModel
@@ -568,6 +589,17 @@ public sealed class AiProviderSettingsStore
         public List<StoredProvider> Providers { get; set; } = [];
     }
 
+    private static string NormalizeReasoningEffort(string? effort) =>
+        effort?.Trim().ToLowerInvariant() is "low" or "medium" or "high"
+            ? effort.Trim().ToLowerInvariant()
+            : "medium";
+
+    private sealed class StoredReasoningSettings
+    {
+        public bool Enabled { get; set; }
+        public string Effort { get; set; } = "medium";
+    }
+
     private sealed class StoredProvider
     {
         public string Id { get; set; } = "";
@@ -581,6 +613,7 @@ public sealed class AiProviderSettingsStore
         public bool IsBuiltIn { get; set; }
         public bool RequiresEndpointReview { get; set; }
         public string ProtectedApiKey { get; set; } = "";
+        public Dictionary<string, StoredReasoningSettings>? ReasoningSettingsByModel { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         public List<StoredModel>? Models { get; set; } = [];
     }
 

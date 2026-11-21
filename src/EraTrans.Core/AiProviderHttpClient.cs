@@ -81,8 +81,23 @@ public sealed class OpenAiCompatibleChatCompletionClient : IAiChatCompletionClie
 
         if (!response.IsSuccessStatusCode)
         {
-            string message = TryReadApiError(responseBody)
-                ?? $"服务商返回 HTTP {(int)response.StatusCode} {response.ReasonPhrase}。";
+            string? providerMessage = TryReadApiError(responseBody);
+            string message = response.StatusCode switch
+            {
+                HttpStatusCode.Unauthorized =>
+                    "服务商拒绝了身份认证（HTTP 401）。本程序当前发送 Authorization: Bearer <API Key>。" +
+                    "请检查 API Key 是否正确、是否已失效、Base URL/地区是否正确，以及该服务商是否要求其他认证请求头或原生协议。" +
+                    "若服务商要求 api-key 等非 Bearer 认证，本版本目前不支持，不能仅靠更换模型解决。",
+                HttpStatusCode.Forbidden =>
+                    "服务商拒绝了访问权限（HTTP 403）。API Key 可能有效，但当前账号、模型或套餐没有此接口的调用权限。",
+                HttpStatusCode.NotFound =>
+                    "服务商找不到该 API 路径（HTTP 404）。请检查 Base URL、API 路径和服务商文档中的接口版本。",
+                _ => $"服务商返回 HTTP {(int)response.StatusCode} {response.ReasonPhrase}。"
+            };
+
+            if (!string.IsNullOrWhiteSpace(providerMessage))
+                message += $" 服务商返回：{providerMessage}";
+            message += $" 请求地址：{details.Endpoint}";
             throw new HttpRequestException(message, inner: null, statusCode: response.StatusCode);
         }
 

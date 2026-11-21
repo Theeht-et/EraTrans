@@ -518,7 +518,7 @@ public sealed class AiReasoningDialectSupportTests
     }
 
     [Fact]
-    public void DoubaoSeed_UsesThinkingTypeAndAllowsDisable()
+    public void DoubaoSeed_UsesVolcanoDialectAndDisabledThinkingMinimalEffort()
     {
         AiProviderModel model = new() { Id = "doubao-seed-1.6" };
         const string endpoint = "https://ark.cn-beijing.volces.com/api/v3";
@@ -526,11 +526,36 @@ public sealed class AiReasoningDialectSupportTests
 
         Assert.True(model.ReasoningSupport);
         Assert.True(model.ReasoningCanDisable);
-        Assert.Equal("thinkingType", model.ReasoningDialect);
+        Assert.Equal("volcanoThinkingType", model.ReasoningDialect);
 
         using JsonDocument body = CreateBody(
             endpoint, model, new AiModelReasoningSettings { Disabled = true });
         Assert.Equal("disabled", body.RootElement.GetProperty("thinking").GetProperty("type").GetString());
+        Assert.Equal("minimal", body.RootElement.GetProperty("reasoning_effort").GetString());
+    }
+
+    [Fact]
+    public void VolcanoArkRegionalHost_UsesVolcanoDialectRatherThanGenericThinkingType()
+    {
+        AiProviderModel model = new()
+        {
+            Id = "doubao-seed-2-1-pro-260915",
+            ReasoningSupport = true,
+            ReasoningCanDisable = true,
+            ReasoningDialect = "volcanoThinkingType"
+        };
+        const string endpoint = "https://ark.us-east-1.volces.com/api/v3";
+
+        Assert.True(AiReasoningDialectSupport.IsCompatible(endpoint, model));
+        using JsonDocument effortBody = CreateBody(
+            endpoint, model, new AiModelReasoningSettings { Enabled = true, Effort = "high" });
+        Assert.Equal("enabled", effortBody.RootElement.GetProperty("thinking").GetProperty("type").GetString());
+        Assert.Equal("high", effortBody.RootElement.GetProperty("reasoning_effort").GetString());
+
+        using JsonDocument offBody = CreateBody(
+            endpoint, model, new AiModelReasoningSettings { Disabled = true });
+        Assert.Equal("disabled", offBody.RootElement.GetProperty("thinking").GetProperty("type").GetString());
+        Assert.Equal("minimal", offBody.RootElement.GetProperty("reasoning_effort").GetString());
     }
 
     [Fact]

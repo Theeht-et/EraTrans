@@ -34,7 +34,6 @@ public sealed class AiProviderProfile
         !RequiresEndpointReview &&
         AiProviderProfileValidator.IsValidBaseUrl(BaseUrl) &&
         AiProviderProfileValidator.IsValidApiPath(ChatCompletionsPath, "/chat/completions") &&
-        AiProviderProfileValidator.IsValidApiPath(ModelsPath, "/models") &&
         !string.IsNullOrWhiteSpace(Model) &&
         !string.IsNullOrWhiteSpace(ApiKey);
 }

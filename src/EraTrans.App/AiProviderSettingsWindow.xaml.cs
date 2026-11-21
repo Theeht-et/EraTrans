@@ -349,8 +349,33 @@ public partial class AiProviderSettingsWindow : Window
     private bool HasSupportedReasoningControls()
     {
         AiProviderModel? model = GetSelectedReasoningModel();
-        return IsKnownReasoningEndpoint() && model?.ReasoningSupport == true &&
+        return IsModelReasoningDialectCompatible(model) &&
+               model?.ReasoningSupport == true &&
                (model.ReasoningCanDisable == true || GetSupportedReasoningEfforts().Count > 0);
+    }
+
+    private bool IsModelReasoningDialectCompatible(AiProviderModel? model)
+    {
+        if (model?.ReasoningSupport != true || !IsKnownReasoningEndpoint())
+            return false;
+
+        string? dialect = model.ReasoningDialect;
+        if (string.IsNullOrWhiteSpace(dialect))
+            return true;
+
+        try
+        {
+            string host = new Uri(AiProviderProfileValidator.NormalizeBaseUrl(BaseUrlTextBox.Text)).Host;
+            return (host.Equals("api.openai.com", StringComparison.OrdinalIgnoreCase) &&
+                    dialect.Equals("openaiReasoningEffort", StringComparison.OrdinalIgnoreCase)) ||
+                   (host.Equals("openrouter.ai", StringComparison.OrdinalIgnoreCase) &&
+                    dialect.Equals("openrouterReasoning", StringComparison.OrdinalIgnoreCase));
+        }
+        catch (Exception ex) when (
+            ex is ArgumentException or InvalidOperationException or UriFormatException)
+        {
+            return false;
+        }
     }
 
     private bool IsKnownReasoningEndpoint()
@@ -375,7 +400,7 @@ public partial class AiProviderSettingsWindow : Window
         try
         {
             AiProviderModel? model = GetSelectedReasoningModel();
-            bool supported = IsKnownReasoningEndpoint() && model?.ReasoningSupport == true;
+            bool supported = IsModelReasoningDialectCompatible(model);
             AiModelReasoningSettings? setting = null;
             if (supported && _currentProfile is not null)
                 _currentProfile.ReasoningSettingsByModel.TryGetValue(ModelTextBox.Text.Trim(), out setting);
@@ -422,7 +447,7 @@ public partial class AiProviderSettingsWindow : Window
             int effortIndex = efforts.FindIndex(value =>
                 string.Equals(value, selectedEffort, StringComparison.OrdinalIgnoreCase));
             ReasoningEffortComboBox.SelectedIndex = effortIndex >= 0 ? effortIndex : (efforts.Count > 0 ? 0 : -1);
-            ReasoningModeComboBox.IsEnabled = supported && ! _loadFailed;
+            ReasoningModeComboBox.IsEnabled = supported && !_loadFailed;
             ReasoningEffortComboBox.IsEnabled = supported && mode == "effort" && efforts.Count > 0 && !_loadFailed;
         }
         finally

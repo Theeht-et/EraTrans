@@ -325,15 +325,21 @@ public partial class AiProviderSettingsWindow : Window
             string.Equals(model.Id, ModelTextBox.Text.Trim(), StringComparison.OrdinalIgnoreCase));
     }
 
-    private bool HasSupportedReasoningLevels()
+    private List<string> GetSupportedReasoningEfforts()
     {
         AiProviderModel? model = GetSelectedReasoningModel();
-        return model?.ReasoningSupport == true &&
-               model.ReasoningLevels.Any(level =>
-                   level.Equals("low", StringComparison.OrdinalIgnoreCase) ||
-                   level.Equals("medium", StringComparison.OrdinalIgnoreCase) ||
-                   level.Equals("high", StringComparison.OrdinalIgnoreCase));
+        if (model?.ReasoningSupport != true)
+            return [];
+
+        return model.ReasoningLevels
+            .Select(level => level.Trim().ToLowerInvariant())
+            .Where(level => level is "low" or "medium" or "high")
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
+
+    private bool HasSupportedReasoningLevels() =>
+        GetSupportedReasoningEfforts().Count > 0;
 
     private void UpdateReasoningControls()
     {
@@ -348,19 +354,35 @@ public partial class AiProviderSettingsWindow : Window
                 return;
             }
 
-            bool supported = HasSupportedReasoningLevels();
+            List<string> supportedEfforts = GetSupportedReasoningEfforts();
+            bool supported = supportedEfforts.Count > 0;
             AiModelReasoningSettings? setting = null;
             if (supported)
                 _currentProfile.ReasoningSettingsByModel.TryGetValue(ModelTextBox.Text.Trim(), out setting);
 
+            ReasoningEffortComboBox.Items.Clear();
+            foreach (string effortOption in supportedEfforts)
+            {
+                ReasoningEffortComboBox.Items.Add(new ComboBoxItem
+                {
+                    Content = effortOption switch
+                    {
+                        "low" => "低",
+                        "medium" => "中",
+                        "high" => "高",
+                        _ => effortOption
+                    },
+                    Tag = effortOption
+                });
+            }
+
             ReasoningEnabledCheckBox.IsChecked = supported && setting?.Enabled == true;
             string effort = setting?.Effort ?? "medium";
-            ReasoningEffortComboBox.SelectedIndex = effort switch
-            {
-                "low" => 0,
-                "high" => 2,
-                _ => 1
-            };
+            int selectedIndex = supportedEfforts.FindIndex(value =>
+                string.Equals(value, effort, StringComparison.OrdinalIgnoreCase));
+            ReasoningEffortComboBox.SelectedIndex = selectedIndex >= 0
+                ? selectedIndex
+                : supported ? 0 : -1;
             ReasoningEnabledCheckBox.IsEnabled = supported && !_loadFailed;
             ReasoningEffortComboBox.IsEnabled = supported && setting?.Enabled == true && !_loadFailed;
         }

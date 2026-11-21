@@ -262,10 +262,13 @@
                                           IsEnabled="False" SelectionChanged="ReasoningLevelChanged"
                                           ToolTip="只显示当前模型和接口协议已确认支持的选项。"/>
                             </Grid>
-                            <StackPanel x:Name="CustomReasoningPanel" Grid.Row="1" Margin="0,9,0,0"
-                                        Visibility="Collapsed">
+                            <Expander x:Name="CustomReasoningPanel" Grid.Row="1" Margin="0,9,0,0"
+                                      Header="高级：模型推理能力覆盖（仅用于自动识别失败的自定义模型）"
+                                      IsExpanded="False" Visibility="Collapsed"
+                                      FontSize="11" Foreground="#536273">
+                                <StackPanel Margin="4,6,0,0">
                                 <CheckBox x:Name="CustomReasoningEnabledCheckBox"
-                                          Content="手动配置此自定义模型的推理能力"
+                                          Content="启用手动能力覆盖"
                                           FontSize="11" Foreground="#39414A"
                                           Checked="CustomReasoningOptionChanged"
                                           Unchecked="CustomReasoningOptionChanged"/>
@@ -293,22 +296,23 @@
                                                   Unchecked="CustomReasoningOptionChanged"/>
                                         <CheckBox x:Name="CustomReasoningLowCheckBox"
                                                   Content="低" Margin="0,0,12,0" FontSize="10"
-                                                  IsChecked="True"
+                                                  IsChecked="False"
                                                   Checked="CustomReasoningOptionChanged"
                                                   Unchecked="CustomReasoningOptionChanged"/>
                                         <CheckBox x:Name="CustomReasoningMediumCheckBox"
                                                   Content="中" Margin="0,0,12,0" FontSize="10"
-                                                  IsChecked="True"
+                                                  IsChecked="False"
                                                   Checked="CustomReasoningOptionChanged"
                                                   Unchecked="CustomReasoningOptionChanged"/>
                                         <CheckBox x:Name="CustomReasoningHighCheckBox"
                                                   Content="高" FontSize="10"
-                                                  IsChecked="True"
+                                                  IsChecked="False"
                                                   Checked="CustomReasoningOptionChanged"
                                                   Unchecked="CustomReasoningOptionChanged"/>
                                     </WrapPanel>
                                 </StackPanel>
-                            </StackPanel>
+                                </StackPanel>
+                            </Expander>
                         </Grid>
                     </Border>
                     <TextBlock x:Name="StatusTextBlock" Grid.Row="7" Margin="0,6,0,0"

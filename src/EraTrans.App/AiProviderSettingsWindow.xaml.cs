@@ -317,8 +317,10 @@ public partial class AiProviderSettingsWindow : Window
         if (_currentProfile is null || _loadingProfile)
             return;
         string newBaseUrl = BaseUrlTextBox.Text.Trim();
+        string newChatPath = ChatCompletionsPathTextBox.Text.Trim();
         if (_currentProfile.RequiresEndpointReview &&
-            !string.Equals(_currentProfile.BaseUrl, newBaseUrl, StringComparison.Ordinal))
+            (!string.Equals(_currentProfile.BaseUrl, newBaseUrl, StringComparison.Ordinal) ||
+             !string.Equals(_currentProfile.ChatCompletionsPath, newChatPath, StringComparison.Ordinal)))
         {
             _currentProfile.RequiresEndpointReview = false;
             LegacyProtocolWarning.Visibility = Visibility.Collapsed;

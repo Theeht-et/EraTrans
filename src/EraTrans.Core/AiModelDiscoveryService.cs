@@ -17,6 +17,7 @@ public sealed class AiProviderModel
     public string? OwnedBy { get; set; }
     public long? Created { get; set; }
     public bool? ReasoningSupport { get; set; }
+    public List<string> ReasoningLevels { get; set; } = [];
     public bool IsEmbedding { get; set; }
     public bool IsRerank { get; set; }
     public string? Family { get; set; }
@@ -45,13 +46,23 @@ public sealed class AiProviderModel
 
     public bool IsChatModel => !IsEmbedding && !IsRerank;
 
-    public string ReasoningSupportDescription => $"推理能力：{(ReasoningSupport switch
+    public string ReasoningSupportDescription
     {
-        true => "支持",
-        false => "不支持",
-        null when SupportsReasoning => "支持",
-        _ => "未知"
-    })}";
+        get
+        {
+            string support = ReasoningSupport switch
+            {
+                true => "支持",
+                false => "不支持",
+                null when SupportsReasoning => "支持",
+                _ => "未知"
+            };
+            return $"推理能力：{support}" +
+                   (ReasoningSupport != false && ReasoningLevels.Count > 0
+                       ? $"（{string.Join(" / ", ReasoningLevels)}）"
+                       : "");
+        }
+    }
 
     public string ContextLimitDescription => ContextLimit is > 0
         ? FormatTokenLimit(ContextLimit.Value)
@@ -316,6 +327,16 @@ public sealed class AiModelDiscoveryService
 
             bool isEmbedding = LooksLikeEmbeddingModel(id);
             bool isRerank = LooksLikeRerankModel(id);
+            List<string> reasoningLevels = ReadReasoningLevels(row);
+            bool? reasoningSupport = ReadNullableBoolean(row, "reasoning")
+                ?? ReadNullableBoolean(row, "supports_reasoning")
+                ?? ReadNullableBoolean(row, "thinking")
+                ?? ReadNestedBoolean(row, "reasoning", "supported")
+                ?? ReadNestedBoolean(row, "thinking", "supported")
+                ?? ReadNestedBoolean(row, "capabilities", "reasoning");
+            if (reasoningSupport is null && reasoningLevels.Count > 0)
+                reasoningSupport = true;
+
             models.Add(new AiProviderModel
             {
                 Id = id,
@@ -325,33 +346,19 @@ public sealed class AiModelDiscoveryService
                 Created = created,
                 ContextLimit =
                     ReadFirstInt32(row, "context_length", "context_window", "context_limit",
-                        "max_context_length", "max_context_window")
+                        "max_context_length", "max_context_window", "inputTokenLimit", "input_token_limit")
                     ?? ReadNestedInt(row, "top_provider", "context_length")
                     ?? ReadNestedInt(row, "limit", "context"),
-                // top_provider.context_length is the model's total context window,
-                // not a provider-specific maximum input token count.
                 InputLimit =
-                    ReadFirstInt32(row, "max_input_tokens", "input_limit", "inputTokenLimit", "input_token_limit"),
+                    ReadFirstInt32(row, "max_input_tokens", "input_limit"),
                 OutputLimit =
                     ReadFirstInt32(row, "max_output_tokens", "output_limit", "max_tokens",
                         "max_completion_tokens", "outputTokenLimit", "output_token_limit")
                     ?? ReadNestedInt(row, "top_provider", "max_completion_tokens")
                     ?? ReadNestedInt(row, "limit", "output"),
-                ReasoningSupport =
-                    ReadNullableBoolean(row, "reasoning")
-                    ?? ReadNullableBoolean(row, "supports_reasoning")
-                    ?? ReadNullableBoolean(row, "thinking")
-                    ?? ReadNestedBoolean(row, "reasoning", "supported")
-                    ?? ReadNestedBoolean(row, "thinking", "supported")
-                    ?? ReadNestedBoolean(row, "capabilities", "reasoning"),
-                SupportsReasoning =
-                    (ReadNullableBoolean(row, "reasoning")
-                    ?? ReadNullableBoolean(row, "supports_reasoning")
-                    ?? ReadNullableBoolean(row, "thinking")
-                    ?? ReadNestedBoolean(row, "reasoning", "supported")
-                    ?? ReadNestedBoolean(row, "thinking", "supported")
-                    ?? ReadNestedBoolean(row, "capabilities", "reasoning")
-                    ?? false),
+                ReasoningSupport = reasoningSupport,
+                ReasoningLevels = reasoningLevels,
+                SupportsReasoning = reasoningSupport == true,
                 IsEmbedding = isEmbedding,
                 IsRerank = isRerank
             });
@@ -437,6 +444,49 @@ public sealed class AiModelDiscoveryService
         }
 
         return null;
+    }
+
+    private static List<string> ReadReasoningLevels(JsonElement row)
+    {
+        var levels = new List<string>();
+        foreach (string propertyName in new[]
+        {
+            "supported_reasoning_levels", "reasoning_efforts", "reasoningLevels",
+            "reasoning_levels"
+        })
+        {
+            ReadStringArray(row, propertyName, levels);
+        }
+
+        foreach (string objectName in new[] { "reasoning", "thinking" })
+        {
+            if (!TryGetProperty(row, objectName, out JsonElement nested) ||
+                nested.ValueKind != JsonValueKind.Object)
+                continue;
+
+            foreach (string propertyName in new[] { "effort", "levels", "supported_levels", "supportedReasoningLevels" })
+                ReadStringArray(nested, propertyName, levels);
+        }
+
+        return levels
+            .Select(value => value.Trim())
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static void ReadStringArray(JsonElement element, string propertyName, List<string> output)
+    {
+        if (!TryGetProperty(element, propertyName, out JsonElement value) ||
+            value.ValueKind != JsonValueKind.Array)
+            return;
+
+        foreach (JsonElement item in value.EnumerateArray())
+        {
+            if (item.ValueKind == JsonValueKind.String &&
+                !string.IsNullOrWhiteSpace(item.GetString()))
+                output.Add(item.GetString()!);
+        }
     }
 
     private static bool? ReadNullableBoolean(JsonElement element, string name)

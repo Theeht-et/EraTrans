@@ -311,6 +311,28 @@ public sealed class AiTranslationServiceTests
     }
 
     [Fact]
+    public async Task TranslateAsync_RedactsTrimmedApiKeyWhenProviderEchoesIt()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "EraTransAiLogTests", Guid.NewGuid().ToString("N"));
+        var store = new AiTranslationLogStore(Path.Combine(root, "logs"));
+        var fake = new FakeChatClient(
+            """[{ "id": 1, "translation": "测试译文" }] provider echoed secret-key""");
+        var service = new AiTranslationService(fake, store);
+        AiProviderProfile profile = CreateProfile();
+        profile.ApiKey = "  secret-key  ";
+
+        await service.TranslateAsync(
+            profile,
+            [new AiTranslationRequest(1, "测试 key", "原文", "上下文")]);
+
+        AiTranslationLogEntry log = Assert.Single(store.LoadAll());
+        Assert.Contains("[已隐藏]", log.RawResponse);
+        Assert.DoesNotContain("secret-key", log.RawResponse);
+        string savedJson = File.ReadAllText(Directory.GetFiles(store.DirectoryPath, "*.json").Single());
+        Assert.DoesNotContain("secret-key", savedJson);
+    }
+
+    [Fact]
     public async Task TranslateAsync_PersistsRawReplyWhenResponseParsingFails()
     {
         string root = Path.Combine(Path.GetTempPath(), "EraTransAiLogTests", Guid.NewGuid().ToString("N"));

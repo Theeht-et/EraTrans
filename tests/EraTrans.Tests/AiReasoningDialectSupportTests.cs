@@ -372,8 +372,7 @@ public sealed class AiReasoningDialectSupportTests
 
         using JsonDocument offBody = CreateBody(
             endpoint, model, new AiModelReasoningSettings { Disabled = true });
-        Assert.False(offBody.RootElement.GetProperty("enable_thinking").GetBoolean());
-        Assert.False(offBody.RootElement.TryGetProperty("reasoning_effort", out _));
+        Assert.Equal("none", offBody.RootElement.GetProperty("reasoning_effort").GetString());
         Assert.False(offBody.RootElement.TryGetProperty("enable_thinking", out _));
     }
 
@@ -395,7 +394,8 @@ public sealed class AiReasoningDialectSupportTests
 
         using JsonDocument offBody = CreateBody(
             endpoint, model, new AiModelReasoningSettings { Disabled = true });
-        Assert.Equal("none", offBody.RootElement.GetProperty("reasoning_effort").GetString());
+        Assert.False(offBody.RootElement.GetProperty("enable_thinking").GetBoolean());
+        Assert.False(offBody.RootElement.TryGetProperty("reasoning_effort", out _));
     }
 
     [Fact]
@@ -416,7 +416,7 @@ public sealed class AiReasoningDialectSupportTests
         AiReasoningDialectSupport.ApplyKnownModelDefaults(glm52, endpoint);
         Assert.Equal("dashScopeGlmEffort", glm52.ReasoningDialect);
         Assert.True(glm52.ReasoningCanDisable);
-        Assert.Equal(new[] { "minimal", "low", "medium", "high", "xhigh", "max" }, glm52.ReasoningLevels);
+        Assert.Equal(new[] { "high", "max" }, glm52.ReasoningLevels);
 
         AiProviderModel unknown = new() { Id = "custom-reasoning-model", ReasoningSupport = true };
         AiReasoningDialectSupport.ApplyKnownModelDefaults(unknown, endpoint);

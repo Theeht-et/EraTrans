@@ -453,6 +453,7 @@ public sealed class AiModelDiscoveryServiceTests
                     "id": "deepseek-chat",
                     "name": "DeepSeek Chat",
                     "reasoning": false,
+                    "ro": [{ "type": "effort", "values": ["low", "medium", "high"] }],
                     "limit": { "context": 131072 }
                   }
                 }
@@ -537,12 +538,80 @@ public sealed class AiModelDiscoveryServiceTests
 
         IReadOnlyList<AiProviderModel> models = AiModelDiscoveryService.ParseModelsResponse(json);
         AiProviderModel inputOnly = Assert.Single(models, model => model.Id == "input-limited");
-        Assert.Null(inputOnly.ContextLimit);
-        Assert.Equal(12000, inputOnly.InputLimit);
+        Assert.Equal(12000, inputOnly.ContextLimit);
+        Assert.Null(inputOnly.InputLimit);
 
         AiProviderModel both = Assert.Single(models, model => model.Id == "context-and-input-limited");
         Assert.Equal(65536, both.ContextLimit);
         Assert.Equal(60000, both.InputLimit);
+    }
+
+    [Fact]
+    public void ParseModelsResponse_ExtractsProviderReportedReasoningEffortLevels()
+    {
+        const string json = """
+            {
+              "data": [
+                {
+                  "id": "model-with-levels",
+                  "reasoning": { "supported": true, "effort": ["low", "high"] }
+                },
+                {
+                  "id": "model-with-level-list",
+                  "supported_reasoning_levels": ["minimal", "low", "high"]
+                }
+              ]
+            }
+            """;
+
+        IReadOnlyList<AiProviderModel> models = AiModelDiscoveryService.ParseModelsResponse(json);
+        AiProviderModel nested = Assert.Single(models, model => model.Id == "model-with-levels");
+        Assert.Equal(true, nested.ReasoningSupport);
+        Assert.Equal(new[] { "low", "high" }, nested.ReasoningLevels);
+        Assert.Contains("low", nested.ReasoningSupportDescription);
+
+        AiProviderModel direct = Assert.Single(models, model => model.Id == "model-with-level-list");
+        Assert.Equal(true, direct.ReasoningSupport);
+        Assert.Equal(new[] { "minimal", "low", "high" }, direct.ReasoningLevels);
+    }
+
+    [Fact]
+    public async Task CatalogEnrichment_UsesContextWindowMarkerWhenCatalogHasNoNumericLimit()
+    {
+        var catalogUri = new Uri("https://models.dev/api.json?test=context-window-suffix");
+        const string json = """
+            {
+              "openai": {
+                "id": "openai",
+                "api": "https://api.openai.com/v1",
+                "models": {
+                  "gpt-4o-mini": {
+                    "id": "gpt-4o-mini",
+                    "name": "GPT-4o mini"
+                  }
+                }
+              }
+            }
+            """;
+        using var handler = new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(json, Encoding.UTF8, "application/json")
+        });
+        using var client = new HttpClient(handler);
+        var enrichment = new AiModelCatalogEnrichmentService(client, catalogUri: catalogUri);
+
+        IReadOnlyList<AiProviderModel> result = await enrichment.EnrichAsync(
+            new AiProviderProfile { BaseUrl = "https://api.openai.com/v1" },
+            [new AiProviderModel
+            {
+                Id = "gpt-4o-mini-128k",
+                DisplayName = "gpt-4o-mini-128k",
+                GroupName = "OpenAI"
+            }]);
+
+        AiProviderModel model = Assert.Single(result);
+        Assert.Equal("GPT-4o mini", model.DisplayName);
+        Assert.Equal(128000, model.ContextLimit);
     }
 
     private sealed class StubHandler(

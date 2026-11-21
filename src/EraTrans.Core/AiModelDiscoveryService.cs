@@ -20,6 +20,8 @@ public sealed class AiProviderModel
     public List<string> ReasoningLevels { get; set; } = [];
     public bool? ReasoningCanDisable { get; set; }
     public string? ReasoningDialect { get; set; }
+    public int? ReasoningBudgetMin { get; set; }
+    public int? ReasoningBudgetMax { get; set; }
     public bool IsEmbedding { get; set; }
     public bool IsRerank { get; set; }
     public string? Family { get; set; }

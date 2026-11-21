@@ -369,7 +369,9 @@ public partial class AiProviderSettingsWindow : Window
             return (host.Equals("api.openai.com", StringComparison.OrdinalIgnoreCase) &&
                     dialect.Equals("openaiReasoningEffort", StringComparison.OrdinalIgnoreCase)) ||
                    (host.Equals("openrouter.ai", StringComparison.OrdinalIgnoreCase) &&
-                    dialect.Equals("openrouterReasoning", StringComparison.OrdinalIgnoreCase));
+                    dialect.Equals("openrouterReasoning", StringComparison.OrdinalIgnoreCase)) ||
+                   (host.Equals("api.deepseek.com", StringComparison.OrdinalIgnoreCase) &&
+                    dialect.Equals("deepseekThinking", StringComparison.OrdinalIgnoreCase));
         }
         catch (Exception ex) when (
             ex is ArgumentException or InvalidOperationException or UriFormatException)
@@ -384,7 +386,8 @@ public partial class AiProviderSettingsWindow : Window
         {
             string host = new Uri(AiProviderProfileValidator.NormalizeBaseUrl(BaseUrlTextBox.Text)).Host;
             return host.Equals("api.openai.com", StringComparison.OrdinalIgnoreCase) ||
-                   host.Equals("openrouter.ai", StringComparison.OrdinalIgnoreCase);
+                   host.Equals("openrouter.ai", StringComparison.OrdinalIgnoreCase) ||
+                   host.Equals("api.deepseek.com", StringComparison.OrdinalIgnoreCase);
         }
         catch (Exception ex) when (
             ex is ArgumentException or InvalidOperationException or UriFormatException)

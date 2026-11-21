@@ -220,7 +220,7 @@ public static class AiReasoningDialectSupport
             model.SupportsReasoning = true;
             if (!unverifiedOfficialDeepSeek)
             {
-                if (model.ReasoningLevels.Count == 0)
+                if (model.ReasoningLevels.Count == 0 && !model.HasExplicitReasoningLevels)
                     model.ReasoningLevels = [.. levels];
                 model.ReasoningCanDisable ??= canDisable;
                 // Kelivo resolves the provider's wire dialect before model/catalog guesses.

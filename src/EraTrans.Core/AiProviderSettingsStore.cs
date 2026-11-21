@@ -43,6 +43,7 @@ public sealed class AiProviderSettings
 {
     public List<AiProviderProfile> Providers { get; set; } = [];
     public string? ActiveProviderId { get; set; }
+    public bool BuiltInDefaultDisableMigrationApplied { get; set; }
 
     public AiProviderProfile? ActiveProvider =>
         Providers.FirstOrDefault(provider =>
@@ -57,6 +58,13 @@ public sealed class AiProviderSettings
     /// </summary>
     public void EnsureBuiltInProviders()
     {
+        if (!BuiltInDefaultDisableMigrationApplied)
+        {
+            foreach (AiProviderProfile builtIn in Providers.Where(provider => provider.IsBuiltIn))
+                builtIn.IsEnabled = false;
+            BuiltInDefaultDisableMigrationApplied = true;
+        }
+
         var seenBuiltIns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (AiProviderProfile provider in Providers)
@@ -298,7 +306,8 @@ public sealed class AiProviderSettingsStore
 
             var settings = new AiProviderSettings
             {
-                ActiveProviderId = stored.ActiveProviderId
+                ActiveProviderId = stored.ActiveProviderId,
+                BuiltInDefaultDisableMigrationApplied = stored.BuiltInDefaultDisableMigrationApplied
             };
             var providerIds = new HashSet<string>(StringComparer.Ordinal);
 
@@ -419,6 +428,7 @@ public sealed class AiProviderSettingsStore
         var stored = new StoredSettings
         {
             ActiveProviderId = settings.ActiveProviderId,
+            BuiltInDefaultDisableMigrationApplied = settings.BuiltInDefaultDisableMigrationApplied,
             Providers = settings.Providers.Select(profile =>
             {
                 AiProviderProfileValidator.ValidateForStorage(profile);
@@ -537,6 +547,7 @@ public sealed class AiProviderSettingsStore
     private sealed class StoredSettings
     {
         public string? ActiveProviderId { get; set; }
+        public bool BuiltInDefaultDisableMigrationApplied { get; set; }
         public List<StoredProvider> Providers { get; set; } = [];
     }
 

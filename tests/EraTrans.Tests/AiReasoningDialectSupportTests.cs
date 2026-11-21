@@ -201,6 +201,11 @@ public sealed class AiReasoningDialectSupportTests
             "https://api.openai.com/v1", model, new AiModelReasoningSettings());
         Assert.False(autoBody.RootElement.TryGetProperty("reasoning_effort", out _));
 
+        using JsonDocument openRouterAutoBody = CreateBody(
+            "https://openrouter.ai/api/v1", model, new AiModelReasoningSettings());
+        Assert.True(openRouterAutoBody.RootElement.GetProperty("reasoning").GetProperty("enabled").GetBoolean());
+        Assert.False(openRouterAutoBody.RootElement.GetProperty("reasoning").TryGetProperty("effort", out _));
+
         using JsonDocument unknownEndpointBody = CreateBody(
             "https://proxy.example.com/v1", model,
             new AiModelReasoningSettings { Enabled = true, Effort = "high" });

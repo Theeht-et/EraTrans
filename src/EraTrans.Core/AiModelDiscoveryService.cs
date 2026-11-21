@@ -347,6 +347,7 @@ public sealed class AiModelDiscoveryService
                 ?? ReadNestedBoolean(row, "reasoning", "supported")
                 ?? ReadNestedBoolean(row, "thinking", "supported")
                 ?? ReadNestedBoolean(row, "capabilities", "reasoning");
+            reasoningCanDisable ??= ReadCatalogReasoningCanDisable(row, hasNoneEffort);
             if (reasoningSupport is null &&
                 (reasoningLevels.Count > 0 || hasNoneEffort || HasProviderReasoningOptions(row)))
                 reasoningSupport = true;
@@ -461,6 +462,71 @@ public sealed class AiModelDiscoveryService
         }
 
         return null;
+    }
+
+    private static bool? ReadCatalogReasoningCanDisable(JsonElement row, bool hasNoneEffort)
+    {
+        if (hasNoneEffort)
+            return true;
+
+        bool hasEffortOption = false;
+        foreach (string propertyName in new[] { "reasoning_options", "reasoningOptions" })
+        {
+            if (!TryGetProperty(row, propertyName, out JsonElement options) ||
+                options.ValueKind != JsonValueKind.Array)
+                continue;
+
+            foreach (JsonElement option in options.EnumerateArray())
+            {
+                if (option.ValueKind != JsonValueKind.Object)
+                    continue;
+
+                string? type = ReadString(option, "type");
+                if (type?.Equals("toggle", StringComparison.OrdinalIgnoreCase) == true)
+                    return true;
+
+                if (type?.Equals("effort", StringComparison.OrdinalIgnoreCase) != true ||
+                    !TryGetProperty(option, "values", out JsonElement values) ||
+                    values.ValueKind != JsonValueKind.Array)
+                    continue;
+
+                hasEffortOption = true;
+                if (values.EnumerateArray().Any(value =>
+                    value.ValueKind == JsonValueKind.String &&
+                    string.Equals(value.GetString(), "none", StringComparison.OrdinalIgnoreCase)))
+                    return true;
+            }
+        }
+
+        if (TryGetProperty(row, "effort", out JsonElement effort) &&
+            effort.ValueKind == JsonValueKind.Object &&
+            TryGetProperty(effort, "supported_levels", out JsonElement topLevels) &&
+            topLevels.ValueKind == JsonValueKind.Array &&
+            topLevels.GetArrayLength() > 0)
+        {
+            hasEffortOption = true;
+            if (topLevels.EnumerateArray().Any(value =>
+                value.ValueKind == JsonValueKind.String &&
+                string.Equals(value.GetString(), "none", StringComparison.OrdinalIgnoreCase)))
+                return true;
+        }
+
+        if (TryGetProperty(row, "reasoning", out JsonElement reasoning) &&
+            reasoning.ValueKind == JsonValueKind.Object &&
+            TryGetProperty(reasoning, "effort", out JsonElement nestedEffort) &&
+            nestedEffort.ValueKind == JsonValueKind.Object &&
+            TryGetProperty(nestedEffort, "supported_levels", out JsonElement nestedLevels) &&
+            nestedLevels.ValueKind == JsonValueKind.Array &&
+            nestedLevels.GetArrayLength() > 0)
+        {
+            hasEffortOption = true;
+            if (nestedLevels.EnumerateArray().Any(value =>
+                value.ValueKind == JsonValueKind.String &&
+                string.Equals(value.GetString(), "none", StringComparison.OrdinalIgnoreCase)))
+                return true;
+        }
+
+        return hasEffortOption ? false : null;
     }
 
     private static bool HasProviderReasoningOptions(JsonElement row)

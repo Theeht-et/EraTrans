@@ -398,6 +398,11 @@ public static class AiReasoningDialectSupport
             levels = ["low", "high", "max"];
             return true;
         }
+        if (id.Contains("kimi-for-coding-highspeed", StringComparison.OrdinalIgnoreCase))
+        {
+            canDisable = true;
+            return true;
+        }
         if (id.Contains("kimi-for-coding", StringComparison.OrdinalIgnoreCase) ||
             Regex.IsMatch(id, @"^k3(?:-256k)?$", RegexOptions.IgnoreCase) ||
             Regex.IsMatch(id, @"^kimi-k2\.8(?:$|[-.])", RegexOptions.IgnoreCase))

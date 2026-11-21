@@ -6,7 +6,26 @@ using System.Text.Json;
 
 namespace EraTrans.Core;
 
+public sealed record AiTranslationRequest(int Id, string Key, string Original, string Context);
+
 public sealed record AiTranslationResult(int Id, string Translation);
+
+public sealed record AiTranslationContextEntry(string Key, string Original);
+
+/// <summary>
+/// Read-only reference text that travels with a batch. Only used by the legacy
+/// semantic-group path, which is kept until the grouping service is trimmed.
+/// </summary>
+public sealed record AiTranslationSemanticContextGroup(
+    string GroupId,
+    string GroupType,
+    string FunctionId,
+    string BranchPath,
+    string Relationship,
+    IReadOnlyList<AiTranslationContextEntry> Entries)
+{
+    public IReadOnlyList<int> TargetIds { get; init; } = [];
+}
 
 /// <summary>
 /// Result of one window request. A partially answered window is a success: the
@@ -63,6 +82,16 @@ public sealed class AiTranslationService
         同一请求内，同一人名、称呼和术语必须使用同一译法。
         """;
 
+    private const string SemanticSystemPrompt = """
+        你是 ERA 游戏文本本地化翻译助手。请将 targets 中指定的游戏文本翻译为简体中文。
+        保留原文中的变量占位符、控制代码、转义序列、格式标记、数值和专有标识。
+        entryContexts 中的 targetIds 指明对应上下文适用于哪些目标；没有对应项时不要自行补充上下文。
+        同一请求中的 targets 应作为一个整体阅读和翻译；如果它们属于连续对白或同一段文本，应保持人物称呼、代词、语气、术语和前后句表达一致，不要把每条译文当作互不相关的孤立句子。
+        semanticContext 是只读参考，不是翻译目标。每个上下文项的 targetIds 明确限定它适用的目标 id。
+        只返回 JSON 数组，每项必须包含原样的整数 id 和字符串 translation。
+        不要添加 Markdown 代码围栏、解释、前言或数组之外的内容。不能遗漏或重复任何 id。
+        """;
+
     private static readonly JsonSerializerOptions PromptJsonOptions = new()
     {
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
@@ -109,6 +138,45 @@ public sealed class AiTranslationService
             requestKind: "Translation",
             requestedEntryCount: window.TargetCount,
             processResponse: response => ParseWindowResponse(response, window),
+            reasoning,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Legacy semantic-group request, kept only for the real-game integration test
+    /// until the grouping service batching is removed.
+    /// </summary>
+    public Task<IReadOnlyList<AiTranslationResult>> TranslateWithSemanticContextAsync(
+        AiProviderProfile profile,
+        IReadOnlyList<AiTranslationRequest> requests,
+        IReadOnlyList<AiTranslationSemanticContextGroup> semanticContextGroups,
+        CancellationToken cancellationToken = default) =>
+        TranslateWithSemanticContextAsync(
+            profile, requests, semanticContextGroups, reasoning: null, cancellationToken);
+
+    public async Task<IReadOnlyList<AiTranslationResult>> TranslateWithSemanticContextAsync(
+        AiProviderProfile profile,
+        IReadOnlyList<AiTranslationRequest> requests,
+        IReadOnlyList<AiTranslationSemanticContextGroup> semanticContextGroups,
+        AiReasoningOptions? reasoning,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(requests);
+        ArgumentNullException.ThrowIfNull(semanticContextGroups);
+        AiProviderProfileValidator.Validate(profile);
+        if (requests.Count == 0)
+            return [];
+
+        string userPrompt = JsonSerializer.Serialize(
+            BuildSemanticPayload(requests, semanticContextGroups), PromptJsonOptions);
+
+        return await CompleteWithReasoningFallbackAsync(
+            profile,
+            SemanticSystemPrompt,
+            userPrompt,
+            requestKind: "Translation",
+            requestedEntryCount: requests.Count,
+            processResponse: response => ParseSemanticResponse(response, requests),
             reasoning,
             cancellationToken);
     }
@@ -420,6 +488,101 @@ public sealed class AiTranslationService
             throw new InvalidDataException("模型返回内容中没有 JSON 内容。");
 
         return trimmed[start..(end + 1)];
+    }
+
+    private static Dictionary<string, object> BuildSemanticPayload(
+        IReadOnlyList<AiTranslationRequest> requests,
+        IReadOnlyList<AiTranslationSemanticContextGroup> semanticContextGroups)
+    {
+        var payload = new Dictionary<string, object>(StringComparer.Ordinal)
+        {
+            ["targets"] = requests.Select(item => new
+            {
+                id = item.Id,
+                original = item.Original
+            }).ToArray()
+        };
+
+        var entryContexts = requests
+            .Where(item =>
+                !string.IsNullOrWhiteSpace(item.Context) &&
+                !string.Equals(item.Context, item.Original, StringComparison.Ordinal))
+            .GroupBy(item => item.Context, StringComparer.Ordinal)
+            .Select(group => new
+            {
+                targetIds = group.Select(item => item.Id).ToArray(),
+                text = group.Key
+            })
+            .ToArray();
+
+        if (entryContexts.Length > 0)
+            payload["entryContexts"] = entryContexts;
+
+        var semanticContexts = semanticContextGroups
+            .Select(group => new
+            {
+                targetIds = group.TargetIds.Distinct().Order().ToArray(),
+                type = group.Relationship,
+                groupType = group.GroupType,
+                texts = group.Entries
+                    .Where(entry => !string.IsNullOrWhiteSpace(entry.Original))
+                    .Select(entry => entry.Original)
+                    .ToArray()
+            })
+            .Where(group => group.targetIds.Length > 0 && group.texts.Length > 0)
+            .ToArray();
+
+        if (semanticContexts.Length > 0)
+            payload["semanticContext"] = semanticContexts;
+
+        return payload;
+    }
+
+    private static IReadOnlyList<AiTranslationResult> ParseSemanticResponse(
+        string response,
+        IReadOnlyList<AiTranslationRequest> requests)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(response);
+        string trimmed = response.Trim();
+        int firstArray = trimmed.IndexOf('[');
+        int lastArray = trimmed.LastIndexOf(']');
+        if (firstArray < 0 || lastArray < firstArray)
+            throw new InvalidDataException("模型返回内容不是有效的 JSON 数组。");
+
+        using JsonDocument document = JsonDocument.Parse(trimmed[firstArray..(lastArray + 1)]);
+        var expectedIds = requests.Select(item => item.Id).ToHashSet();
+        var results = new Dictionary<int, string>();
+
+        foreach (JsonElement item in document.RootElement.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object ||
+                !item.TryGetProperty("id", out JsonElement idElement) ||
+                !idElement.TryGetInt32(out int id) ||
+                !item.TryGetProperty("translation", out JsonElement translationElement) ||
+                translationElement.ValueKind != JsonValueKind.String)
+            {
+                throw new InvalidDataException("模型返回的词条缺少有效的 id 或 translation 字段。");
+            }
+
+            string translation = translationElement.GetString() ?? "";
+            if (string.IsNullOrWhiteSpace(translation))
+                throw new InvalidDataException($"模型返回的词条 {id} 译文为空。");
+            if (!expectedIds.Contains(id))
+                throw new InvalidDataException($"模型返回了未请求的词条 id：{id}。");
+            if (!results.TryAdd(id, translation))
+                throw new InvalidDataException($"模型重复返回了词条 id：{id}。");
+        }
+
+        if (results.Count != expectedIds.Count)
+        {
+            var missing = expectedIds.Except(results.Keys).Order().ToArray();
+            throw new InvalidDataException(
+                "模型未返回全部词条，缺少 id：" + string.Join(", ", missing));
+        }
+
+        return requests
+            .Select(request => new AiTranslationResult(request.Id, results[request.Id]))
+            .ToArray();
     }
 
     public Task TestConnectionAsync(

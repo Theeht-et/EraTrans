@@ -291,6 +291,34 @@ public sealed class AiReasoningDialectSupportTests
     }
 
     [Fact]
+    public void DeepSeekOfficialCatalogCapabilityEnablesDialectOnlyWhenExplicitlyAdvertised()
+    {
+        const string endpoint = "https://api.deepseek.com/v1";
+
+        AiProviderModel advertised = new()
+        {
+            Id = "deepseek-new-model",
+            ReasoningSupport = true,
+            ReasoningLevels = ["low", "high", "max"],
+            ReasoningCanDisable = false
+        };
+        AiReasoningDialectSupport.ApplyKnownModelDefaults(advertised, endpoint);
+        Assert.Equal("deepseekThinking", advertised.ReasoningDialect);
+        Assert.True(AiReasoningDialectSupport.IsCompatible(endpoint, advertised));
+
+        using JsonDocument effortBody = CreateBody(
+            endpoint, advertised, new AiModelReasoningSettings { Enabled = true, Effort = "high" });
+        Assert.Equal("enabled", effortBody.RootElement.GetProperty("thinking").GetProperty("type").GetString());
+        Assert.Equal("high", effortBody.RootElement.GetProperty("reasoning_effort").GetString());
+
+        AiProviderModel unknown = new() { Id = "deepseek-unlisted-model" };
+        AiReasoningDialectSupport.ApplyKnownModelDefaults(unknown, endpoint);
+        Assert.Null(unknown.ReasoningSupport);
+        Assert.Null(unknown.ReasoningDialect);
+        Assert.False(AiReasoningDialectSupport.IsCompatible(endpoint, unknown));
+    }
+
+    [Fact]
     public void LegacyDeepSeekModelHint_CanUseKnownOpenRouterDialect()
     {
         AiProviderModel model = new() { Id = "deepseek-reasoner" };

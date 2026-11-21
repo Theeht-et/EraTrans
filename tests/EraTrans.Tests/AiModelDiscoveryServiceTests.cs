@@ -730,6 +730,16 @@ public sealed class AiModelDiscoveryServiceTests
                       "supported_levels": ["none", "low", "high"],
                       "default_level": "high"
                     }
+                  },
+                  "nested-reasoning-model": {
+                    "id": "nested-reasoning-model",
+                    "name": "Nested reasoning model",
+                    "reasoning": {
+                      "effort": {
+                        "supported_levels": ["none", "low", "high"],
+                        "default_level": "high"
+                      }
+                    }
                   }
                 }
               }
@@ -749,6 +759,14 @@ public sealed class AiModelDiscoveryServiceTests
         Assert.True(result.ReasoningSupport);
         Assert.True(result.ReasoningCanDisable);
         Assert.Equal(new[] { "low", "high" }, result.ReasoningLevels);
+
+        AiProviderModel nested = Assert.Single(await enrichment.EnrichAsync(
+            new AiProviderProfile { BaseUrl = "https://api.openai.com/v1" },
+            [new AiProviderModel { Id = "nested-reasoning-model" }]));
+        Assert.True(nested.ReasoningSupport);
+        Assert.True(nested.ReasoningCanDisable);
+        Assert.Equal(new[] { "low", "high" }, nested.ReasoningLevels);
+        Assert.Equal("openaiReasoningEffort", nested.ReasoningDialect);
     }
 
     [Fact]

@@ -1,5 +1,7 @@
 using EraTrans.Core;
 using System.IO;
+using System.Text.Encodings.Web;
+using System.Text.Json;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Windows;
@@ -52,15 +54,18 @@ public partial class AiTranslationLogWindow : Window
             return;
         }
 
-        SelectedLogSummaryTextBlock.Text =
-            $"{entry.DisplayTime} · {entry.RequestKindDescription} · {entry.StatusDescription} · {entry.Model} · {entry.Summary}";
+        SelectedLogSummaryTextBlock.Text = string.Join(
+            Environment.NewLine,
+            $"{entry.DisplayTime}  |  {entry.RequestKindDescription}  |  {entry.StatusDescription}",
+            $"{entry.ProviderName} / {entry.Model}",
+            entry.Summary);
         EndpointTextBlock.Text =
-            $"{entry.RequestMethod} {entry.Endpoint} · 服务商：{entry.ProviderName} · 协议：{entry.Protocol}";
+            $"请求地址：{entry.RequestMethod} {entry.Endpoint}{Environment.NewLine}协议：{entry.Protocol}";
 
-        RequestTextBox.Text = entry.RequestJson;
+        RequestTextBox.Text = FormatJsonForDisplay(entry.RequestJson);
         ResponseTextBox.Text = string.IsNullOrWhiteSpace(entry.RawResponse)
             ? "没有收到可显示的文本回复。"
-            : entry.RawResponse;
+            : FormatJsonForDisplay(entry.RawResponse);
 
         var errorLines = new List<string>
         {
@@ -90,6 +95,32 @@ public partial class AiTranslationLogWindow : Window
         ErrorTextBox.Text = string.Join(Environment.NewLine, errorLines);
         CopyRequestButton.IsEnabled = !string.IsNullOrWhiteSpace(entry.RequestJson);
         CopyResponseButton.IsEnabled = !string.IsNullOrWhiteSpace(entry.RawResponse);
+    }
+
+    private static string FormatJsonForDisplay(string content)
+    {
+        if (string.IsNullOrWhiteSpace(content))
+            return content;
+
+        try
+        {
+            using JsonDocument document = JsonDocument.Parse(content);
+            if (document.RootElement.ValueKind == JsonValueKind.String)
+                return document.RootElement.GetString() ?? string.Empty;
+
+            return JsonSerializer.Serialize(
+                document.RootElement,
+                new JsonSerializerOptions
+                {
+                    WriteIndented = true,
+                    Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+                });
+        }
+        catch (JsonException)
+        {
+            // Plain-text replies and non-JSON error bodies are shown exactly as received.
+            return content;
+        }
     }
 
     private void ShowEmptySelection()

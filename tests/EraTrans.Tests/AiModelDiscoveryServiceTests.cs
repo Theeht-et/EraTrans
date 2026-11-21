@@ -664,9 +664,12 @@ public sealed class AiModelDiscoveryServiceTests
                   "reasoning-model": {
                     "id": "reasoning-model",
                     "name": "Reasoning model",
-                    "reasoning": true,
-                    "reasoning_can_disable": true,
-                    "reasoning_dialect": "openaiReasoningEffort"
+                    "reasoning": {
+                      "supported": true,
+                      "can_disable": true,
+                      "dialect": "openaiReasoningEffort",
+                      "effort": ["low", "high"]
+                    }
                   }
                 }
               }
@@ -683,7 +686,9 @@ public sealed class AiModelDiscoveryServiceTests
             new AiProviderProfile { BaseUrl = "https://api.openai.com/v1" },
             [new AiProviderModel { Id = "reasoning-model", ReasoningSupport = true }]));
 
+        Assert.True(result.ReasoningSupport);
         Assert.True(result.ReasoningCanDisable);
+        Assert.Equal(new[] { "low", "high" }, result.ReasoningLevels);
         Assert.Equal("openaiReasoningEffort", result.ReasoningDialect);
     }
 

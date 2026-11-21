@@ -525,6 +525,87 @@ public sealed class AiProviderHttpClientTests
         }
     }
 
+    [Fact]
+    public void RequestFactory_UsesExplicitCustomReasoningDialectRatherThanGuessing()
+    {
+        (string Dialect, string ExpectedPayload)[] dialects =
+        [
+            (AiReasoningDialectSupport.CustomOpenAiEffortDialect, "openai"),
+            (AiReasoningDialectSupport.CustomOpenRouterDialect, "openrouter"),
+            (AiReasoningDialectSupport.CustomThinkingTypeDialect, "thinking"),
+            (AiReasoningDialectSupport.CustomQwenDialect, "qwen")
+        ];
+
+        foreach ((string dialect, string expectedPayload) in dialects)
+        {
+            var profile = new AiProviderProfile
+            {
+                BaseUrl = "https://custom-provider.example/v1",
+                Model = "manual-reasoner",
+                ApiKey = "secret",
+                ReasoningCapabilitiesByModel = new Dictionary<string, AiModelReasoningCapabilityOverride>
+                {
+                    ["manual-reasoner"] = new()
+                    {
+                        Dialect = dialect,
+                        CanDisable = true,
+                        Levels = ["low", "medium", "high"]
+                    }
+                },
+                ReasoningSettingsByModel = new Dictionary<string, AiModelReasoningSettings>
+                {
+                    ["manual-reasoner"] = new() { Enabled = true, Effort = "high" }
+                }
+            };
+
+            AiProviderHttpRequestDetails request =
+                AiProviderHttpRequestFactory.Create(profile, "system", "user");
+            using (JsonDocument effortBody = JsonDocument.Parse(request.JsonBody))
+            {
+                switch (expectedPayload)
+                {
+                    case "openai":
+                        Assert.Equal("high", effortBody.RootElement.GetProperty("reasoning_effort").GetString());
+                        break;
+                    case "openrouter":
+                        Assert.Equal("high", effortBody.RootElement.GetProperty("reasoning")
+                            .GetProperty("effort").GetString());
+                        break;
+                    case "thinking":
+                        Assert.Equal("enabled", effortBody.RootElement.GetProperty("thinking")
+                            .GetProperty("type").GetString());
+                        Assert.Equal("high", effortBody.RootElement.GetProperty("reasoning_effort").GetString());
+                        break;
+                    case "qwen":
+                        Assert.Equal(8192, effortBody.RootElement.GetProperty("thinking_budget").GetInt32());
+                        break;
+                }
+            }
+
+            profile.ReasoningSettingsByModel["manual-reasoner"].Enabled = false;
+            profile.ReasoningSettingsByModel["manual-reasoner"].Disabled = true;
+            request = AiProviderHttpRequestFactory.Create(profile, "system", "user");
+            using JsonDocument offBody = JsonDocument.Parse(request.JsonBody);
+            switch (expectedPayload)
+            {
+                case "openai":
+                    Assert.Equal("none", offBody.RootElement.GetProperty("reasoning_effort").GetString());
+                    break;
+                case "openrouter":
+                    Assert.False(offBody.RootElement.GetProperty("reasoning")
+                        .GetProperty("enabled").GetBoolean());
+                    break;
+                case "thinking":
+                    Assert.Equal("disabled", offBody.RootElement.GetProperty("thinking")
+                        .GetProperty("type").GetString());
+                    break;
+                case "qwen":
+                    Assert.False(offBody.RootElement.GetProperty("enable_thinking").GetBoolean());
+                    break;
+            }
+        }
+    }
+
     private static HttpResponseMessage JsonResponse(HttpStatusCode status, string json) =>
         new(status) { Content = new StringContent(json, Encoding.UTF8, "application/json") };
 

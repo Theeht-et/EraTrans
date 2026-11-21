@@ -276,6 +276,32 @@ public sealed class AiReasoningDialectSupportTests
         Assert.Equal("medium", body.RootElement.GetProperty("reasoning_effort").GetString());
     }
 
+    [Fact]
+    public void LegacyDeepSeekModelHint_DoesNotEnableUnverifiedOfficialEndpointDialect()
+    {
+        AiProviderModel model = new() { Id = "deepseek-reasoner" };
+        AiReasoningDialectSupport.ApplyKnownModelDefaults(model, "https://api.deepseek.com/v1");
+
+        Assert.True(model.ReasoningSupport);
+        Assert.Equal(new[] { "low", "high", "max" }, model.ReasoningLevels);
+        Assert.True(model.ReasoningCanDisable);
+        Assert.Null(model.ReasoningDialect);
+        Assert.False(AiReasoningDialectSupport.IsCompatible("https://api.deepseek.com/v1", model));
+    }
+
+    [Fact]
+    public void LegacyDeepSeekModelHint_CanUseKnownOpenRouterDialect()
+    {
+        AiProviderModel model = new() { Id = "deepseek-reasoner" };
+        const string endpoint = "https://openrouter.ai/api/v1";
+        AiReasoningDialectSupport.ApplyKnownModelDefaults(model, endpoint);
+
+        Assert.Equal("openrouterReasoning", model.ReasoningDialect);
+        using JsonDocument body = CreateBody(
+            endpoint, model, new AiModelReasoningSettings { Enabled = true, Effort = "high" });
+        Assert.Equal("high", body.RootElement.GetProperty("reasoning").GetProperty("effort").GetString());
+    }
+
     private static JsonDocument CreateBody(
         string baseUrl,
         AiProviderModel model,

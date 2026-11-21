@@ -17,7 +17,7 @@ public sealed class AiModelDiscoveryServiceTests
 
         AiProviderModel known = new() { Id = "known-context-model", ContextLimit = 131072 };
         Assert.True(known.HasKnownContextLimit);
-        Assert.Equal("上下文大小：128K", known.ContextLimitLabel);
+        Assert.Equal("上下文大小：131.1K", known.ContextLimitLabel);
     }
 
     [Fact]
@@ -354,7 +354,8 @@ public sealed class AiModelDiscoveryServiceTests
     public void ModelCapabilityLabels_HideUnknownAndShowOnlyKnownSupportState()
     {
         var unknown = new AiProviderModel { Id = "provider-model" };
-        Assert.Equal("上下文大小：未知", unknown.ContextLimitLabel);
+        Assert.Equal("", unknown.ContextLimitLabel);
+        Assert.False(unknown.HasKnownContextLimit);
         Assert.False(unknown.HasKnownReasoningSupport);
         Assert.Equal("", unknown.ReasoningSupportDescription);
 

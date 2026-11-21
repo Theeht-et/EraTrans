@@ -44,14 +44,24 @@ public partial class DictionaryEditorControl
             await TranslateFixedBatchesAsync(entries);
     }
 
-    /// <summary>Read-only summary shown in the editor so the windowing is not a black box.</summary>
+    /// <summary>
+    /// Describes what the next run will send. The text follows the mode that is
+    /// actually active, so a batch-mode dictionary is not described as windows.
+    /// </summary>
     public string DescribeTranslationWindows()
     {
         if (_document is null)
             return "尚未加载字典。";
 
+        string grouping = _activeGroupingIndex is null
+            ? "分组文件不可用：" + (_groupingFallbackReason ?? "未找到")
+            : "分组文件可用";
+
+        if (!_settings.EnableErbSemanticGroupingTranslation)
+            return $"当前为按行分批翻译（每批 {TranslationBatchSize} 条）· {grouping}";
+
         if (_activeGroupingIndex is null)
-            return "分组文件不可用：" + (_groupingFallbackReason ?? "未找到，请重新提取字典。");
+            return grouping + "，无法按原文顺序整段翻译。";
 
         WindowPlan plan = BuildWindowPlan(
             _document.Entries,
@@ -96,6 +106,27 @@ public partial class DictionaryEditorControl
         {
             MessageBox.Show(OwnerWindow, "选中的词条中没有可翻译的行。", "没有可翻译内容",
                 MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        // A dictionary entry that is missing from the sidecar would silently stay
+        // untranslated; stop and say so instead.
+        int scheduled = plan.Windows
+            .SelectMany(window => window.Lines)
+            .Where(line => line.Translate)
+            .Select(line => line.Key)
+            .Distinct(StringComparer.Ordinal)
+            .Count();
+        if (scheduled < entries.Count)
+        {
+            MessageBox.Show(
+                OwnerWindow,
+                $"有 {entries.Count - scheduled} 个待翻译词条不在分组文件里。" +
+                "\n它们通常意味着字典与分组文件不一致（例如分组文件过期或被修改过）。" +
+                "\n可以重新提取当前字典，或改用按行分批翻译。为避免静默漏译，本次没有发送任何请求。",
+                "分组文件与字典不一致",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
             return;
         }
 
@@ -186,9 +217,9 @@ public partial class DictionaryEditorControl
                 cancellation.Token.ThrowIfCancellationRequested();
                 requestNumber++;
 
-                StatusTextBlock.Text =
-                    $"{statusPrefix}：{(batchSize > 0 ? "第" : "窗口 ")}{requestNumber}/{totalRequests}" +
-                    $"（{window.FunctionId}，本窗 {window.TargetCount} 行）……";
+                StatusTextBlock.Text = batchSize > 0
+                    ? $"{statusPrefix}：第 {requestNumber}/{totalRequests} 批，本批 {window.TargetCount} 行……"
+                    : $"{statusPrefix}：窗口 {requestNumber}/{totalRequests}（{window.FunctionId}，本窗 {window.TargetCount} 行）……";
 
                 WindowTranslationOutcome outcome = await _translationService.TranslateWindowAsync(
                     profile, window, reasoning: null, cancellation.Token);

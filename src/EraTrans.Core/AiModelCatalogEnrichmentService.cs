@@ -456,6 +456,17 @@ public sealed class AiModelCatalogEnrichmentService
             }
         }
 
+        if (TryGetProperty(row, "reasoning", out JsonElement reasoning) &&
+            reasoning.ValueKind == JsonValueKind.Object &&
+            TryGetProperty(reasoning, "effort", out JsonElement nestedEffort) &&
+            nestedEffort.ValueKind == JsonValueKind.Object &&
+            TryGetProperty(nestedEffort, "supported_levels", out JsonElement nestedLevels) &&
+            nestedLevels.ValueKind == JsonValueKind.Array &&
+            nestedLevels.EnumerateArray().Any(value =>
+                value.ValueKind == JsonValueKind.String &&
+                string.Equals(value.GetString(), "none", StringComparison.OrdinalIgnoreCase)))
+            return true;
+
         return false;
     }
 
@@ -485,6 +496,15 @@ public sealed class AiModelCatalogEnrichmentService
             TryGetProperty(effort, "supported_levels", out JsonElement supportedLevels) &&
             supportedLevels.ValueKind == JsonValueKind.Array &&
             supportedLevels.GetArrayLength() > 0)
+            return true;
+
+        if (TryGetProperty(row, "reasoning", out JsonElement reasoning) &&
+            reasoning.ValueKind == JsonValueKind.Object &&
+            TryGetProperty(reasoning, "effort", out JsonElement nestedEffort) &&
+            nestedEffort.ValueKind == JsonValueKind.Object &&
+            TryGetProperty(nestedEffort, "supported_levels", out JsonElement nestedLevels) &&
+            nestedLevels.ValueKind == JsonValueKind.Array &&
+            nestedLevels.GetArrayLength() > 0)
             return true;
 
         return false;

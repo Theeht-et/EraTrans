@@ -16,6 +16,7 @@ public sealed class AiProviderSettingsPortablePersistenceTests
         var originalSettings = new AiProviderSettings
         {
             ActiveProviderId = "provider-1",
+            BuiltInDefaultDisableMigrationApplied = true,
             Providers =
             [
                 new AiProviderProfile
@@ -79,6 +80,7 @@ public sealed class AiProviderSettingsPortablePersistenceTests
         AiProviderSettings loaded = store.Load();
 
         Assert.Equal("provider-1", loaded.ActiveProviderId);
+        Assert.True(loaded.BuiltInDefaultDisableMigrationApplied);
         AiProviderProfile provider = Assert.Single(loaded.Providers);
         Assert.Equal("Test provider", provider.Name);
         Assert.Equal("https://api.example.com/v1", provider.BaseUrl);

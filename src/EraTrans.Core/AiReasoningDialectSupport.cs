@@ -151,13 +151,29 @@ public static class AiReasoningDialectSupport
             model.ReasoningCanDisable ??= canDisable;
             model.ReasoningDialect ??= dialect;
         }
+        else if (IsKnownReasoningFamily(id))
+        {
+            // Preserve Kelivo-style model-family capability recognition even when
+            // the current provider has no known wire dialect for that model.
+            model.ReasoningSupport ??= true;
+            model.SupportsReasoning = true;
+            bool documentedDeepSeekModel =
+                id.Equals("deepseek-flash", StringComparison.OrdinalIgnoreCase) ||
+                id.Equals("deepseek-v4-pro", StringComparison.OrdinalIgnoreCase);
+            if (model.ReasoningDialect is null &&
+                dialect is not null &&
+                (!dialect.Equals(DeepSeek, StringComparison.OrdinalIgnoreCase) ||
+                 documentedDeepSeekModel))
+            {
+                model.ReasoningDialect = dialect;
+            }
+        }
         else if ((model.ReasoningSupport == true || model.SupportsReasoning) &&
                  model.ReasoningDialect is null &&
                  dialect is not null &&
                  !dialect.Equals(DeepSeek, StringComparison.OrdinalIgnoreCase))
         {
-            // A provider's explicit capability is enough to use that provider's
-            // known dialect, but never infer DeepSeek's special wire shape here.
+            // Explicit capability metadata can use a known provider dialect.
             model.ReasoningDialect = dialect;
         }
 
@@ -231,6 +247,25 @@ public static class AiReasoningDialectSupport
             return ChatTemplate;
 
         return null;
+    }
+
+    private static bool IsKnownReasoningFamily(string id)
+    {
+        return Regex.IsMatch(id, @"^(?:o[134]|gpt-[56])(?:$|[-.])", RegexOptions.IgnoreCase) ||
+               Regex.IsMatch(id, @"^deepseek-(?:reasoner|r1|v3\\.1|v3\\.2|v4)(?:$|[-._:@])", RegexOptions.IgnoreCase) ||
+               Regex.IsMatch(id, @"^(?:qwq|qwen-?3)(?:$|[-.])", RegexOptions.IgnoreCase) ||
+               Regex.IsMatch(id, @"^kimi-k2-thinking(?:$|[-._:@])", RegexOptions.IgnoreCase) ||
+               Regex.IsMatch(id, @"^kimi-k2\\.[567](?:$|[-._:@])", RegexOptions.IgnoreCase) ||
+               Regex.IsMatch(id, @"^kimi-k3(?:$|[-._:@])", RegexOptions.IgnoreCase) ||
+               Regex.IsMatch(id, @"^grok-4\\.[567](?:$|[-._:@])", RegexOptions.IgnoreCase) ||
+               Regex.IsMatch(id, @"^gemini-(?:2\\.5|3|4)(?:$|[-._:@])", RegexOptions.IgnoreCase) ||
+               Regex.IsMatch(id, @"^claude-(?:(?:3[-.]7)|(?:opus|sonnet|haiku|fable|mythos)-[45])(?:$|[-._:@])", RegexOptions.IgnoreCase) ||
+               Regex.IsMatch(id, @"^glm-(?:4[.-][567]|5)(?:$|[-._:@])", RegexOptions.IgnoreCase) ||
+               Regex.IsMatch(id, @"^(?:minimax-m[23]|step-3|intern-s1|laguna)(?:$|[-._:@])", RegexOptions.IgnoreCase) ||
+               id.Contains("mimo-v2", StringComparison.OrdinalIgnoreCase) ||
+               (id.Contains("doubao", StringComparison.OrdinalIgnoreCase) &&
+                (id.Contains("seed-", StringComparison.OrdinalIgnoreCase) ||
+                 id.Contains("thinking", StringComparison.OrdinalIgnoreCase)));
     }
 
     private static bool TryGetModelDefaults(

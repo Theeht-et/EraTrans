@@ -601,7 +601,7 @@ public sealed class AiProviderSettingsStore
     private static string NormalizeReasoningEffort(string? effort)
     {
         string normalized = effort?.Trim().ToLowerInvariant() ?? "";
-        return normalized is "low" or "medium" or "high" ? normalized : "medium";
+        return normalized is "minimal" or "low" or "medium" or "high" or "xhigh" or "max" ? normalized : "medium";
     }
 
     private sealed class StoredReasoningSettings

@@ -424,6 +424,29 @@ public static class AiReasoningDialectSupport
             return true;
         }
 
+        if (Regex.IsMatch(id, @"^gemma-?4(?:$|[-._:@])", RegexOptions.IgnoreCase))
+        {
+            // Mirrors Kelivo ModelDefaultsGuesser._gemma4.
+            levels = ["minimal", "high"];
+            return true;
+        }
+
+        if (Regex.IsMatch(id, @"^muse-spark-1\.3(?:$|[-._:@])", RegexOptions.IgnoreCase))
+        {
+            // Mirrors Kelivo's Muse Spark 1.3 contributor-specific effort ladder.
+            levels = id.Contains("contributor", StringComparison.OrdinalIgnoreCase)
+                ? ["low", "medium", "high", "xhigh"]
+                : ["low", "medium", "high", "xhigh", "max"];
+            return true;
+        }
+
+        if (Regex.IsMatch(id, @"^muse-spark-1(?:$|[-._:@])", RegexOptions.IgnoreCase))
+        {
+            // Mirrors Kelivo ModelDefaultsGuesser._museSpark1.
+            levels = ["low", "medium", "high", "xhigh"];
+            return true;
+        }
+
         if (Regex.IsMatch(id, @"^grok-4\.7(?:$|[-.])", RegexOptions.IgnoreCase))
         {
             levels = ["low", "medium", "high", "xhigh"];

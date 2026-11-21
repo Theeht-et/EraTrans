@@ -26,6 +26,10 @@ public sealed class AiProviderSettingsPortablePersistenceTests
                     BaseUrl = "https://api.example.com/v1",
                     Model = "test-model",
                     ApiKey = "secret-test-api-key",
+                    ReasoningSettingsByModel = new Dictionary<string, AiModelReasoningSettings>
+                    {
+                        ["gpt-4o-mini"] = new() { Enabled = true, Effort = "high" }
+                    },
                     ChatCompletionsPath = "/v2/chat/respond",
                     ModelsPath = "/v2/models",
                     AvailableModels =
@@ -88,6 +92,8 @@ public sealed class AiProviderSettingsPortablePersistenceTests
         Assert.Equal("secret-test-api-key", provider.ApiKey);
         Assert.Equal("/v2/chat/respond", provider.ChatCompletionsPath);
         Assert.Equal("/v2/models", provider.ModelsPath);
+        Assert.True(provider.ReasoningSettingsByModel["gpt-4o-mini"].Enabled);
+        Assert.Equal("high", provider.ReasoningSettingsByModel["gpt-4o-mini"].Effort);
         Assert.Collection(
             provider.AvailableModels,
             model =>

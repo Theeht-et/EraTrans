@@ -264,7 +264,7 @@ public static class AiReasoningDialectSupport
             if (IsQwen3Model(normalizedModelId))
                 return Qwen;
             if (IsGlmModel(normalizedModelId))
-                return IsZhipuGlm53Model(modelId) ? ThinkingType : DashScopeGlmEffort;
+                return DashScopeGlmEffort;
             // Model Studio serves multiple vendors. Do not infer the Qwen
             // payload shape for unrelated model IDs on a shared endpoint.
             return null;
@@ -486,16 +486,13 @@ public static class AiReasoningDialectSupport
             levels = ["low", "high", "max"];
             return true;
         }
-        if (Regex.IsMatch(id, @"^glm-5\.2(?:-fast-preview)?(?:$|[-.])", RegexOptions.IgnoreCase))
-        {
-            levels = ["minimal", "low", "medium", "high", "xhigh", "max"];
-            canDisable = true;
-            return true;
-        }
-        if (Regex.IsMatch(id, @"^glm-5\.[01](?:$|[-.])", RegexOptions.IgnoreCase) ||
+        if (Regex.IsMatch(id, @"^glm-5\.2(?:-fast-preview)?(?:$|[-.])", RegexOptions.IgnoreCase) ||
+            Regex.IsMatch(id, @"^glm-5\.[01](?:$|[-.])", RegexOptions.IgnoreCase) ||
             Regex.IsMatch(id, @"^glm-5(?:$|[-.])", RegexOptions.IgnoreCase))
         {
-            levels = ["minimal", "low", "medium", "high", "xhigh"];
+            // Alibaba documents high/max as the effective GLM reasoning levels.
+            // low/medium and xhigh are compatibility aliases, not separate levels.
+            levels = ["high", "max"];
             canDisable = true;
             return true;
         }
@@ -618,11 +615,6 @@ public static class AiReasoningDialectSupport
 
     private static bool IsGlmModel(string id) =>
         Regex.IsMatch(id, @"^(?:glm|zhipu/glm)-(?:4|5)(?:$|[-.])", RegexOptions.IgnoreCase);
-
-    private static bool IsZhipuGlm53Model(string modelId) =>
-        Regex.IsMatch(modelId.Trim(),
-            @"^zhipu/glm-5\.3(?:-flash(?:x)?|$)(?:$|[-._:@])",
-            RegexOptions.IgnoreCase);
 
     private static bool IsVolcanoArkHost(string host) =>
         host.StartsWith("ark.", StringComparison.OrdinalIgnoreCase) &&

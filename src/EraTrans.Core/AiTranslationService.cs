@@ -138,7 +138,7 @@ public sealed class AiTranslationService
         CancellationToken cancellationToken)
     {
         AiTranslationLogEntry? log = null;
-        string apiKey = profile.ApiKey;
+        string apiKey = profile.ApiKey.Trim();
 
         if (_logStore is not null)
         {

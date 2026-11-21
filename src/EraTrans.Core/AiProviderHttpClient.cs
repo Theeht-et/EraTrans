@@ -56,6 +56,7 @@ public static class AiProviderHttpRequestFactory
                 (isOpenRouter && (string.IsNullOrWhiteSpace(model.ReasoningDialect) ||
                     model.ReasoningDialect.Equals("openrouterReasoning", StringComparison.OrdinalIgnoreCase))) ||
                 (isDeepSeek && model.ReasoningDialect?.Equals("deepseekThinking", StringComparison.OrdinalIgnoreCase) == true);
+            string effort = reasoning.Effort.Trim().ToLowerInvariant();
 
             if (dialectMatches && reasoning.Disabled && model.ReasoningCanDisable == true)
             {
@@ -68,17 +69,17 @@ public static class AiProviderHttpRequestFactory
             }
             else if (dialectMatches && reasoning.Enabled &&
                      model.ReasoningLevels.Any(level =>
-                         string.Equals(level, reasoning.Effort, StringComparison.OrdinalIgnoreCase)))
+                         string.Equals(level, effort, StringComparison.OrdinalIgnoreCase)))
             {
                 if (isOpenAi)
-                    payload["reasoning_effort"] = reasoning.Effort.ToLowerInvariant();
+                    payload["reasoning_effort"] = effort;
                 else if (isOpenRouter)
-                    payload["reasoning"] = new { effort = reasoning.Effort.ToLowerInvariant() };
+                    payload["reasoning"] = new { effort };
                 else if (isDeepSeek &&
-                         reasoning.Effort is "low" or "high" or "max")
+                         effort is "low" or "high" or "max")
                 {
                     payload["thinking"] = new { type = "enabled" };
-                    payload["reasoning_effort"] = reasoning.Effort;
+                    payload["reasoning_effort"] = effort;
                 }
             }
         }

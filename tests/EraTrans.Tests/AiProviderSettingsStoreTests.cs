@@ -25,6 +25,8 @@ public sealed class AiProviderSettingsPortablePersistenceTests
                     BaseUrl = "https://api.example.com/v1",
                     Model = "test-model",
                     ApiKey = "secret-test-api-key",
+                    ChatCompletionsPath = "/v2/chat/respond",
+                    ModelsPath = "/v2/models",
                     AvailableModels =
                     [
                         new AiProviderModel
@@ -81,6 +83,8 @@ public sealed class AiProviderSettingsPortablePersistenceTests
         Assert.Equal("https://api.example.com/v1", provider.BaseUrl);
         Assert.Equal("test-model", provider.Model);
         Assert.Equal("secret-test-api-key", provider.ApiKey);
+        Assert.Equal("/v2/chat/respond", provider.ChatCompletionsPath);
+        Assert.Equal("/v2/models", provider.ModelsPath);
         Assert.Collection(
             provider.AvailableModels,
             model =>
@@ -297,7 +301,7 @@ public sealed class AiProviderSettingsPortablePersistenceTests
             settings.Providers, item => item.IsBuiltIn && item.Name == "DeepSeek");
         Assert.Equal("https://api.deepseek.com", builtInDeepseek.BaseUrl);
         Assert.Equal(AiProviderPresets.All.Count, settings.Providers.Count(item => item.IsBuiltIn));
-        Assert.All(settings.Providers.Where(item => item.IsBuiltIn), item => Assert.True(item.IsEnabled));
+        Assert.All(settings.Providers.Where(item => item.IsBuiltIn), item => Assert.False(item.IsEnabled));
     }
 
 
@@ -424,6 +428,45 @@ public sealed class AiProviderSettingsPortablePersistenceTests
             settings.Providers.Take(3).Select(provider => provider.Id));
         Assert.Equal(AiProviderPresets.All.Count, settings.Providers.Count(provider => provider.IsBuiltIn));
         Assert.Equal(settings.Providers.Count, settings.Providers.Select(provider => provider.Id).Distinct().Count());
+    }
+
+    [Fact]
+    public void EnsureBuiltInProviders_PreservesAnExistingExplicitlyEnabledDefault()
+    {
+        var explicitlyEnabled = new AiProviderProfile
+        {
+            Id = "explicit-openai",
+            Name = "OpenAI",
+            BaseUrl = "https://api.openai.com/v1",
+            IsBuiltIn = true,
+            IsEnabled = true
+        };
+        var settings = new AiProviderSettings { Providers = [explicitlyEnabled] };
+
+        settings.EnsureBuiltInProviders();
+
+        Assert.True(explicitlyEnabled.IsEnabled);
+        Assert.All(settings.Providers.Where(provider => provider.Id != explicitlyEnabled.Id),
+            provider => Assert.False(provider.IsEnabled));
+    }
+
+    [Fact]
+    public void ApiPaths_DefaultToChatCompletionsAndModelsAndRejectUnsafeValues()
+    {
+        var profile = new AiProviderProfile();
+        Assert.Equal("/chat/completions", profile.ChatCompletionsPath);
+        Assert.Equal("/models", profile.ModelsPath);
+        Assert.Equal(
+            "https://api.example.com/v1/chat/completions",
+            AiProviderProfileValidator.BuildApiEndpoint(
+                "https://api.example.com/v1", profile.ChatCompletionsPath, "/chat/completions"));
+
+        Assert.Throws<InvalidOperationException>(() =>
+            AiProviderProfileValidator.NormalizeApiPath("https://other.example.com/path", "/models"));
+        Assert.Throws<InvalidOperationException>(() =>
+            AiProviderProfileValidator.NormalizeApiPath("/models?key=secret", "/models"));
+        Assert.Throws<InvalidOperationException>(() =>
+            AiProviderProfileValidator.NormalizeApiPath("/v1/../admin", "/models"));
     }
 
     [Fact]

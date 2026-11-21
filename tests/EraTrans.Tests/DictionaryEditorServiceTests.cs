@@ -7,6 +7,21 @@ namespace EraTrans.Tests;
 public sealed class DictionaryEditorServiceTests
 {
     [Fact]
+    public void ListDictionaryFiles_SortsNumericFileNamesNaturally()
+    {
+        string root = CreateTempDirectory();
+        foreach (string name in new[] { "0.json", "10.json", "11.json", "12.json", "1.json", "2.json", "3.json" })
+            Write(Path.Combine(root, name), "[]");
+
+        IReadOnlyList<DictionaryEditorFile> files =
+            new DictionaryEditorService().ListDictionaryFiles(root);
+
+        Assert.Equal(
+            new[] { "0.json", "1.json", "2.json", "3.json", "10.json", "11.json", "12.json" },
+            files.Select(file => Path.GetFileName(file.RelativePath)));
+    }
+
+    [Fact]
     public void LoadAndSave_ChangesOnlyTranslationAndStage_PreservesUnknownFieldsAndContext()
     {
         string root = CreateTempDirectory();

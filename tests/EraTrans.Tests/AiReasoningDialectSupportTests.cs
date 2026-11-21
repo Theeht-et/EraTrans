@@ -110,18 +110,18 @@ public sealed class AiReasoningDialectSupportTests
         const string endpoint = "https://open.bigmodel.cn/api/paas/v4";
         AiReasoningDialectSupport.ApplyKnownModelDefaults(model, endpoint);
 
-        Assert.Equal("dashScopeGlmEffort", model.ReasoningDialect);
+        Assert.Equal("thinkingType", model.ReasoningDialect);
         Assert.False(model.ReasoningCanDisable);
         Assert.Equal(new[] { "low", "high", "max" }, model.ReasoningLevels);
 
         using JsonDocument effortBody = CreateBody(
             endpoint, model, new AiModelReasoningSettings { Enabled = true, Effort = "max" });
+        Assert.Equal("enabled", effortBody.RootElement.GetProperty("thinking").GetProperty("type").GetString());
         Assert.Equal("max", effortBody.RootElement.GetProperty("reasoning_effort").GetString());
-        Assert.False(effortBody.RootElement.TryGetProperty("thinking", out _));
 
         using JsonDocument offBody = CreateBody(
             endpoint, model, new AiModelReasoningSettings { Disabled = true });
-        Assert.False(offBody.RootElement.TryGetProperty("enable_thinking", out _));
+        Assert.False(offBody.RootElement.TryGetProperty("thinking", out _));
         Assert.False(offBody.RootElement.TryGetProperty("reasoning_effort", out _));
     }
 
@@ -430,24 +430,25 @@ public sealed class AiReasoningDialectSupportTests
     }
 
     [Fact]
-    public void DashScopeGlm53_UsesThinkingTypeAndDoesNotAllowDisable()
+    public void DashScopeGlm53_UsesReasoningEffortAndDoesNotAllowDisable()
     {
         AiProviderModel model = new() { Id = "glm-5.3" };
         const string endpoint = "https://dashscope.aliyuncs.com/compatible-mode/v1";
         AiReasoningDialectSupport.ApplyKnownModelDefaults(model, endpoint);
 
-        Assert.Equal("thinkingType", model.ReasoningDialect);
+        Assert.Equal("dashScopeGlmEffort", model.ReasoningDialect);
         Assert.False(model.ReasoningCanDisable);
         Assert.Equal(new[] { "low", "high", "max" }, model.ReasoningLevels);
 
         using JsonDocument effortBody = CreateBody(
             endpoint, model, new AiModelReasoningSettings { Enabled = true, Effort = "max" });
-        Assert.Equal("enabled", effortBody.RootElement.GetProperty("thinking").GetProperty("type").GetString());
         Assert.Equal("max", effortBody.RootElement.GetProperty("reasoning_effort").GetString());
+        Assert.False(effortBody.RootElement.TryGetProperty("thinking", out _));
 
         using JsonDocument offBody = CreateBody(
             endpoint, model, new AiModelReasoningSettings { Disabled = true });
-        Assert.False(offBody.RootElement.TryGetProperty("thinking", out _));
+        Assert.False(offBody.RootElement.TryGetProperty("enable_thinking", out _));
+        Assert.False(offBody.RootElement.TryGetProperty("reasoning_effort", out _));
     }
 
     [Fact]
@@ -458,10 +459,10 @@ public sealed class AiReasoningDialectSupportTests
         AiReasoningDialectSupport.ApplyKnownModelDefaults(model, endpoint);
 
         Assert.True(model.ReasoningCanDisable);
-        Assert.Equal(new[] { "minimal", "low", "medium", "high", "xhigh", "max" }, model.ReasoningLevels);
+        Assert.Equal(new[] { "high", "max" }, model.ReasoningLevels);
         using JsonDocument effortBody = CreateBody(
-            endpoint, model, new AiModelReasoningSettings { Enabled = true, Effort = "xhigh" });
-        Assert.Equal("xhigh", effortBody.RootElement.GetProperty("reasoning_effort").GetString());
+            endpoint, model, new AiModelReasoningSettings { Enabled = true, Effort = "max" });
+        Assert.Equal("max", effortBody.RootElement.GetProperty("reasoning_effort").GetString());
         Assert.False(effortBody.RootElement.TryGetProperty("thinking", out _));
 
         using JsonDocument offBody = CreateBody(
@@ -471,20 +472,20 @@ public sealed class AiReasoningDialectSupportTests
     }
 
     [Fact]
-    public void ZhipuGlm53_UsesSupportedThinkingTypeControlOnAliyunModelStudio()
+    public void ZhipuGlm53OnAliyun_UsesModelStudioReasoningEffortDialect()
     {
         AiProviderModel model = new() { Id = "ZHIPU/GLM-5.3" };
         const string endpoint = "https://llm-workspace.cn-beijing.maas.aliyuncs.com/compatible-mode/v1";
         AiReasoningDialectSupport.ApplyKnownModelDefaults(model, endpoint);
 
-        Assert.Equal("thinkingType", model.ReasoningDialect);
+        Assert.Equal("dashScopeGlmEffort", model.ReasoningDialect);
         Assert.False(model.ReasoningCanDisable);
         Assert.Equal(new[] { "low", "high", "max" }, model.ReasoningLevels);
 
         using JsonDocument body = CreateBody(
             endpoint, model, new AiModelReasoningSettings { Enabled = true, Effort = "high" });
-        Assert.Equal("enabled", body.RootElement.GetProperty("thinking").GetProperty("type").GetString());
         Assert.Equal("high", body.RootElement.GetProperty("reasoning_effort").GetString());
+        Assert.False(body.RootElement.TryGetProperty("thinking", out _));
         Assert.False(body.RootElement.TryGetProperty("enable_thinking", out _));
     }
 
@@ -548,8 +549,8 @@ public sealed class AiReasoningDialectSupportTests
         const string endpoint = "https://ark.us-east-1.volces.com/api/v3";
 
         Assert.True(AiReasoningDialectSupport.IsCompatible(endpoint, model));
-        // Kelivo classifies Doubao Seed as a fixed-thinking model without an
-        // effort ladder; only the disable behavior is advertised here.
+        // This Doubao Seed model is treated as fixed-thinking by Kelivo; only
+        // the off switch is inferred here because no effort ladder is advertised.
         using JsonDocument offBody = CreateBody(
             endpoint, model, new AiModelReasoningSettings { Disabled = true });
         Assert.Equal("disabled", offBody.RootElement.GetProperty("thinking").GetProperty("type").GetString());

@@ -30,15 +30,30 @@ public static class AiProviderHttpRequestFactory
         ArgumentNullException.ThrowIfNull(profile);
         string endpoint = AiProviderProfileValidator.BuildApiEndpoint(
             profile.BaseUrl, profile.ChatCompletionsPath, "/chat/completions");
-        string json = JsonSerializer.Serialize(new
+        var payload = new Dictionary<string, object?>(StringComparer.Ordinal)
         {
-            model = profile.Model,
-            messages = new[]
+            ["model"] = profile.Model,
+            ["messages"] = new[]
             {
                 new { role = "system", content = systemPrompt },
                 new { role = "user", content = userPrompt }
             }
-        }, JsonOptions);
+        };
+
+        // Only emit the OpenAI Chat Completions reasoning_effort field when
+        // the selected model's discovered metadata explicitly advertises it.
+        // Unknown capabilities and manually entered models remain unchanged.
+        if (profile.ReasoningSettingsByModel.TryGetValue(profile.Model, out AiModelReasoningSettings? reasoning) &&
+            reasoning.Enabled &&
+            profile.AvailableModels.FirstOrDefault(model =>
+                string.Equals(model.Id, profile.Model, StringComparison.OrdinalIgnoreCase)) is { ReasoningSupport: true } model &&
+            model.ReasoningLevels.Any(level =>
+                string.Equals(level, reasoning.Effort, StringComparison.OrdinalIgnoreCase)))
+        {
+            payload["reasoning_effort"] = reasoning.Effort.ToLowerInvariant();
+        }
+
+        string json = JsonSerializer.Serialize(payload, JsonOptions);
 
         return new AiProviderHttpRequestDetails(
             "POST", endpoint, json,

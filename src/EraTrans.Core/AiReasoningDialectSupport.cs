@@ -16,6 +16,7 @@ public static class AiReasoningDialectSupport
     private const string QwenReasoningEffort = "qwenReasoningEffort";
     private const string DashScopeGlmEffort = "dashScopeGlmEffort";
     private const string ThinkingType = "thinkingType";
+    private const string VolcanoThinkingType = "volcanoThinkingType";
     private const string SiliconFlow = "siliconflowEnableThinking";
     private const string Kimi = "kimiThinking";
     private const string Intern = "internThinkingMode";
@@ -74,6 +75,10 @@ public static class AiReasoningDialectSupport
                 case ThinkingType:
                     payload["thinking"] = new { type = "disabled" };
                     break;
+                case VolcanoThinkingType:
+                    payload["thinking"] = new { type = "disabled" };
+                    payload["reasoning_effort"] = "minimal";
+                    break;
                 case Qwen:
                     payload["enable_thinking"] = false;
                     break;
@@ -125,6 +130,7 @@ public static class AiReasoningDialectSupport
                 }
                 break;
             case ThinkingType:
+            case VolcanoThinkingType:
                 payload["thinking"] = new { type = "enabled" };
                 payload["reasoning_effort"] = effort;
                 break;
@@ -264,9 +270,11 @@ public static class AiReasoningDialectSupport
             return null;
         }
 
+        if (IsVolcanoArkHost(host))
+            return VolcanoThinkingType;
+
         if (host.Equals("open.bigmodel.cn", StringComparison.OrdinalIgnoreCase) ||
             host.Equals("api.z.ai", StringComparison.OrdinalIgnoreCase) ||
-            host.Equals("ark.cn-beijing.volces.com", StringComparison.OrdinalIgnoreCase) ||
             host.Equals("api.xiaomimimo.com", StringComparison.OrdinalIgnoreCase))
             return ThinkingType;
 
@@ -615,6 +623,10 @@ public static class AiReasoningDialectSupport
         Regex.IsMatch(modelId.Trim(),
             @"^zhipu/glm-5\.3(?:-flash(?:x)?|$)(?:$|[-._:@])",
             RegexOptions.IgnoreCase);
+
+    private static bool IsVolcanoArkHost(string host) =>
+        host.StartsWith("ark.", StringComparison.OrdinalIgnoreCase) &&
+        host.EndsWith(".volces.com", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsAliyunModelStudioHost(string host)
     {

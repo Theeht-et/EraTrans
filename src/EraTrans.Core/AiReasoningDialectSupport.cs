@@ -80,6 +80,14 @@ public static class AiReasoningDialectSupport
                          ResolveDialect(baseUrl, model.Id)!;
         string effort = setting.Effort.Trim().ToLowerInvariant();
 
+        // Kelivo's OpenRouter Auto behavior preserves automatic reasoning by
+        // setting reasoning.enabled=true without forcing a specific effort.
+        if (!setting.Disabled && !setting.Enabled && dialect == OpenRouter)
+        {
+            payload["reasoning"] = new { enabled = true };
+            return;
+        }
+
         if (setting.Disabled)
         {
             if (model.ReasoningCanDisable != true)

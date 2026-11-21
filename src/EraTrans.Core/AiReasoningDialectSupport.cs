@@ -378,7 +378,8 @@ public static class AiReasoningDialectSupport
 
         if (IsQwen38Model(id))
         {
-            canDisable = true;
+            canDisable = !Regex.IsMatch(
+                id, @"^qwen3\.8-2\.4t-a95b(?:$|[-._:@])", RegexOptions.IgnoreCase);
             if (dialect == QwenReasoningEffort)
                 levels = ["low", "medium", "xhigh"];
             return true;

@@ -173,6 +173,11 @@ public sealed class AiTranslationService
         AiReasoningOptions? reasoning,
         CancellationToken cancellationToken)
     {
+        // Callers that do not pass a choice (the dictionary editor relies on the
+        // saved per-provider setting) still need the effective value here, or the
+        // retry decision could never see that reasoning was active.
+        reasoning ??= AiReasoningSettingsStore.ResolveForProvider(profile.Id);
+
         try
         {
             return await CompleteWithLogAsync(

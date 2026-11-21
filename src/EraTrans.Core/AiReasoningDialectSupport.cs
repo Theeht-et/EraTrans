@@ -31,6 +31,19 @@ public static class AiReasoningDialectSupport
     /// the top-level Chat Completions reasoning_effort field.
     /// </summary>
     public const string CustomOpenAiEffortDialect = "customOpenAiReasoningEffort";
+    public const string CustomOpenRouterDialect = "customOpenRouterReasoning";
+    public const string CustomThinkingTypeDialect = "customThinkingType";
+    public const string CustomQwenDialect = "customQwenEnableThinking";
+
+    private static string? ResolveCustomDialect(string? dialectOverride) =>
+        dialectOverride?.ToLowerInvariant() switch
+        {
+            CustomOpenAiEffortDialect => OpenAiEffort,
+            CustomOpenRouterDialect => OpenRouter,
+            CustomThinkingTypeDialect => ThinkingType,
+            CustomQwenDialect => Qwen,
+            _ => null
+        };
 
     public static bool IsCompatible(
         string baseUrl,
@@ -40,10 +53,7 @@ public static class AiReasoningDialectSupport
         if (model.ReasoningSupport != true)
             return false;
 
-        if (string.Equals(
-                dialectOverride,
-                CustomOpenAiEffortDialect,
-                StringComparison.OrdinalIgnoreCase))
+        if (ResolveCustomDialect(dialectOverride) is not null)
             return true;
 
         string? expected = ResolveDialect(baseUrl, model.Id);
@@ -66,12 +76,8 @@ public static class AiReasoningDialectSupport
         if (!IsCompatible(baseUrl, model, dialectOverride))
             return;
 
-        string dialect = string.Equals(
-            dialectOverride,
-            CustomOpenAiEffortDialect,
-            StringComparison.OrdinalIgnoreCase)
-                ? OpenAiEffort
-                : ResolveDialect(baseUrl, model.Id)!;
+        string dialect = ResolveCustomDialect(dialectOverride) ??
+                         ResolveDialect(baseUrl, model.Id)!;
         string effort = setting.Effort.Trim().ToLowerInvariant();
 
         if (setting.Disabled)

@@ -86,7 +86,7 @@ public sealed class AiModelDiscoveryServiceTests
         using var handler = new StubHandler(request =>
         {
             Assert.Equal(HttpMethod.Get, request.Method);
-            Assert.Equal("https://api.example.com/v1/models", request.RequestUri?.ToString());
+            Assert.Equal("https://api.example.com/v1/catalog/models", request.RequestUri?.ToString());
             Assert.Equal("Bearer test-secret", request.Headers.Authorization?.ToString());
             return new HttpResponseMessage(HttpStatusCode.OK)
             {
@@ -102,6 +102,7 @@ public sealed class AiModelDiscoveryServiceTests
         {
             Name = "Test",
             BaseUrl = "https://api.example.com/v1/",
+            ModelsPath = "/catalog/models",
             ApiKey = "test-secret"
         };
 

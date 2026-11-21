@@ -185,11 +185,11 @@ public static class AiProviderProfileValidator
             path = "/" + path;
 
         if (path.StartsWith("//", StringComparison.Ordinal) ||
-            path.Contains('?', StringComparison.Ordinal) ||
-            path.Contains('#', StringComparison.Ordinal) ||
-            path.Contains('\\', StringComparison.Ordinal) ||
-            path.Split('/').Any(segment => segment is "." or "..") ||
-            Uri.TryCreate(path, UriKind.Absolute, out _))
+            path.Contains('?') ||
+            path.Contains('#') ||
+            path.Contains('\\') ||
+            path.Contains("://", StringComparison.Ordinal) ||
+            path.Split('/').Any(segment => segment is "." or ".."))
         {
             throw new InvalidOperationException(
                 "API 路径必须是站点内的相对路径，例如 /chat/completions，不能包含域名、查询参数或片段。");

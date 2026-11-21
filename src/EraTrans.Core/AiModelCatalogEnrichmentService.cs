@@ -317,6 +317,7 @@ public sealed class AiModelCatalogEnrichmentService
                     Status = ReadString(row, "status"),
                     SupportsTools = ReadBoolean(row, "tool_call") || ReadBoolean(row, "tool"),
                     ReasoningLevels = ReadCatalogReasoningLevels(row),
+                    HasReasoningEffortOption = HasCatalogReasoningEffortOption(row),
                     ReasoningBudgetMin = reasoningBudgetMin,
                     ReasoningBudgetMax = reasoningBudgetMax,
                     ReasoningCanDisable = ReadNullableBoolean(row, "reasoning_can_disable")
@@ -519,6 +520,37 @@ public sealed class AiModelCatalogEnrichmentService
         return hasEffortOption ? false : null;
     }
 
+    private static bool HasCatalogReasoningEffortOption(JsonElement row)
+    {
+        foreach (string propertyName in new[] { "reasoning_options", "reasoningOptions", "ro" })
+        {
+            if (!TryGetProperty(row, propertyName, out JsonElement options) ||
+                options.ValueKind != JsonValueKind.Array)
+                continue;
+
+            foreach (JsonElement option in options.EnumerateArray())
+            {
+                if (option.ValueKind == JsonValueKind.Object &&
+                    string.Equals(ReadString(option, "type"), "effort", StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+        }
+
+        if (TryGetProperty(row, "effort", out JsonElement effort) &&
+            effort.ValueKind == JsonValueKind.Object &&
+            TryGetProperty(effort, "supported_levels", out JsonElement levels) &&
+            levels.ValueKind == JsonValueKind.Array)
+            return true;
+
+        return TryGetProperty(row, "reasoning", out JsonElement reasoning) &&
+            reasoning.ValueKind == JsonValueKind.Object &&
+            TryGetProperty(reasoning, "effort", out JsonElement nestedEffort) &&
+            (nestedEffort.ValueKind == JsonValueKind.Array ||
+             (nestedEffort.ValueKind == JsonValueKind.Object &&
+              TryGetProperty(nestedEffort, "supported_levels", out JsonElement nestedLevels) &&
+              nestedLevels.ValueKind == JsonValueKind.Array));
+    }
+
     private static bool HasCatalogReasoningOptions(JsonElement row)
     {
         foreach (string propertyName in new[] { "reasoning_options", "reasoningOptions", "ro" })
@@ -703,9 +735,10 @@ public sealed class AiModelCatalogEnrichmentService
                 ?? metadata.ReasoningSupport
                 ?? (source.SupportsReasoning || metadata.SupportsReasoning),
             ReasoningSupport = source.ReasoningSupport ?? metadata.ReasoningSupport,
-            ReasoningLevels = source.ReasoningLevels.Count > 0
+            ReasoningLevels = source.ReasoningLevels.Count > 0 || source.HasExplicitReasoningLevels
                 ? source.ReasoningLevels.ToList()
                 : metadata.ReasoningLevels.ToList(),
+            HasExplicitReasoningLevels = source.HasExplicitReasoningLevels || metadata.HasReasoningEffortOption,
             ReasoningBudgetMin = source.ReasoningBudgetMin ?? metadata.ReasoningBudgetMin,
             ReasoningBudgetMax = source.ReasoningBudgetMax ?? metadata.ReasoningBudgetMax,
             ReasoningCanDisable = source.ReasoningCanDisable ?? metadata.ReasoningCanDisable,
@@ -875,6 +908,7 @@ public sealed class AiModelCatalogEnrichmentService
         public bool SupportsReasoning { get; init; }
         public bool? ReasoningSupport { get; init; }
         public List<string> ReasoningLevels { get; init; } = [];
+        public bool HasReasoningEffortOption { get; init; }
         public int? ReasoningBudgetMin { get; init; }
         public int? ReasoningBudgetMax { get; init; }
         public bool? ReasoningCanDisable { get; init; }

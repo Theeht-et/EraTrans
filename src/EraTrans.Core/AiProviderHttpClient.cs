@@ -49,18 +49,22 @@ public static class AiProviderHttpRequestFactory
             string host = new Uri(AiProviderProfileValidator.NormalizeBaseUrl(profile.BaseUrl)).Host;
             bool isOpenAi = host.Equals("api.openai.com", StringComparison.OrdinalIgnoreCase);
             bool isOpenRouter = host.Equals("openrouter.ai", StringComparison.OrdinalIgnoreCase);
-            bool dialectMatches = string.IsNullOrWhiteSpace(model.ReasoningDialect) ||
-                (isOpenAi && model.ReasoningDialect.Equals("openaiReasoningEffort", StringComparison.OrdinalIgnoreCase)) ||
-                (isOpenRouter && model.ReasoningDialect.Equals("openrouterReasoning", StringComparison.OrdinalIgnoreCase));
+            bool isDeepSeek = host.Equals("api.deepseek.com", StringComparison.OrdinalIgnoreCase);
+            bool dialectMatches =
+                (isOpenAi && (string.IsNullOrWhiteSpace(model.ReasoningDialect) ||
+                    model.ReasoningDialect.Equals("openaiReasoningEffort", StringComparison.OrdinalIgnoreCase))) ||
+                (isOpenRouter && (string.IsNullOrWhiteSpace(model.ReasoningDialect) ||
+                    model.ReasoningDialect.Equals("openrouterReasoning", StringComparison.OrdinalIgnoreCase))) ||
+                (isDeepSeek && model.ReasoningDialect?.Equals("deepseekThinking", StringComparison.OrdinalIgnoreCase) == true);
 
             if (dialectMatches && reasoning.Disabled && model.ReasoningCanDisable == true)
             {
-                // Kelivo's verified dialect mapping: OpenAI Chat Completions uses
-                // reasoning_effort=none; OpenRouter uses reasoning.enabled=false.
                 if (isOpenAi)
                     payload["reasoning_effort"] = "none";
                 else if (isOpenRouter)
                     payload["reasoning"] = new { enabled = false };
+                else if (isDeepSeek)
+                    payload["thinking"] = new { type = "disabled" };
             }
             else if (dialectMatches && reasoning.Enabled &&
                      model.ReasoningLevels.Any(level =>
@@ -70,6 +74,12 @@ public static class AiProviderHttpRequestFactory
                     payload["reasoning_effort"] = reasoning.Effort.ToLowerInvariant();
                 else if (isOpenRouter)
                     payload["reasoning"] = new { effort = reasoning.Effort.ToLowerInvariant() };
+                else if (isDeepSeek &&
+                         reasoning.Effort is "low" or "high" or "max")
+                {
+                    payload["thinking"] = new { type = "enabled" };
+                    payload["reasoning_effort"] = reasoning.Effort;
+                }
             }
         }
 

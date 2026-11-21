@@ -589,10 +589,11 @@ public sealed class AiProviderSettingsStore
         public List<StoredProvider> Providers { get; set; } = [];
     }
 
-    private static string NormalizeReasoningEffort(string? effort) =>
-        effort?.Trim().ToLowerInvariant() is "low" or "medium" or "high"
-            ? effort.Trim().ToLowerInvariant()
-            : "medium";
+    private static string NormalizeReasoningEffort(string? effort)
+    {
+        string normalized = effort?.Trim().ToLowerInvariant() ?? "";
+        return normalized is "low" or "medium" or "high" ? normalized : "medium";
+    }
 
     private sealed class StoredReasoningSettings
     {

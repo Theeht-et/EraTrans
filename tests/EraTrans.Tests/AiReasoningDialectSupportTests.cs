@@ -187,6 +187,28 @@ public sealed class AiReasoningDialectSupportTests
     }
 
     [Fact]
+    public void OpenRouterBudgetPresets_UseKelivoCatalogScalingAndMinimum()
+    {
+        const string endpoint = "https://openrouter.ai/api/v1";
+        AiProviderModel model = new()
+        {
+            Id = "vendor/budget-model",
+            ReasoningSupport = true,
+            ReasoningDialect = "openrouterReasoning",
+            ReasoningBudgetMin = 4096,
+            ReasoningBudgetMax = 50000
+        };
+
+        using JsonDocument lowBody = CreateBody(
+            endpoint, model, new AiModelReasoningSettings { Enabled = true, Effort = "low" });
+        Assert.Equal(4096, lowBody.RootElement.GetProperty("reasoning").GetProperty("max_tokens").GetInt32());
+
+        using JsonDocument mediumBody = CreateBody(
+            endpoint, model, new AiModelReasoningSettings { Enabled = true, Effort = "medium" });
+        Assert.Equal(24832, mediumBody.RootElement.GetProperty("reasoning").GetProperty("max_tokens").GetInt32());
+    }
+
+    [Fact]
     public void AutoAndUnknownEndpoints_DoNotAddReasoningOverrides()
     {
         AiProviderModel model = new()

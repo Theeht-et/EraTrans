@@ -453,7 +453,7 @@ public static class AiReasoningDialectSupport
             return true;
         }
 
-        if (Regex.IsMatch(id, id.Contains("deepseek", StringComparison.OrdinalIgnoreCase), RegexOptions.IgnoreCase))
+        if (id.Contains("deepseek", StringComparison.OrdinalIgnoreCase))
         {
             levels = ["low", "high", "max"];
             canDisable = true;

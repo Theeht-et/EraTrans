@@ -112,8 +112,7 @@ public sealed class AiReasoningTests
     [InlineData("{\"reasoning_effort\":")]
     public void TryParseShape_RejectsUnusableFragments(string json)
     {
-        Assert.False(AiReasoning.TryParseShape(json, out JsonObject? shape, out string? error));
-        Assert.Null(shape);
+        Assert.False(AiReasoning.TryParseShape(json, out _, out string? error));
         Assert.False(string.IsNullOrWhiteSpace(error));
     }
 

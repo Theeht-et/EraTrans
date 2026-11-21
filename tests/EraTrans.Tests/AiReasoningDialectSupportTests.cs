@@ -259,6 +259,23 @@ public sealed class AiReasoningDialectSupportTests
         Assert.False(body.RootElement.TryGetProperty("enable_thinking", out _));
     }
 
+    [Fact]
+    public void MimoV2_UsesThinkingTypeDialectAndModelEffortLevels()
+    {
+        AiProviderModel model = new() { Id = "mimo-v2" };
+        const string endpoint = "https://api.xiaomimimo.com/v1";
+        AiReasoningDialectSupport.ApplyKnownModelDefaults(model, endpoint);
+
+        Assert.Equal("thinkingType", model.ReasoningDialect);
+        Assert.True(model.ReasoningCanDisable);
+        Assert.Equal(new[] { "low", "medium", "high" }, model.ReasoningLevels);
+
+        using JsonDocument body = CreateBody(
+            endpoint, model, new AiModelReasoningSettings { Enabled = true, Effort = "medium" });
+        Assert.Equal("enabled", body.RootElement.GetProperty("thinking").GetProperty("type").GetString());
+        Assert.Equal("medium", body.RootElement.GetProperty("reasoning_effort").GetString());
+    }
+
     private static JsonDocument CreateBody(
         string baseUrl,
         AiProviderModel model,

@@ -13,6 +13,7 @@ public static class AiReasoningDialectSupport
     private const string OpenRouter = "openrouterReasoning";
     private const string DeepSeek = "deepseekThinking";
     private const string Qwen = "qwenEnableThinking";
+    private const string QwenReasoningEffort = "qwenReasoningEffort";
     private const string ThinkingType = "thinkingType";
     private const string SiliconFlow = "siliconflowEnableThinking";
     private const string Kimi = "kimiThinking";
@@ -54,6 +55,7 @@ public static class AiReasoningDialectSupport
             switch (dialect)
             {
                 case OpenAiEffort:
+                case QwenReasoningEffort:
                     payload["reasoning_effort"] = "none";
                     break;
                 case OpenRouter:
@@ -96,6 +98,7 @@ public static class AiReasoningDialectSupport
         switch (dialect)
         {
             case OpenAiEffort:
+            case QwenReasoningEffort:
                 payload["reasoning_effort"] = effort;
                 break;
             case OpenRouter:
@@ -118,7 +121,7 @@ public static class AiReasoningDialectSupport
             case Qwen:
                 if (model.ReasoningCanDisable == true)
                     payload["enable_thinking"] = true;
-                payload["thinking_budget"] = ResolveBudget(effort);
+                payload["thinking_budget"] = ResolveBudget(model, effort);
                 break;
             case SiliconFlow:
                 payload["thinking_budget"] = ResolveBudget(effort);
@@ -225,14 +228,24 @@ public static class AiReasoningDialectSupport
         if (host.Equals("api.deepseek.com", StringComparison.OrdinalIgnoreCase))
             return DeepSeek;
 
-        if (host.Contains("dashscope", StringComparison.OrdinalIgnoreCase) &&
-            host.EndsWith(".aliyuncs.com", StringComparison.OrdinalIgnoreCase))
-            return Qwen;
+        string normalizedModelId = NormalizeModelId(modelId);
+        if (IsAliyunModelStudioHost(host))
+        {
+            if (IsQwen4Model(normalizedModelId) || IsQwen38Model(normalizedModelId))
+                return QwenReasoningEffort;
+            if (IsQwen3Model(normalizedModelId))
+                return Qwen;
+            if (IsGlmModel(normalizedModelId))
+                return ThinkingType;
+            // Model Studio serves multiple vendors. Do not infer the Qwen
+            // payload shape for unrelated model IDs on a shared endpoint.
+            return null;
+        }
 
         if (host.Equals("open.bigmodel.cn", StringComparison.OrdinalIgnoreCase) ||
             host.Equals("api.z.ai", StringComparison.OrdinalIgnoreCase) ||
             host.Equals("ark.cn-beijing.volces.com", StringComparison.OrdinalIgnoreCase) ||
-            host.Contains("xiaomimimo", StringComparison.OrdinalIgnoreCase))
+            host.Equals("api.xiaomimimo.com", StringComparison.OrdinalIgnoreCase))
             return ThinkingType;
 
         if (host.Equals("api.siliconflow.cn", StringComparison.OrdinalIgnoreCase) ||
@@ -278,6 +291,7 @@ public static class AiReasoningDialectSupport
 
     private static bool TryGetModelDefaults(
         string id,
+        string? dialect,
         out string[] levels,
         out bool canDisable)
     {

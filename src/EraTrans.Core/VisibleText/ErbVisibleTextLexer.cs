@@ -95,9 +95,12 @@ public static class ErbVisibleTextLexer
 
             string trimmedLine = line.Trim();
 
+            // Emuera line continuation (EraStreamReader): only a line that is exactly "{" opens the
+            // block and only a line that is exactly "}" closes it. Anything else is ordinary text,
+            // e.g. ASCII art that happens to end with a brace.
             if (braceDepth > 0)
             {
-                if (trimmedLine.StartsWith('}'))
+                if (string.Equals(trimmedLine, "}", StringComparison.Ordinal))
                 {
                     braceDepth = 0;
                 }
@@ -105,14 +108,14 @@ public static class ErbVisibleTextLexer
                 continue;
             }
 
-            if (trimmedLine.EndsWith('{') && !trimmedLine.EndsWith("\\{"))
+            if (string.Equals(trimmedLine, "{", StringComparison.Ordinal))
             {
                 braceDepth = 1;
                 continue;
             }
 
             int p = 0;
-            while (p < line.Length && (line[p] == ' ' || line[p] == '\t')) p++;
+            while (p < line.Length && char.IsWhiteSpace(line[p])) p++;
             if (p >= line.Length)
             {
                 continue;
@@ -125,7 +128,7 @@ public static class ErbVisibleTextLexer
                 while (tokenEnd < line.Length && (char.IsLetterOrDigit(line[tokenEnd]) || line[tokenEnd] == '_')) tokenEnd++;
                 string ppToken = line.Substring(p + 1, tokenEnd - p - 1);
                 int argStart = tokenEnd;
-                while (argStart < line.Length && (line[argStart] == ' ' || line[argStart] == '\t')) argStart++;
+                while (argStart < line.Length && char.IsWhiteSpace(line[argStart])) argStart++;
                 int argEnd = argStart;
                 while (argEnd < line.Length && line[argEnd] != ' ' && line[argEnd] != '\t' && line[argEnd] != ']') argEnd++;
                 string ppArg = argEnd > argStart ? line.Substring(argStart, argEnd - argStart) : string.Empty;
@@ -678,7 +681,7 @@ public static class ErbVisibleTextLexer
         }
 
         int i = tokenEnd;
-        while (i < line.Length && (line[i] == ' ' || line[i] == '\t'))
+        while (i < line.Length && char.IsWhiteSpace(line[i]))
         {
             i++;
         }
@@ -706,7 +709,7 @@ public static class ErbVisibleTextLexer
     private static int ArgumentStart(string line)
     {
         int p = 0;
-        while (p < line.Length && (line[p] == ' ' || line[p] == '\t'))
+        while (p < line.Length && char.IsWhiteSpace(line[p]))
         {
             p++;
         }
@@ -832,7 +835,7 @@ public static class ErbVisibleTextLexer
         string command)
     {
         int start = cmdEnd;
-        while (start < line.Length && (line[start] == ' ' || line[start] == '\t'))
+        while (start < line.Length && char.IsWhiteSpace(line[start]))
         {
             start++;
         }
@@ -887,7 +890,7 @@ public static class ErbVisibleTextLexer
         string command)
     {
         int start = cmdEnd;
-        while (start < line.Length && (line[start] == ' ' || line[start] == '\t'))
+        while (start < line.Length && char.IsWhiteSpace(line[start]))
         {
             start++;
         }
@@ -948,7 +951,7 @@ public static class ErbVisibleTextLexer
             }
 
             int inner = leftParen + 1;
-            while (inner < end && (line[inner] == ' ' || line[inner] == '\t'))
+            while (inner < end && char.IsWhiteSpace(line[inner]))
             {
                 inner++;
             }
@@ -1006,7 +1009,7 @@ public static class ErbVisibleTextLexer
     {
         var list = new List<DraftEntry>();
         int start = cmdEnd;
-        while (start < line.Length && (line[start] == ' ' || line[start] == '\t'))
+        while (start < line.Length && char.IsWhiteSpace(line[start]))
         {
             start++;
         }
@@ -1251,7 +1254,7 @@ public static class ErbVisibleTextLexer
     private static void TryFormattedStringLiteral(string s, int start, int end, List<DraftPart> literals)
     {
         int i = start;
-        while (i < end && (s[i] == ' ' || s[i] == '\t'))
+        while (i < end && char.IsWhiteSpace(s[i]))
         {
             i++;
         }
@@ -1268,7 +1271,7 @@ public static class ErbVisibleTextLexer
         }
 
         int r = close + 1;
-        while (r < end && (s[r] == ' ' || s[r] == '\t'))
+        while (r < end && char.IsWhiteSpace(s[r]))
         {
             r++;
         }
@@ -1661,6 +1664,7 @@ public static class ErbVisibleTextLexer
         (c >= 0x3040 && c <= 0x30FF) ||
         (c >= 0x3400 && c <= 0x4DBF) ||
         (c >= 0x4E00 && c <= 0x9FFF) ||
+        (c >= 0xFF61 && c <= 0xFF9F) ||
         c == 0x3005 ||
         c == 0x30FB ||
         c == 0x30FC;
@@ -1690,7 +1694,12 @@ public static class ErbVisibleTextLexer
         "TRYCALLFORM", "LOOP", "ARRAYCOPY", "ARRAYSORT", "ARRAYSHIFT", "ARRAYREMOVE", "SETFONT",
         "GCREATEFROMFILE", "GSAVETEXT", "GLOADTEXT", "SAVETEXT", "LOADTEXT", "FINDELEMENT",
         "FINDLASTELEMENT", "FINDELEMENTBYNAME", "ADDVALUE", "OLDDATA", "DOTRAIN", "DOFUNC",
-        "SAVECHARA", "LOADCHARA", "FIND_CHARADATA", "ARRAYMSORT", "ARRAY1D", "ARRAY2D", "ARRAY3D"
+        "SAVECHARA", "LOADCHARA", "FIND_CHARADATA", "ARRAYMSORT", "ARRAY1D", "ARRAY2D", "ARRAY3D",
+        "STRLENS", "STRLENFORM", "STRLENFORMU", "SUBSTRINGU", "SPRITEDISPOSE", "SPRITECREATED",
+        "SPRITEANIMECREATE", "SPRITEANIMEADDFRAME", "GDISPOSE", "GDRAWSPRITE", "GDRAWG", "GSETCOLOR",
+        "GCREATE", "GWIDTH", "GHEIGHT", "GROUPMATCH", "MATCH", "MIN", "MAX", "ABS", "TOHALF", "UNICODE",
+        "COPYCHARA", "CHKDATA", "CHKFONT", "COLOR_FROMRGB", "RESET_STAIN", "OUTPUTLOG", "FONTSTYLE",
+        "SKIPDISP", "TINPUT", "TONEINPUTS", "TRYCALL", "PRINT_MARK", "PRINT_PALAM"
     };
 
     private static bool HasJapanese(string text)
@@ -1784,7 +1793,7 @@ public static class ErbVisibleTextLexer
         }
 
         int i = tokenEnd;
-        while (i < line.Length && (line[i] == ' ' || line[i] == '\t'))
+        while (i < line.Length && char.IsWhiteSpace(line[i]))
         {
             i++;
         }
@@ -1797,7 +1806,7 @@ public static class ErbVisibleTextLexer
         if (line[i] != '=')
         {
             int op = i;
-            while (op < line.Length && "+-*/'&|^<>".IndexOf(line[op]) >= 0)
+            while (op < line.Length && "+-*/%'&|^<>".IndexOf(line[op]) >= 0)
             {
                 op++;
             }
@@ -1818,6 +1827,33 @@ public static class ErbVisibleTextLexer
         varName = token;
         rhsStart = i + 1;
         return true;
+    }
+
+    private static bool LooksLikeAssignment(string line, int at)
+    {
+        int i = at;
+        if (i >= line.Length)
+        {
+            return false;
+        }
+
+        if (line[i] != '=')
+        {
+            int op = i;
+            while (op < line.Length && "+-*/%'&|^<>".IndexOf(line[op]) >= 0)
+            {
+                op++;
+            }
+
+            if (op == i || op - i > 2 || op >= line.Length || line[op] != '=')
+            {
+                return false;
+            }
+
+            i = op;
+        }
+
+        return i + 1 >= line.Length || line[i + 1] != '=';
     }
 
     private static HashSet<string> CollectLabels(List<(string Line, int Start)> lines)
@@ -1916,17 +1952,12 @@ public static class ErbVisibleTextLexer
         }
 
         int i = tokenEnd;
-        while (i < line.Length && (line[i] == ' ' || line[i] == '\t'))
+        while (i < line.Length && char.IsWhiteSpace(line[i]))
         {
             i++;
         }
 
-        if (i < line.Length && line[i] == '=')
-        {
-            return;
-        }
-
-        if (i + 1 < line.Length && line[i] == '+' && line[i + 1] == '=')
+        if (LooksLikeAssignment(line, i))
         {
             return;
         }

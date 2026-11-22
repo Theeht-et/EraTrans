@@ -190,4 +190,41 @@ public sealed class VisibleTextLexerTests
 
         Assert.Contains(result.Entries, e => e.Template == "表示される");
     }
+
+    [Fact]
+    public void FullWidthSpaceIndentation_DoesNotHideTheCommand()
+    {
+        // Imported scripts often indent with U+3000 (the "full-width space" that IDEs insert).
+        const string text = "@FUNC\n\u3000\u3000PRINTFORMW \u300c\u4eca\u65e5\u306f\u6674\u5929\u3060\u300d\n";
+        VisibleTextFileResult result = Lex(text);
+
+        VisibleTextEntry entry = Assert.Single(result.Entries);
+        Assert.Equal("PRINTFORMW", entry.Command);
+        Assert.Equal("\u300c\u4eca\u65e5\u306f\u6674\u5929\u3060\u300d", entry.Template);
+    }
+
+    [Fact]
+    public void AsciiArtLineEndingWithBrace_DoesNotSwallowFollowingLines()
+    {
+        // Only a line that is exactly "{" starts an Emuera line continuation. ASCII art that happens
+        // to end with a brace is ordinary text and must not hide the rest of the file.
+        const string text = "@FUNC\nPRINTL \u2500\u2500\u2510 {{ \u2500\u2500 {\nPRINTFORML \u8868\u793a\u3055\u308c\u308b\n";
+        VisibleTextFileResult result = Lex(text);
+
+        // The art line itself is not Japanese, so it is not an entry; the point is that it must not
+        // open a continuation block that hides everything after it.
+        VisibleTextEntry entry = Assert.Single(result.Entries);
+        Assert.Equal(3, entry.Line);
+        Assert.Equal("\u8868\u793a\u3055\u308c\u308b", entry.Template);
+    }
+
+    [Fact]
+    public void HalfWidthKatakanaSfx_IsExtracted()
+    {
+        const string text = "@FUNC\nPRINTFORMW \u300c\u2026\u2026\u2026\u300d\uff7c\uff9e\uff70\uff6f\n";
+        VisibleTextFileResult result = Lex(text);
+
+        VisibleTextEntry entry = Assert.Single(result.Entries);
+        Assert.Contains("\uff7c\uff9e\uff70\uff6f", entry.Template);
+    }
 }

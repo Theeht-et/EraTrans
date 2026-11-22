@@ -100,6 +100,24 @@ public sealed class VisibleTextExtractor
                     generatedFiles.Add(sidecarPath);
                 }
 
+                string? groupingPath = VisibleTextGrouping.TryWrite(
+                    dictionaryRootFull,
+                    dictionaryPath,
+                    file,
+                    relativePath,
+                    text,
+                    lexed.Entries,
+                    out string? groupingWarning);
+                if (groupingPath is not null)
+                {
+                    generatedFiles.Add(groupingPath);
+                }
+
+                if (groupingWarning is not null)
+                {
+                    warnings.Add($"{relativePath}: {groupingWarning}");
+                }
+
                 entryCount += lexed.Entries.Count;
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
@@ -367,7 +385,7 @@ public sealed class VisibleTextExtractor
     /// <c>"文本" + game-relative path without extension, backslash separated + 5 digit ordinal</c>,
     /// the key format the legacy dictionaries already use.
     /// </summary>
-    private static string BuildKey(string relativePath, int sequence) =>
+    internal static string BuildKey(string relativePath, int sequence) =>
         "文本" + Path.ChangeExtension(relativePath, string.Empty).Replace('/', '\\') + sequence.ToString("D5");
 
     private static string ResolveDictionaryPath(string dictionaryRoot, string relativePath) =>

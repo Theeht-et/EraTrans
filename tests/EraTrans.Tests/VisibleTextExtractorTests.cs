@@ -37,7 +37,7 @@ public sealed class VisibleTextExtractorTests
             Assert.Equal(2, result.EntryCount);
             Assert.Empty(result.Warnings);
             Assert.Equal(
-                new[] { "hello.json", "hello.spans.json" },
+                new[] { "hello.json", "hello.spans.json", "hello.groups.json" },
                 result.GeneratedFiles.Select(Path.GetFileName).ToArray());
 
             string dictionaryPath = Path.Combine(dictionaryRoot, "ERB", "hello.json");

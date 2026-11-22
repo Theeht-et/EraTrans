@@ -52,11 +52,64 @@ public sealed record VisibleTextEntry(
     IReadOnlyList<VisibleTextSpan> Parts,
     VisibleTextSpan Span);
 
+/// <summary>
+/// Coverage hints collected while lexing: lines whose visible text may come from a source the
+/// lexer cannot read statically (unknown commands, variables assigned elsewhere, CSV names).
+/// They are reported to the user instead of silently dropping the text.
+/// </summary>
+public sealed class VisibleTextDiagnostics
+{
+    /// <summary>Unknown leading token → number of lines whose argument contains Japanese text.</summary>
+    public Dictionary<string, int> UnknownCommands { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>Up to three samples per unknown command, formatted <c>TOKEN file:line  text</c>.</summary>
+    public List<string> UnknownCommandSamples { get; } = new();
+
+    /// <summary>Variable → number of Japanese literal assignments whose value is later printed.</summary>
+    public Dictionary<string, int> AssignedAndPrintedVars { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>Number of Japanese literal assignments that are printed but not extracted.</summary>
+    public int AssignedAndPrintedLines { get; set; }
+
+    /// <summary>Print lines whose Japanese text sits only inside placeholders (e.g. <c>%CALLNAME%</c>).</summary>
+    public int PlaceholderOnlyPrintLines { get; set; }
+
+    public bool IsEmpty =>
+        UnknownCommands.Count == 0 && AssignedAndPrintedLines == 0 && PlaceholderOnlyPrintLines == 0;
+
+    /// <summary>Merges another file's diagnostics into this aggregate.</summary>
+    public void MergeFrom(VisibleTextDiagnostics other)
+    {
+        ArgumentNullException.ThrowIfNull(other);
+        foreach ((string command, int count) in other.UnknownCommands)
+        {
+            UnknownCommands[command] = UnknownCommands.TryGetValue(command, out int existing)
+                ? existing + count
+                : count;
+        }
+
+        UnknownCommandSamples.AddRange(other.UnknownCommandSamples);
+        foreach ((string name, int count) in other.AssignedAndPrintedVars)
+        {
+            AssignedAndPrintedVars[name] = AssignedAndPrintedVars.TryGetValue(name, out int existing)
+                ? existing + count
+                : count;
+        }
+
+        AssignedAndPrintedLines += other.AssignedAndPrintedLines;
+        PlaceholderOnlyPrintLines += other.PlaceholderOnlyPrintLines;
+    }
+}
+
 /// <summary>Lexer result for a single ERB file.</summary>
 public sealed record VisibleTextFileResult(
     string RelativePath,
     IReadOnlyList<VisibleTextEntry> Entries,
-    IReadOnlyList<string> Warnings);
+    IReadOnlyList<string> Warnings)
+{
+    /// <summary>Coverage hints for this file.</summary>
+    public VisibleTextDiagnostics Diagnostics { get; init; } = new();
+}
 
 /// <summary>Result of extracting a whole ERB directory.</summary>
 /// <param name="GeneratedFiles">Dictionary JSON and position sidecar files written.</param>
@@ -74,4 +127,7 @@ public sealed record VisibleTextExtractionResult(
 
     /// <summary>Entries that had a translation for the key but the source text changed.</summary>
     public int ResetTranslations { get; init; }
+
+    /// <summary>Coverage hints aggregated over all files.</summary>
+    public VisibleTextDiagnostics Diagnostics { get; init; } = new();
 }

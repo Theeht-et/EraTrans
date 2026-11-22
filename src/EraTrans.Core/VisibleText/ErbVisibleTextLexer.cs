@@ -45,7 +45,7 @@ public static class ErbVisibleTextLexer
     private static readonly HashSet<string> DataOpen = new(StringComparer.Ordinal)
     {
         "PRINTDATA", "PRINTDATAL", "PRINTDATAW", "PRINTDATAK", "PRINTDATAKL", "PRINTDATAKW",
-        "PRINTDATAD", "PRINTDATADL", "PRINTDATADW", "DATALIST"
+        "PRINTDATAD", "PRINTDATADL", "PRINTDATADW", "DATALIST", "STRDATA"
     };
 
     private static readonly HashSet<string> DataClose = new(StringComparer.Ordinal)
@@ -80,13 +80,36 @@ public static class ErbVisibleTextLexer
         var warnings = new List<string>();
         var scope = new Dictionary<string, Assignment>(StringComparer.Ordinal);
         var pp = new PpState(macroSet);
+        var diagnostics = new VisibleTextDiagnostics();
+        var localLabels = CollectLabels(lines);
+        var printedVars = new HashSet<string>(StringComparer.Ordinal);
+        var literalAssignments = new List<(string Var, string Function, int Line, string Text)>();
         int dataDepth = 0;
+        int braceDepth = 0;
         string functionName = string.Empty;
 
         for (int li = 0; li < lines.Count; li++)
         {
             string line = lines[li].Line;
             int lineStart = lines[li].Start;
+
+            string trimmedLine = line.Trim();
+
+            if (braceDepth > 0)
+            {
+                if (trimmedLine.StartsWith('}'))
+                {
+                    braceDepth = 0;
+                }
+
+                continue;
+            }
+
+            if (trimmedLine.EndsWith('{') && !trimmedLine.EndsWith("\\{"))
+            {
+                braceDepth = 1;
+                continue;
+            }
 
             int p = 0;
             while (p < line.Length && (line[p] == ' ' || line[p] == '\t')) p++;
@@ -212,6 +235,28 @@ public static class ErbVisibleTextLexer
                 continue;
             }
 
+            // Arbitrary variable assigned a Japanese literal (e.g. "CITY_NAME = 東京"). The lexer
+            // cannot know whether it will be displayed, so it only feeds the coverage report:
+            // when the same function later prints that variable, the text is currently missed.
+            if (TryLiteralAssignment(token, line, tokenEnd2, out string literalVar, out int literalStart))
+            {
+                string literal = SliceArgument(line, literalStart);
+                if (literal.Length >= 2 && literal[0] == '"' && literal[^1] == '"')
+                {
+                    literal = literal.Substring(1, literal.Length - 2);
+                }
+
+                if (literal.Length >= 2 &&
+                    literal.IndexOf('%') < 0 &&
+                    literal.IndexOf('(') < 0 &&
+                    HasJapanese(literal))
+                {
+                    literalAssignments.Add((literalVar, functionName, li + 1, literal));
+                }
+
+                continue;
+            }
+
             if (PrintCodes.Contains(token))
             {
                 string cls = Classify(token);
@@ -237,6 +282,7 @@ public static class ErbVisibleTextLexer
                 }
 
                 AddVarRefs(line, scope, result, normalizedRelativePath);
+                TrackPrintLine(line, functionName, diagnostics, printedVars);
                 continue;
             }
 
@@ -253,6 +299,7 @@ public static class ErbVisibleTextLexer
                     }
 
                     AddVarRefs(line, scope, result, normalizedRelativePath);
+                    TrackPrintLine(line, functionName, diagnostics, printedVars);
                     break;
                 }
 
@@ -265,6 +312,7 @@ public static class ErbVisibleTextLexer
                     }
 
                     AddVarRefs(line, scope, result, normalizedRelativePath);
+                    TrackPrintLine(line, functionName, diagnostics, printedVars);
                     break;
                 }
 
@@ -277,6 +325,7 @@ public static class ErbVisibleTextLexer
                     }
 
                     AddVarRefs(line, scope, result, normalizedRelativePath);
+                    TrackPrintLine(line, functionName, diagnostics, printedVars);
                     break;
                 }
 
@@ -290,6 +339,7 @@ public static class ErbVisibleTextLexer
                     }
 
                     AddVarRefs(line, scope, result, normalizedRelativePath);
+                    TrackPrintLine(line, functionName, diagnostics, printedVars);
                     break;
                 }
 
@@ -304,12 +354,34 @@ public static class ErbVisibleTextLexer
                     }
 
                     AddVarRefs(line, scope, result, normalizedRelativePath);
+                    TrackPrintLine(line, functionName, diagnostics, printedVars);
                     break;
                 }
+
+                default:
+                    TrackUnknownCommand(token, line, tokenEnd2, li + 1, normalizedRelativePath, diagnostics, localLabels);
+                    break;
             }
         }
 
-        return new VisibleTextFileResult(normalizedRelativePath, result, warnings);
+        foreach ((string var, string function, int _, string _) in literalAssignments)
+        {
+            if (!printedVars.Contains(function + "\u0000" + var))
+            {
+                continue;
+            }
+
+            diagnostics.AssignedAndPrintedLines++;
+            diagnostics.AssignedAndPrintedVars[var] =
+                diagnostics.AssignedAndPrintedVars.TryGetValue(var, out int assignedCount)
+                    ? assignedCount + 1
+                    : 1;
+        }
+
+        return new VisibleTextFileResult(normalizedRelativePath, result, warnings)
+        {
+            Diagnostics = diagnostics
+        };
     }
 
     /// <summary>Mirror of Emuera <c>ErbLoader.PPState</c>.</summary>
@@ -556,6 +628,32 @@ public static class ErbVisibleTextLexer
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Identifier prefix of a <c>%...%</c> reference, without the tracked-variable restriction
+    /// (used by the coverage report to recognise every variable a print line displays).
+    /// </summary>
+    private static string? RegAnyVar(string inner)
+    {
+        if (string.IsNullOrEmpty(inner))
+        {
+            return null;
+        }
+
+        int j = 0;
+        while (j < inner.Length && (char.IsLetterOrDigit(inner[j]) || inner[j] == '_' || inner[j] == ':'))
+        {
+            j++;
+        }
+
+        if (j == 0)
+        {
+            return null;
+        }
+
+        string value = inner.Substring(0, j);
+        return char.IsLetter(value[0]) || value[0] == '_' ? value : null;
     }
 
     private static bool TryAssignment(
@@ -1571,6 +1669,284 @@ public static class ErbVisibleTextLexer
     /// An entry is worth translating when it contains Japanese, or at least two Latin letters
     /// (short labels such as "OK" or single symbols are noise).
     /// </summary>
+    /// <summary>Commands that never print, so an unknown-token report should ignore them.</summary>
+    private static readonly HashSet<string> NonPrintTokens = new(StringComparer.Ordinal)
+    {
+        "IF", "SIF", "ELSE", "ELSEIF", "ENDIF", "SELECTCASE", "CASE", "CASEELSE", "ENDSELECT",
+        "FOR", "NEXT", "WHILE", "WEND", "REPEAT", "REND", "TRY", "CATCH", "TRYCALLLIST", "ENDCATCH",
+        "TRYCCALL", "TRYCCALLFORM", "CALL", "CALLF", "CALLFORM", "JUMP", "GOTO", "RETURN", "RETURNF",
+        "RETURNV", "FUNC", "FUNCTIONS", "ENDFUNC", "DIM", "DIMS", "VARSET", "SETVAR", "GETBIT",
+        "SETBIT", "CLEARBIT", "INVERTBIT", "SPLIT", "TIMES", "BAR", "BARL", "GETNUM", "SETCOLOR",
+        "WAIT", "WAITKEY", "TWAIT", "INPUT", "INPUTS", "BINPUT", "CLEARLINE", "QUIT", "FORCE_QUIT",
+        "DRAWLINE", "DRAWLINEFORM", "CLS", "ALIGNMENT", "STRLEN", "STRFIND", "STRCOUNT", "SUBSTRING",
+        "STRFORM", "TOINT", "TOUPPER", "TOLOWER", "ISNUMERIC", "EXISTCSV", "GETTIME", "SAVEGLOBAL",
+        "LOADGLOBAL", "SAVEDATA", "LOADDATA", "DELDATA", "RANDOMIZE", "RESETDATA", "ADDCHARA",
+        "ADDSPCHARA", "ADDCOPYCHARA", "DELCHARA", "SWAPCHARA", "SORTCHARA", "PICKUPCHARA",
+        "FINDCHARA", "EXISTCHARA", "ADDDEFCHARA", "ADDVOIDCHARA", "GETCHARAID", "GETSPCHARAID",
+        "SETCHARAID", "CVARSET", "CVAR", "VAR", "SWAP", "SPRITECREATE", "SPRITEUPDATE", "SPRITEEND",
+        "THROW", "ASSERT", "SET", "RESET", "BEGIN", "RESTART", "QUIT", "PRINT_IMG", "PRINT_RECT",
+        "PRINT_SPACE", "HTML_TAG", "HTML_TAGSPLIT", "HTML_STRINGLEN", "HTML_SUBSTRING", "HTML_TOPLAINTEXT",
+        "HTML_ESCAPE", "HTML_GETPRINTEDSTR", "HTML_GETKEYVALUE", "HTML_DOCTYPE", "HTML_SETPRINTLEN",
+        "TRYCALLFORM", "LOOP", "ARRAYCOPY", "ARRAYSORT", "ARRAYSHIFT", "ARRAYREMOVE", "SETFONT",
+        "GCREATEFROMFILE", "GSAVETEXT", "GLOADTEXT", "SAVETEXT", "LOADTEXT", "FINDELEMENT",
+        "FINDLASTELEMENT", "FINDELEMENTBYNAME", "ADDVALUE", "OLDDATA", "DOTRAIN", "DOFUNC",
+        "SAVECHARA", "LOADCHARA", "FIND_CHARADATA", "ARRAYMSORT", "ARRAY1D", "ARRAY2D", "ARRAY3D"
+    };
+
+    private static bool HasJapanese(string text)
+    {
+        foreach (char c in text)
+        {
+            if (IsJapaneseChar(c))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>Replaces <c>%..%</c> and <c>{..}</c> spans with spaces, keeping everything else.</summary>
+    private static string StripPlaceholders(string text)
+    {
+        var builder = new StringBuilder(text.Length);
+        int i = 0;
+        while (i < text.Length)
+        {
+            char c = text[i];
+            if (c == '%')
+            {
+                i = Math.Max(SkipPercent(text, i, text.Length), i + 1);
+                builder.Append(' ');
+                continue;
+            }
+
+            if (c == '{')
+            {
+                i = Math.Max(SkipBrace(text, i, text.Length), i + 1);
+                builder.Append(' ');
+                continue;
+            }
+
+            builder.Append(c);
+            i++;
+        }
+
+        return builder.ToString();
+    }
+
+    /// <summary>Takes the argument text of a line, cutting a trailing <c>;</c> comment.</summary>
+    private static string SliceArgument(string line, int start)
+    {
+        int end = line.Length;
+        bool quoted = false;
+        for (int i = start; i < line.Length; i++)
+        {
+            char c = line[i];
+            if (c == '"')
+            {
+                quoted = !quoted;
+            }
+            else if (c == ';' && !quoted)
+            {
+                end = i;
+                break;
+            }
+        }
+
+        return line.Substring(start, end - start).Trim();
+    }
+
+    /// <summary>Detects <c>IDENT(:segment)* = value</c> for variables outside the tracked set.</summary>
+    private static bool TryLiteralAssignment(string token, string line, int tokenEnd, out string varName, out int rhsStart)
+    {
+        varName = string.Empty;
+        rhsStart = tokenEnd;
+
+        if (token.Length == 0 || !(char.IsLetter(token[0]) || token[0] == '_'))
+        {
+            return false;
+        }
+
+        // "PRINTFORM  = ..." prints a literal '=', it is not an assignment.
+        if (PrintCodes.Contains(token) || NonPrintTokens.Contains(token) ||
+            DataOpen.Contains(token) || DataClose.Contains(token))
+        {
+            return false;
+        }
+
+        foreach (char c in token)
+        {
+            if (!(char.IsLetterOrDigit(c) || c == '_' || c == ':'))
+            {
+                return false;
+            }
+        }
+
+        int i = tokenEnd;
+        while (i < line.Length && (line[i] == ' ' || line[i] == '\t'))
+        {
+            i++;
+        }
+
+        if (i >= line.Length)
+        {
+            return false;
+        }
+
+        if (line[i] != '=')
+        {
+            int op = i;
+            while (op < line.Length && "+-*/'&|^<>".IndexOf(line[op]) >= 0)
+            {
+                op++;
+            }
+
+            if (op == i || op - i > 2 || op >= line.Length || line[op] != '=')
+            {
+                return false;
+            }
+
+            i = op;
+        }
+
+        if (i + 1 < line.Length && line[i + 1] == '=')
+        {
+            return false;
+        }
+
+        varName = token;
+        rhsStart = i + 1;
+        return true;
+    }
+
+    private static HashSet<string> CollectLabels(List<(string Line, int Start)> lines)
+    {
+        var labels = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in lines)
+        {
+            string t = entry.Line.TrimStart();
+            if (t.Length < 2 || t[0] != '@')
+            {
+                continue;
+            }
+
+            int end = 1;
+            while (end < t.Length && !char.IsWhiteSpace(t[end]) && t[end] != ',')
+            {
+                end++;
+            }
+
+            if (end > 1)
+            {
+                labels.Add(t.Substring(1, end - 1));
+            }
+        }
+
+        return labels;
+    }
+
+    /// <summary>Collects the variables a print line displays and flags CSV-only lines.</summary>
+    private static void TrackPrintLine(
+        string line,
+        string functionName,
+        VisibleTextDiagnostics diagnostics,
+        HashSet<string> printedVars)
+    {
+        int argStart = ArgumentStart(line);
+        if (argStart >= line.Length)
+        {
+            return;
+        }
+
+        var refs = new List<string>();
+        CollectRefs(line, argStart, line.Length, refs);
+        foreach (string raw in refs)
+        {
+            string reference = raw;
+            int comma = reference.IndexOf(',');
+            if (comma >= 0)
+            {
+                reference = reference.Substring(0, comma);
+            }
+
+            string? name = RegAnyVar(reference.Trim());
+            if (name is not null)
+            {
+                printedVars.Add(functionName + "\u0000" + name);
+            }
+        }
+
+        string argument = line.Substring(argStart);
+        if (HasJapanese(argument) && !HasJapanese(StripPlaceholders(argument)))
+        {
+            diagnostics.PlaceholderOnlyPrintLines++;
+        }
+    }
+
+    /// <summary>Records an unknown leading token whose argument contains Japanese text.</summary>
+    private static void TrackUnknownCommand(
+        string token,
+        string line,
+        int tokenEnd,
+        int lineNo,
+        string relativePath,
+        VisibleTextDiagnostics diagnostics,
+        HashSet<string> localLabels)
+    {
+        if (token.Length == 0 || !(char.IsLetter(token[0]) || token[0] == '_'))
+        {
+            return;
+        }
+
+        foreach (char c in token)
+        {
+            if (!(char.IsLetterOrDigit(c) || c == '_'))
+            {
+                return;
+            }
+        }
+
+        if (localLabels.Contains(token) || NonPrintTokens.Contains(token) ||
+            token.StartsWith("DT_", StringComparison.Ordinal) ||
+            token.StartsWith("SQL_", StringComparison.Ordinal) ||
+            token.StartsWith("DEBUGPRINT", StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        int i = tokenEnd;
+        while (i < line.Length && (line[i] == ' ' || line[i] == '\t'))
+        {
+            i++;
+        }
+
+        if (i < line.Length && line[i] == '=')
+        {
+            return;
+        }
+
+        if (i + 1 < line.Length && line[i] == '+' && line[i + 1] == '=')
+        {
+            return;
+        }
+
+        string argument = SliceArgument(line, tokenEnd);
+        if (argument.Length == 0 || !HasJapanese(argument))
+        {
+            return;
+        }
+
+        diagnostics.UnknownCommands[token] =
+            diagnostics.UnknownCommands.TryGetValue(token, out int count) ? count + 1 : 1;
+
+        if (diagnostics.UnknownCommandSamples.Count < 40)
+        {
+            string sample = argument.Length > 80 ? argument.Substring(0, 80) + "…" : argument;
+            diagnostics.UnknownCommandSamples.Add($"{token} {relativePath}:{lineNo}  {sample}");
+        }
+    }
+
     private static bool IsWorth(string s)
     {
         if (string.IsNullOrEmpty(s))

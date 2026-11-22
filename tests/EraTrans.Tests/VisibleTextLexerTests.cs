@@ -162,4 +162,32 @@ public sealed class VisibleTextLexerTests
         VisibleTextEntry entry = Assert.Single(result.Entries);
         Assert.Equal("全角の空白", entry.Template);
     }
+
+    [Fact]
+    public void StrdadaBlock_RowsAreExtractedAsData()
+    {
+        const string text = "@FUNC\nSTRDATA LOCALS\nDATA ひとつ\nDATA ふたつ\nENDDATA\nPRINTFORML %LOCALS%\n";
+        VisibleTextFileResult result = Lex(text);
+
+        Assert.Equal(new[] { "ひとつ", "ふたつ" }, result.Entries.Where(e => e.Kind == "data").Select(e => e.Template).ToArray());
+    }
+
+    [Fact]
+    public void BraceJoinedLines_AreSkipped()
+    {
+        const string text = "@FUNC\nSELECTCASE 1\n{\nCASE あ, い\n}\nPRINTFORML 表示される\n";
+        VisibleTextFileResult result = Lex(text);
+
+        VisibleTextEntry entry = Assert.Single(result.Entries);
+        Assert.Equal("表示される", entry.Template);
+    }
+
+    [Fact]
+    public void EscapedBrace_DoesNotOpenAJoin()
+    {
+        const string text = "@FUNC\nLOCALS:0 = \\{\nPRINTFORML 表示される\n";
+        VisibleTextFileResult result = Lex(text);
+
+        Assert.Contains(result.Entries, e => e.Template == "表示される");
+    }
 }

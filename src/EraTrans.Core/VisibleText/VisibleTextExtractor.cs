@@ -19,6 +19,7 @@ public sealed class VisibleTextExtractor
     private const string SidecarDirectoryName = "AI上下文";
     private const string SidecarSuffix = ".spans.json";
     private const string DictionaryDirectoryName = "字典";
+    private const string ReportFileName = "visibletext-report.json";
 
     private static readonly JsonWriterOptions WriterOptions = new()
     {
@@ -65,6 +66,7 @@ public sealed class VisibleTextExtractor
 
         var warnings = new List<string>();
         var generatedFiles = new List<string>();
+        var diagnostics = new VisibleTextDiagnostics();
         int entryCount = 0;
         int preservedTranslations = 0;
         int resetTranslations = 0;
@@ -77,6 +79,7 @@ public sealed class VisibleTextExtractor
                 string text = GameFileText.Read(file).Text;
                 VisibleTextFileResult lexed = ErbVisibleTextLexer.ExtractFile(relativePath, text, macros);
                 warnings.AddRange(lexed.Warnings);
+                diagnostics.MergeFrom(lexed.Diagnostics);
                 if (lexed.Entries.Count == 0)
                 {
                     continue;
@@ -126,11 +129,94 @@ public sealed class VisibleTextExtractor
             }
         }
 
+        if (!diagnostics.IsEmpty)
+        {
+            string reportPath = Path.Combine(sidecarRoot, SidecarDirectoryName, ReportFileName);
+            WriteDiagnosticsReport(reportPath, diagnostics);
+            generatedFiles.Add(reportPath);
+            warnings.Add(BuildDiagnosticsSummary(diagnostics, reportPath));
+        }
+
         return new VisibleTextExtractionResult(generatedFiles, warnings, files.Length, entryCount)
         {
             PreservedTranslations = preservedTranslations,
-            ResetTranslations = resetTranslations
+            ResetTranslations = resetTranslations,
+            Diagnostics = diagnostics
         };
+    }
+
+    /// <summary>Writes the coverage report as UTF-8 without BOM.</summary>
+    private static void WriteDiagnosticsReport(string path, VisibleTextDiagnostics diagnostics)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        using var stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None);
+        using var writer = new Utf8JsonWriter(stream, WriterOptions);
+        writer.WriteStartObject();
+        writer.WriteNumber("schema", 1);
+
+        writer.WriteStartArray("unknownCommands");
+        foreach ((string command, int lines) in diagnostics.UnknownCommands.OrderByDescending(pair => pair.Value))
+        {
+            writer.WriteStartObject();
+            writer.WriteString("command", command);
+            writer.WriteNumber("lines", lines);
+            writer.WriteEndObject();
+        }
+
+        writer.WriteEndArray();
+
+        writer.WriteStartArray("unknownCommandSamples");
+        foreach (string sample in diagnostics.UnknownCommandSamples)
+        {
+            writer.WriteStringValue(sample);
+        }
+
+        writer.WriteEndArray();
+
+        writer.WriteStartArray("assignedAndPrintedVars");
+        foreach ((string name, int lines) in diagnostics.AssignedAndPrintedVars.OrderByDescending(pair => pair.Value))
+        {
+            writer.WriteStartObject();
+            writer.WriteString("name", name);
+            writer.WriteNumber("lines", lines);
+            writer.WriteEndObject();
+        }
+
+        writer.WriteEndArray();
+        writer.WriteNumber("assignedAndPrintedLines", diagnostics.AssignedAndPrintedLines);
+        writer.WriteNumber("placeholderOnlyPrintLines", diagnostics.PlaceholderOnlyPrintLines);
+        writer.WriteEndObject();
+    }
+
+    /// <summary>One-line warning so the user sees the report without opening the JSON.</summary>
+    private static string BuildDiagnosticsSummary(VisibleTextDiagnostics diagnostics, string reportPath)
+    {
+        var parts = new List<string>();
+        if (diagnostics.UnknownCommands.Count > 0)
+        {
+            int lines = diagnostics.UnknownCommands.Values.Sum();
+            string top = string.Join(
+                "、",
+                diagnostics.UnknownCommands.OrderByDescending(pair => pair.Value).Take(3)
+                    .Select(pair => $"{pair.Key} {pair.Value}"));
+            parts.Add($"未知命令 {diagnostics.UnknownCommands.Count} 类 / {lines} 行（{top}）");
+        }
+
+        if (diagnostics.AssignedAndPrintedLines > 0)
+        {
+            string top = string.Join(
+                "、",
+                diagnostics.AssignedAndPrintedVars.OrderByDescending(pair => pair.Value).Take(3)
+                    .Select(pair => $"{pair.Key} {pair.Value}"));
+            parts.Add($"变量中转 {diagnostics.AssignedAndPrintedLines} 条未提取（{top}）");
+        }
+
+        if (diagnostics.PlaceholderOnlyPrintLines > 0)
+        {
+            parts.Add($"仅占位符打印 {diagnostics.PlaceholderOnlyPrintLines} 行");
+        }
+
+        return $"覆盖率自检：{string.Join("；", parts)}。详见 {Path.GetFileName(reportPath)}。";
     }
 
     /// <summary>

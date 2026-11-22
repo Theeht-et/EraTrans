@@ -24,7 +24,6 @@ internal static class Configs
     internal static void Apply(EraParserOptions options)
     {
         fileEncoding = options.FileEncoding;
-        forceFilter = options.ForceFilterVariableNames;
         hideEngText = options.HideEnglishText;
         mergeSameText = options.MergeDuplicateEntries;
         hideVarOutput = options.HideVariableEntries;

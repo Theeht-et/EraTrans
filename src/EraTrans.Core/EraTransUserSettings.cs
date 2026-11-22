@@ -21,7 +21,6 @@ public sealed class EraTransUserSettings
     public const int DefaultTranslationConcurrency = 1;
 
     public string FileEncodingId { get; set; } = "utf8-bom";
-    public bool ForceFilterVariableNames { get; set; } = true;
     public bool AutoOpenFolder { get; set; } = true;
     public bool EnableVariableAutoCorrection { get; set; } = true;
     public bool HideEnglishText { get; set; } = true;
@@ -36,6 +35,15 @@ public sealed class EraTransUserSettings
     /// The CSV/RES/XML/ERD branches always use the legacy parsers.
     /// </summary>
     public string ErbExtractionMode { get; set; } = "legacy";
+
+    /// <summary>New extractor: include HTML title= tooltips.</summary>
+    public bool ExtractHtmlTitle { get; set; } = true;
+
+    /// <summary>New extractor: include PRINTDATA / DATALIST rows.</summary>
+    public bool ExtractPrintDataEntries { get; set; } = true;
+
+    /// <summary>New extractor: drop entries without Japanese text.</summary>
+    public bool SkipNonJapaneseEntries { get; set; } = true;
 
     /// <summary>
     /// Size of one ordered translation window. Only used when
@@ -112,7 +120,9 @@ public sealed class EraTransUserSettings
         {
             ExtractionMode = ParseExtractionMode(ErbExtractionMode),
             FileEncoding = CreateFileEncoding(),
-            ForceFilterVariableNames = ForceFilterVariableNames,
+            ExtractHtmlTitle = ExtractHtmlTitle,
+            ExtractPrintDataEntries = ExtractPrintDataEntries,
+            SkipNonJapaneseEntries = SkipNonJapaneseEntries,
             HideEnglishText = HideEnglishText,
             MergeDuplicateEntries = MergeDuplicateEntries,
             HideVariableEntries = HideVariableEntries,

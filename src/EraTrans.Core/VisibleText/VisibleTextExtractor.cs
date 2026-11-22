@@ -79,10 +79,29 @@ public sealed class VisibleTextExtractor
             string relativePath = Path.GetRelativePath(gameRoot, file).Replace('\\', '/');
             try
             {
-                string text = GameFileText.Read(file).Text;
-                VisibleTextFileResult lexed = ErbVisibleTextLexer.ExtractFile(relativePath, text, macros);
+                string text = GameFileText.Read(file, options.FileEncoding).Text;
+                VisibleTextFileResult lexed = ErbVisibleTextLexer.ExtractFile(
+                    relativePath,
+                    text,
+                    macros,
+                    options.ExtractHtmlTitle,
+                    options.ExtractPrintDataEntries);
                 warnings.AddRange(lexed.Warnings);
                 diagnostics.MergeFrom(lexed.Diagnostics);
+
+                if (options.SkipNonJapaneseEntries)
+                {
+                    List<VisibleTextEntry> kept = lexed.Entries
+                        .Where(entry => ContainsJapanese(entry.Template))
+                        .ToList();
+                    if (kept.Count != lexed.Entries.Count)
+                    {
+                        lexed = new VisibleTextFileResult(lexed.RelativePath, kept, lexed.Warnings)
+                        {
+                            Diagnostics = lexed.Diagnostics
+                        };
+                    }
+                }
                 if (lexed.Entries.Count == 0)
                 {
                     // The file no longer has visible text (or became unreadable to the lexer).
@@ -299,6 +318,23 @@ public sealed class VisibleTextExtractor
         }
 
         return index > start ? line.Substring(start, index - start) : null;
+    }
+
+    private static bool ContainsJapanese(string text)
+    {
+        foreach (char c in text)
+        {
+            if ((c >= '\u3040' && c <= '\u30FF') ||
+                (c >= '\uFF61' && c <= '\uFF9F') ||
+                (c >= '\u4E00' && c <= '\u9FFF') ||
+                (c >= '\u3400' && c <= '\u4DBF') ||
+                c == '\u3005')
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static List<LineInfo> BuildLineInfo(string text)
@@ -539,6 +575,11 @@ public sealed class VisibleTextExtractor
         string sourceSubdirectory,
         List<string> warnings)
     {
+        if (!Directory.Exists(dictionaryRoot))
+        {
+            return 0;
+        }
+
         string prefix = sourceSubdirectory.Replace('\\', '/').Trim('/') + "/";
         int removed = 0;
         foreach (string dictionaryPath in Directory.GetFiles(dictionaryRoot, "*.json", SearchOption.AllDirectories))

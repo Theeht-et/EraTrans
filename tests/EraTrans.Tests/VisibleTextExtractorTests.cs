@@ -12,6 +12,101 @@ public sealed class VisibleTextExtractorTests
     private const string PlainLine = "PRINTFORML こんにちは";
 
     [Fact]
+    public void Extract_SkipsEntriesWithoutJapaneseByDefault()
+    {
+        string root = CreateTempRoot();
+        try
+        {
+            string gameDirectory = Path.Combine(root, "game");
+            string dictionaryRoot = Path.Combine(root, "out");
+            Directory.CreateDirectory(Path.Combine(gameDirectory, "ERB"));
+            File.WriteAllText(
+                Path.Combine(gameDirectory, "ERB", "mixed.erb"),
+                "@HELLO\nPRINTFORML こんにちは\nPRINTFORML OK\nPRINTFORML EXP+5\n",
+                new UTF8Encoding(false));
+
+            var extractor = new VisibleTextExtractor();
+            VisibleTextExtractionResult defaults = extractor.Extract(
+                gameDirectory, dictionaryRoot, "ERB", new EraParserOptions());
+            Assert.Equal(1, defaults.EntryCount);
+
+            VisibleTextExtractionResult keepAll = extractor.Extract(
+                gameDirectory,
+                Path.Combine(root, "out2"),
+                "ERB",
+                new EraParserOptions { SkipNonJapaneseEntries = false });
+            Assert.Equal(3, keepAll.EntryCount);
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
+    public void Extract_HonorsHtmlTitleSwitch()
+    {
+        string root = CreateTempRoot();
+        try
+        {
+            string gameDirectory = Path.Combine(root, "game");
+            Directory.CreateDirectory(Path.Combine(gameDirectory, "ERB"));
+            File.WriteAllText(
+                Path.Combine(gameDirectory, "ERB", "html.erb"),
+                "@HELLO\nHTML_PRINT \"<button value='1' title='戻る'>次へ</button>\"\n",
+                new UTF8Encoding(false));
+
+            var extractor = new VisibleTextExtractor();
+            VisibleTextExtractionResult withTitle = extractor.Extract(
+                gameDirectory, Path.Combine(root, "out1"), "ERB", new EraParserOptions());
+            Assert.Equal(2, withTitle.EntryCount);
+
+            VisibleTextExtractionResult withoutTitle = extractor.Extract(
+                gameDirectory,
+                Path.Combine(root, "out2"),
+                "ERB",
+                new EraParserOptions { ExtractHtmlTitle = false });
+            Assert.Equal(1, withoutTitle.EntryCount);
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
+    public void Extract_HonorsPrintDataSwitch()
+    {
+        string root = CreateTempRoot();
+        try
+        {
+            string gameDirectory = Path.Combine(root, "game");
+            Directory.CreateDirectory(Path.Combine(gameDirectory, "ERB"));
+            File.WriteAllText(
+                Path.Combine(gameDirectory, "ERB", "data.erb"),
+                "@HELLO\nPRINTDATA\nDATA こんにちは\nDATA さようなら\nENDDATA\n",
+                new UTF8Encoding(false));
+
+            var extractor = new VisibleTextExtractor();
+            VisibleTextExtractionResult withData = extractor.Extract(
+                gameDirectory, Path.Combine(root, "out1"), "ERB", new EraParserOptions());
+            Assert.Equal(2, withData.EntryCount);
+
+            VisibleTextExtractionResult withoutData = extractor.Extract(
+                gameDirectory,
+                Path.Combine(root, "out2"),
+                "ERB",
+                new EraParserOptions { ExtractPrintDataEntries = false });
+            Assert.Equal(0, withoutData.EntryCount);
+            Assert.False(File.Exists(Path.Combine(root, "out2", "ERB", "data.json")));
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
     public void Extract_WritesDictionaryAndSpanSidecar()
     {
         string root = CreateTempRoot();

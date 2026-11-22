@@ -150,4 +150,24 @@ public sealed class GameFileTextTests : IDisposable
         File.WriteAllBytes(path, bytes);
         return path;
     }
+
+    [Fact]
+    public void Read_UsesConfiguredEncodingAsFallbackForChineseLocalizedGames()
+    {
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        string path = Path.Combine(Path.GetTempPath(), "eratrans-gbk-" + Guid.NewGuid().ToString("N") + ".erb");
+        try
+        {
+            File.WriteAllBytes(path, Encoding.GetEncoding(936).GetBytes("PRINTL 你好，世界"));
+
+            GameFileText decoded = GameFileText.Read(path, Encoding.GetEncoding(936));
+            Assert.Equal(936, decoded.Encoding.CodePage);
+            Assert.Contains("你好", decoded.Text);
+            Assert.DoesNotContain('\uFFFD', decoded.Text);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
 }

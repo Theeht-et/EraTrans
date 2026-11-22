@@ -65,7 +65,9 @@ public static class ErbVisibleTextLexer
     public static VisibleTextFileResult ExtractFile(
         string relativePath,
         string text,
-        IReadOnlyCollection<string> macros)
+        IReadOnlyCollection<string> macros,
+        bool extractHtmlTitle = true,
+        bool extractPrintDataEntries = true)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(relativePath);
         ArgumentNullException.ThrowIfNull(text);
@@ -128,7 +130,7 @@ public static class ErbVisibleTextLexer
 
                 if (closed && joined.Length > 0 && segments.Count > 0)
                 {
-                    VisibleTextFileResult nested = ExtractFile(relativePath, joined.ToString(), macros);
+                    VisibleTextFileResult nested = ExtractFile(relativePath, joined.ToString(), macros, extractHtmlTitle, extractPrintDataEntries);
                     warnings.AddRange(nested.Warnings);
                     diagnostics.MergeFrom(nested.Diagnostics);
                     foreach (VisibleTextEntry entry in nested.Entries)
@@ -239,13 +241,16 @@ public static class ErbVisibleTextLexer
 
             if (dataDepth > 0 && (token == "DATA" || token == "DATAFORM"))
             {
-                DraftEntry? dataEntry = BuildLineEntry(
-                    li, lineStart, functionName, line, tokenEnd2,
-                    token == "DATAFORM" ? "form" : "plain", token);
-                if (dataEntry is not null)
+                if (extractPrintDataEntries)
                 {
-                    dataEntry.Kind = "data";
-                    result.Add(Materialize(dataEntry, normalizedRelativePath));
+                    DraftEntry? dataEntry = BuildLineEntry(
+                        li, lineStart, functionName, line, tokenEnd2,
+                        token == "DATAFORM" ? "form" : "plain", token);
+                    if (dataEntry is not null)
+                    {
+                        dataEntry.Kind = "data";
+                        result.Add(Materialize(dataEntry, normalizedRelativePath));
+                    }
                 }
 
                 continue;
@@ -416,7 +421,7 @@ public static class ErbVisibleTextLexer
                 case "HTML_PRINT":
                 case "HTML_PRINT_ISLAND":
                 {
-                    foreach (DraftEntry entry in BuildHtmlEntries(li, lineStart, functionName, line, tokenEnd2, token))
+                    foreach (DraftEntry entry in BuildHtmlEntries(li, lineStart, functionName, line, tokenEnd2, token, extractHtmlTitle))
                     {
                         result.Add(Materialize(entry, normalizedRelativePath));
                     }
@@ -1327,7 +1332,8 @@ public static class ErbVisibleTextLexer
         string functionName,
         string line,
         int cmdEnd,
-        string command)
+        string command,
+        bool extractHtmlTitle)
     {
         var list = new List<DraftEntry>();
         int start = cmdEnd;
@@ -1589,7 +1595,9 @@ public static class ErbVisibleTextLexer
 
                 // Only the tooltip text is shown to the player: value= is the button's return
                 // value, src=/param= hold file names and numbers.
-                if (string.Equals(name, "title", StringComparison.OrdinalIgnoreCase) && valueEnd > valueStart)
+                if (extractHtmlTitle &&
+                    string.Equals(name, "title", StringComparison.OrdinalIgnoreCase) &&
+                    valueEnd > valueStart)
                 {
                     ScanAttributeText(valueStart, valueEnd);
                 }

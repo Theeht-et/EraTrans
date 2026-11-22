@@ -527,11 +527,6 @@ public sealed class DictionaryExtractor
         ConcurrentBag<string> generatedFiles,
         ConcurrentBag<string> warnings)
     {
-        if (options.ExtractionMode == ExtractionMode.Engine)
-        {
-            throw new NotSupportedException("引擎抽取模式尚未实现，请选择旧版或新版（仅可见文本）。");
-        }
-
         GameFile[] erbFiles = scannedFiles.Where(file => file.Kind == GameFileKind.Erb).ToArray();
         if (erbFiles.Length == 0)
         {
@@ -578,7 +573,6 @@ public sealed class DictionaryExtractor
         string modeName = mode switch
         {
             ExtractionMode.Lexer => "lexer",
-            ExtractionMode.Engine => "engine",
             _ => "legacy"
         };
 
@@ -614,7 +608,6 @@ public sealed class DictionaryExtractor
     private static string DescribeExtractionMode(string mode) => mode.ToLowerInvariant() switch
     {
         "lexer" => "新版（仅可见文本）",
-        "engine" => "新版（引擎）",
         _ => "旧版"
     };
 }

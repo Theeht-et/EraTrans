@@ -7,6 +7,44 @@ public sealed class VisibleTextLexerTests
 {
     private static readonly IReadOnlyCollection<string> NoMacros = Array.Empty<string>();
 
+    [Fact]
+    public void PrintButton_ConcatenatedLiteral_IsExtractedWithItsOwnSpan()
+    {
+        const string text = "@MENU\nPRINTBUTTON \"[\" + LOCALS + \"] 突撃\", 100\n";
+
+        VisibleTextFileResult result = Lex(text);
+
+        VisibleTextEntry entry = Assert.Single(result.Entries);
+        Assert.Equal("] 突撃", entry.Template);
+        Assert.Equal("] 突撃", Slice(text, entry.Span));
+        Assert.Equal("\"", text.Substring(entry.Span.Start - 1, 1));
+        Assert.Equal("\"", text.Substring(entry.Span.End, 1));
+    }
+
+    [Fact]
+    public void PrintForm_ConcatenatedLiteralInsidePlaceholder_IsExtracted()
+    {
+        const string text = "@SHOW\nPRINTFORML %GET_SCHOOL_NAME(MASTER) + \"所属\",24,LEFT%\n";
+
+        VisibleTextFileResult result = Lex(text);
+
+        VisibleTextEntry entry = Assert.Single(result.Entries);
+        Assert.Equal("所属", entry.Template);
+        Assert.Equal("所属", Slice(text, entry.Span));
+    }
+
+    [Fact]
+    public void PrintForm_SingleQuotedFormatString_IsNotDuplicated()
+    {
+        const string text = "@SHOW\nPRINTFORM %\"[901] - 先頭\",14,LEFT%\n";
+
+        VisibleTextFileResult result = Lex(text);
+
+        VisibleTextEntry entry = Assert.Single(result.Entries);
+        Assert.Equal("%\"[901] - 先頭\",14,LEFT%", entry.Template);
+        Assert.Equal("[901] - 先頭", Slice(text, Assert.Single(entry.Parts)));
+    }
+
     private static VisibleTextFileResult Lex(string text, IReadOnlyCollection<string>? macros = null)
     {
         return ErbVisibleTextLexer.ExtractFile("ERB/test.erb", text, macros ?? NoMacros);

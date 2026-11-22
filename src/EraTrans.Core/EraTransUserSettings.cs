@@ -32,7 +32,7 @@ public sealed class EraTransUserSettings
     public bool EnableErbSemanticGroupingTranslation { get; set; } = false;
 
     /// <summary>
-    /// Extractor used for the ERB branch: "legacy", "lexer" (visible text only) or "engine".
+    /// Extractor used for the ERB branch: "legacy" or "lexer" (visible text only).
     /// The CSV/RES/XML/ERD branches always use the legacy parsers.
     /// </summary>
     public string ErbExtractionMode { get; set; } = "legacy";
@@ -87,7 +87,6 @@ public sealed class EraTransUserSettings
     private static ExtractionMode ParseExtractionMode(string? mode) => mode?.Trim().ToLowerInvariant() switch
     {
         "lexer" => ExtractionMode.Lexer,
-        "engine" => ExtractionMode.Engine,
         _ => ExtractionMode.Legacy
     };
 
@@ -137,7 +136,6 @@ public sealed class EraTransUserSettings
         ErbExtractionMode = ErbExtractionMode?.Trim().ToLowerInvariant() switch
         {
             "lexer" => "lexer",
-            "engine" => "engine",
             _ => "legacy"
         };
 

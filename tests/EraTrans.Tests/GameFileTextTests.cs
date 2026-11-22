@@ -105,6 +105,45 @@ public sealed class GameFileTextTests : IDisposable
         Assert.Empty(detected.Preamble);
     }
 
+    [Fact]
+    public void Read_Utf16LeWithBom_DecodesAndRoundTripsBytes()
+    {
+        string content = "PRINTL こんにちは\r\n@MENU\r\nPRINTBUTTON \"[\" + LOCALS + \"] 突撃\", 100\r\n";
+        byte[] original = [0xFF, 0xFE, .. Encoding.Unicode.GetBytes(content)];
+        string path = WriteRaw("utf16.ERB", original);
+
+        GameFileText file = GameFileText.Read(path);
+
+        Assert.Equal(content, file.Text);
+        Assert.Equal([0xFF, 0xFE], file.Preamble);
+        Assert.Equal(Encoding.Unicode.CodePage, file.Encoding.CodePage);
+
+        file.Write(path);
+        Assert.Equal(original, File.ReadAllBytes(path));
+    }
+
+    [Fact]
+    public void DetectEncoding_RecognizesBomlessUtf16Le()
+    {
+        byte[] bytes = Encoding.Unicode.GetBytes("PRINTL こんにちは\r\n@MENU\r\nPRINTFORML おはよう\r\n");
+
+        DetectedEncoding detected = GameFileText.DetectEncoding(bytes);
+
+        Assert.Equal(Encoding.Unicode.CodePage, detected.Encoding.CodePage);
+        Assert.Equal(0, detected.BodyOffset);
+        Assert.Empty(detected.Preamble);
+    }
+
+    [Fact]
+    public void DetectEncoding_RecognizesBomlessUtf16Be()
+    {
+        byte[] bytes = Encoding.BigEndianUnicode.GetBytes("PRINTL こんにちは\r\n@MENU\r\nPRINTFORML おはよう\r\n");
+
+        DetectedEncoding detected = GameFileText.DetectEncoding(bytes);
+
+        Assert.Equal(Encoding.BigEndianUnicode.CodePage, detected.Encoding.CodePage);
+    }
+
     private string WriteRaw(string name, byte[] bytes)
     {
         string path = Path.Combine(_directory, name);

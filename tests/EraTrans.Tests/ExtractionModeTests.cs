@@ -112,17 +112,16 @@ public sealed class ExtractionModeTests
     }
 
     [Fact]
-    public void Extract_EngineMode_IsNotImplementedYet()
+    public void Settings_UnknownExtractionMode_FallsBackToLegacy()
     {
-        string root = CreateTempDirectory();
-        string game = Path.Combine(root, "Game");
-        string output = Path.Combine(root, "Output");
-        Write(game, "ERB/sample.erb", "@SAMPLE" + Environment.NewLine + "PRINTFORML 文本");
+        // Older settings files may still say "engine"; that mode was dropped, so such values
+        // must degrade to the legacy extractor instead of failing to load.
+        var settings = new EraTransUserSettings { ErbExtractionMode = "engine" };
 
-        Assert.Throws<NotSupportedException>(() => new DictionaryExtractor().Extract(
-            game,
-            output,
-            options: new EraParserOptions { ExtractionMode = ExtractionMode.Engine }));
+        settings.Validate();
+
+        Assert.Equal("legacy", settings.ErbExtractionMode);
+        Assert.Equal(ExtractionMode.Legacy, settings.ToParserOptions().ExtractionMode);
     }
 
     private static void Write(string root, string relativePath, string contents)

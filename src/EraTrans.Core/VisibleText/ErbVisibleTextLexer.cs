@@ -284,6 +284,23 @@ public static class ErbVisibleTextLexer
                     result.Add(Materialize(entry, normalizedRelativePath));
                 }
 
+                int argStart = tokenEnd2;
+                if (argStart < line.Length && IsSeparator(line[argStart]) && line[argStart] != ',')
+                {
+                    argStart++;
+                }
+
+                if (cls == "form")
+                {
+                    AddConcatLiteralEntriesInForm(
+                        line, argStart, line.Length, li, lineStart, functionName, token, normalizedRelativePath, result);
+                }
+                else if (cls == "str")
+                {
+                    AddConcatLiteralEntries(
+                        line, argStart, line.Length, li, lineStart, functionName, token, normalizedRelativePath, result);
+                }
+
                 AddVarRefs(line, scope, result, normalizedRelativePath);
                 TrackPrintLine(line, functionName, diagnostics, printedVars);
                 continue;
@@ -300,6 +317,24 @@ public static class ErbVisibleTextLexer
                     {
                         result.Add(Materialize(entry, normalizedRelativePath));
                     }
+
+                    int buttonStart = tokenEnd2;
+                    while (buttonStart < line.Length && char.IsWhiteSpace(line[buttonStart]))
+                    {
+                        buttonStart++;
+                    }
+
+                    int buttonComma = FindTopComma(line, buttonStart, line.Length);
+                    AddConcatLiteralEntries(
+                        line,
+                        buttonStart,
+                        buttonComma < 0 ? line.Length : buttonComma,
+                        li,
+                        lineStart,
+                        functionName,
+                        token,
+                        normalizedRelativePath,
+                        result);
 
                     AddVarRefs(line, scope, result, normalizedRelativePath);
                     TrackPrintLine(line, functionName, diagnostics, printedVars);
@@ -806,6 +841,147 @@ public static class ErbVisibleTextLexer
                 i++;
             }
         }
+    }
+
+    /// <summary>
+    /// <c>PRINTBUTTON "[" + LOCALS + "] 突撃", 100</c>: a quoted literal that is an operand of
+    /// <c>+</c> is text the player really sees, but it is not the whole argument, so the
+    /// "argument is a single string literal" paths miss it. Each such literal becomes an entry of
+    /// its own whose span covers only the characters inside the quotes, so write-back edits the
+    /// literal and leaves the surrounding expression (variables, function calls) untouched.
+    /// </summary>
+    private static void AddConcatLiteralEntries(
+        string line,
+        int start,
+        int end,
+        int lineIndex,
+        int lineStart,
+        string functionName,
+        string command,
+        string relativePath,
+        List<VisibleTextEntry> result)
+    {
+        int i = start;
+        while (i < end)
+        {
+            if (line[i] != '"')
+            {
+                i++;
+                continue;
+            }
+
+            int close = FindQuote(line, i, end);
+            if (close < 0)
+            {
+                return;
+            }
+
+            bool concatenated = PreviousNonSpace(line, i, start) == '+' || NextNonSpace(line, close + 1, end) == '+';
+            if (concatenated && close - i - 1 >= 2)
+            {
+                string text = line.Substring(i + 1, close - i - 1);
+                if (HasJapanese(text) && IsWorth(text))
+                {
+                    var span = new VisibleTextSpan(lineStart + i + 1, lineStart + close);
+                    if (!HasPartSpan(result, lineIndex + 1, span))
+                    {
+                        result.Add(new VisibleTextEntry(
+                            relativePath,
+                            lineIndex + 1,
+                            command,
+                            "print",
+                            text,
+                            new List<VisibleTextSpan> { span },
+                            span));
+                    }
+                }
+            }
+
+            i = close + 1;
+        }
+    }
+
+    /// <summary>Same as <see cref="AddConcatLiteralEntries"/>, but only inside <c>%...%</c> regions.</summary>
+    private static void AddConcatLiteralEntriesInForm(
+        string line,
+        int start,
+        int end,
+        int lineIndex,
+        int lineStart,
+        string functionName,
+        string command,
+        string relativePath,
+        List<VisibleTextEntry> result)
+    {
+        int i = start;
+        while (i < end)
+        {
+            if (line[i] != '%')
+            {
+                i++;
+                continue;
+            }
+
+            int close = SkipPercent(line, i, end);
+            AddConcatLiteralEntries(
+                line,
+                i + 1,
+                Math.Min(close - 1, end),
+                lineIndex,
+                lineStart,
+                functionName,
+                command,
+                relativePath,
+                result);
+            i = close;
+        }
+    }
+
+    private static bool HasPartSpan(List<VisibleTextEntry> entries, int line, VisibleTextSpan span)
+    {
+        foreach (VisibleTextEntry entry in entries)
+        {
+            if (entry.Line != line)
+            {
+                continue;
+            }
+
+            foreach (VisibleTextSpan part in entry.Parts)
+            {
+                if (part.Start == span.Start && part.End == span.End)
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static char PreviousNonSpace(string s, int index, int limit)
+    {
+        for (int i = index - 1; i >= limit; i--)
+        {
+            if (!char.IsWhiteSpace(s[i]))
+            {
+                return s[i];
+            }
+        }
+
+        return '\0';
+    }
+
+    private static char NextNonSpace(string s, int index, int limit)
+    {
+        for (int i = index; i < limit; i++)
+        {
+            if (!char.IsWhiteSpace(s[i]))
+            {
+                return s[i];
+            }
+        }
+
+        return '\0';
     }
 
     private static DraftEntry? BuildLineEntry(

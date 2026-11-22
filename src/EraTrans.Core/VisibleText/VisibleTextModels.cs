@@ -10,10 +10,7 @@ public enum ExtractionMode
     Legacy = 0,
 
     /// <summary>Line-oriented visible text lexer (this namespace).</summary>
-    Lexer = 1,
-
-    /// <summary>Reserved for a future engine-assisted mode.</summary>
-    Engine = 2
+    Lexer = 1
 }
 
 /// <summary>

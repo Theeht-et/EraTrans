@@ -78,6 +78,13 @@ public sealed class GameFileText
             return new DetectedEncoding(Encoding.BigEndianUnicode, [0xFE, 0xFF], 2);
         }
 
+        // UTF-16 without a BOM: every ASCII character leaves a 0x00 byte in the high position,
+        // which strict UTF-8 happily accepts, so this check has to run before the UTF-8 probe.
+        if (TryDetectBomlessUtf16(bytes, out DetectedEncoding utf16))
+        {
+            return utf16;
+        }
+
         try
         {
             StrictUtf8.GetString(bytes);
@@ -87,6 +94,54 @@ public sealed class GameFileText
         {
             return new DetectedEncoding(GetShiftJis(), [], 0);
         }
+    }
+
+    /// <summary>
+    /// Detects BOM-less UTF-16 by looking at where the zero bytes fall: UTF-16LE ASCII text keeps
+    /// 0x00 in every odd position, UTF-16BE in every even one. Real ERB scripts are mostly ASCII
+    /// syntax with Japanese literals, so a quarter of the stream being zero bytes in one lane and
+    /// almost none in the other is a reliable signal.
+    /// </summary>
+    private static bool TryDetectBomlessUtf16(ReadOnlySpan<byte> bytes, out DetectedEncoding detected)
+    {
+        detected = default;
+        if (bytes.Length < 16 || bytes.Length % 2 != 0)
+        {
+            return false;
+        }
+
+        int evenZeros = 0;
+        int oddZeros = 0;
+        for (int i = 0; i < bytes.Length; i += 2)
+        {
+            if (bytes[i] == 0)
+            {
+                evenZeros++;
+            }
+
+            if (bytes[i + 1] == 0)
+            {
+                oddZeros++;
+            }
+        }
+
+        int pairs = bytes.Length / 2;
+        int laneThreshold = pairs / 4;
+        int otherThreshold = Math.Max(1, pairs / 50);
+
+        if (oddZeros >= laneThreshold && evenZeros <= otherThreshold)
+        {
+            detected = new DetectedEncoding(Encoding.Unicode, [], 0);
+            return true;
+        }
+
+        if (evenZeros >= laneThreshold && oddZeros <= otherThreshold)
+        {
+            detected = new DetectedEncoding(Encoding.BigEndianUnicode, [], 0);
+            return true;
+        }
+
+        return false;
     }
 
     private static Encoding GetShiftJis()

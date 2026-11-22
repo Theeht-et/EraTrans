@@ -80,35 +80,12 @@
                 </ListView.GroupStyle>
                 <ListView.ItemTemplate>
                     <DataTemplate>
-                        <Grid Margin="2,1">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="{Binding DisplayName}"
-                                       VerticalAlignment="Center"
-                                       FontSize="13"
-                                       FontWeight="SemiBold"
-                                       Foreground="#20242A"
-                                       TextTrimming="CharacterEllipsis" />
-                            <StackPanel Grid.Column="1"
-                                        Orientation="Horizontal"
-                                        VerticalAlignment="Center"
-                                        HorizontalAlignment="Right"
-                                        Margin="14,0,4,0">
-                                <TextBlock Text="{Binding ContextLimitLabel}"
-                                           VerticalAlignment="Center"
-                                           FontSize="11"
-                                           FontWeight="SemiBold"
-                                           Foreground="#39414A" />
-                                <TextBlock Text="{Binding ReasoningSupportDescription}"
-                                           Margin="12,0,0,0"
-                                           VerticalAlignment="Center"
-                                           FontSize="11"
-                                           FontWeight="SemiBold"
-                                           Foreground="#39414A" />
-                            </StackPanel>
-                        </Grid>
+                        <TextBlock Text="{Binding DisplayName}"
+                                   VerticalAlignment="Center"
+                                   FontSize="13"
+                                   FontWeight="SemiBold"
+                                   Foreground="#20242A"
+                                   TextTrimming="CharacterEllipsis" />
                     </DataTemplate>
                 </ListView.ItemTemplate>
             </ListView>

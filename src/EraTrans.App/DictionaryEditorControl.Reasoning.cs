@@ -8,6 +8,10 @@ namespace EraTrans.App;
 /// Reasoning is a per-provider request switch: Auto keeps the provider default,
 /// On/Off append the field that provider documents. The choice is stored per
 /// provider id and applied to every translation request of that provider.
+///
+/// The selector stays usable even while a provider is only half configured, and
+/// it explains itself when there is no provider at all: a disabled control tells
+/// the user nothing.
 /// </summary>
 public partial class DictionaryEditorControl
 {
@@ -41,7 +45,7 @@ public partial class DictionaryEditorControl
         AiProviderProfile? profile = TryGetEditingProvider();
         if (profile is null)
         {
-            StatusTextBlock.Text = "还没有 AI 服务：请先在“AI 服务设置”里添加或启用一个服务商。";
+            StatusTextBlock.Text = "推理设置没有保存：当前没有任何 AI 服务商，请先在“AI 服务设置”里添加一个。";
             SyncReasoningSelection();
             return;
         }
@@ -100,11 +104,13 @@ public partial class DictionaryEditorControl
                 }
             }
 
-            AiReasoningComboBox.IsEnabled = profile is not null && !_isTranslating;
+            // Never disabled while idle: with no provider the click itself explains
+            // why the choice cannot be stored yet.
+            AiReasoningComboBox.IsEnabled = !_isTranslating;
 
             if (profile is null)
             {
-                AiReasoningComboBox.ToolTip = "还没有 AI 服务：请先在“AI 服务设置”里添加或启用一个服务商。";
+                AiReasoningComboBox.ToolTip = "还没有 AI 服务商：先添加一个服务，再选择这个模型是否开启推理。";
                 return;
             }
 

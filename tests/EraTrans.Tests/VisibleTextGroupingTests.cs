@@ -57,6 +57,51 @@ public sealed class VisibleTextGroupingTests
     }
 
     [Fact]
+    public void Extract_SplitsScreensAtWaitAndThePlannerPacksByScreen()
+    {
+        string root = CreateTempRoot();
+        try
+        {
+            string gameDirectory = Path.Combine(root, "game");
+            string dictionaryRoot = Path.Combine(root, "out", "字典");
+            Directory.CreateDirectory(Path.Combine(gameDirectory, "ERB"));
+            File.WriteAllText(
+                Path.Combine(gameDirectory, "ERB", "screen.erb"),
+                "@TALK\r\nPRINTL おはよう\r\nPRINTL いい天気だ\r\nWAIT\r\nPRINTL さようなら\r\n",
+                new UTF8Encoding(false));
+
+            new VisibleTextExtractor().Extract(
+                gameDirectory,
+                dictionaryRoot,
+                "ERB",
+                new EraParserOptions { WriteContext = false });
+
+            string dictionaryPath = Path.Combine(dictionaryRoot, "ERB", "screen.json");
+            var document = new DictionaryEditorService().Load(dictionaryPath);
+            var grouping = new ErbTranslationGroupingService();
+            Assert.True(
+                grouping.TryLoad(dictionaryRoot, dictionaryPath, document.Entries, gameDirectory, out var index, out string? reason),
+                reason);
+
+            Assert.Equal("screen", index!.Packing);
+            Assert.Equal(3, index.Entries.Count);
+            Assert.Equal(index.Entries[0].ControlScopeId, index.Entries[1].ControlScopeId);
+            Assert.NotEqual(index.Entries[1].ControlScopeId, index.Entries[2].ControlScopeId);
+
+            var lines = document.Entries
+                .Select((entry, position) => new WindowSourceLine(position, entry.Key, entry.Original, true))
+                .ToArray();
+            WindowPlan plan = new SequentialTranslationPlanner().Build(lines, index);
+            Assert.Equal(3, plan.TargetLineCount);
+            Assert.Equal(2, plan.FunctionCount);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public void TryWrite_LeavesNoSidecarWhenTheDictionaryIsMissing()
     {
         string root = CreateTempRoot();

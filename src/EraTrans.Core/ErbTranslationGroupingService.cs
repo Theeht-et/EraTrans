@@ -69,7 +69,8 @@ public sealed record ErbTranslationGroupingIndex(
     string DictionaryFile,
     string DictionaryFingerprint,
     IReadOnlyList<ErbTranslationGroup> Groups,
-    IReadOnlyList<ErbTranslationGroupEntry> Entries);
+    IReadOnlyList<ErbTranslationGroupEntry> Entries,
+    string? Packing = null);
 
 public sealed record ErbTranslationBatch(
     IReadOnlyList<DictionaryEditorEntry> Targets,
@@ -104,7 +105,8 @@ public sealed class ErbTranslationGroupingService
         IReadOnlyList<ErbTranslationSourceEntry> sourceEntries,
         IReadOnlyList<ErbTranslationControlMarker> controlMarkers,
         out string sidecarPath,
-        out string? warning)
+        out string? warning,
+        string? packing = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(dictionaryDirectory);
         ArgumentException.ThrowIfNullOrWhiteSpace(dictionaryFilePath);
@@ -213,7 +215,8 @@ public sealed class ErbTranslationGroupingService
             NormalizeRelativePath(dictionaryRelativePath),
             ComputeFingerprint(currentEntries),
             groupBuild.Groups,
-            entryRecords);
+            entryRecords,
+            packing);
 
         try
         {

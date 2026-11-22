@@ -1,28 +1,29 @@
-using EraTrans.Core.WriteBack;
-
 namespace EraTrans.Core.VisibleText;
 
 /// <summary>
 /// Derives the ERB AI grouping sidecar (<c>AI上下文/*.groups.json</c>) for a dictionary
 /// produced by <see cref="VisibleTextExtractor"/>.
 /// <para>
-/// The legacy extractor writes that sidecar itself, and <see cref="SequentialTranslationPlanner"/>
-/// only translates entries that appear in it. Lexer-mode dictionaries therefore need the same
-/// sidecar, built from the information the lexer already has: the enclosing ERB function of
-/// every visible entry. Grouping into screens happens later; for now the function is the group
-/// boundary, which is exactly what the planner packs windows by.
+/// The legacy extractor writes that sidecar itself, and the translation window planner only
+/// translates entries that appear in it. Lexer-mode dictionaries therefore need the same
+/// sidecar, built from the information the lexer already has: the function, branch and screen
+/// of every visible entry. Screens (see <see cref="VisibleTextScreenMap"/>) are the packing
+/// unit, so all text the player reads at once reaches the model together.
 /// </para>
 /// </summary>
 public static class VisibleTextGrouping
 {
-    private static readonly ErbTranslationGroupingService Service = new();
-
-    /// <summary>Commands that wait for the player, so they end the visible block before them.</summary>
+    /// <summary>Commands that wait for the player, so the next text belongs to a new screen.</summary>
     private static readonly HashSet<string> InteractionCommands = new(StringComparer.OrdinalIgnoreCase)
     {
         "WAIT", "WAITKEY", "TWAIT", "INPUT", "INPUTS", "BINPUT", "CLEARLINE", "PRINTBUTTON",
         "PRINTBUTTONC", "PRINTBUTTONLC", "QUIT", "FORCE_QUIT"
     };
+
+    private static readonly ErbTranslationGroupingService Service = new();
+
+    /// <summary>Marker written into the sidecar so the planner packs by screen instead of by function.</summary>
+    public const string ScreenPacking = "screen";
 
     /// <summary>
     /// Writes <c>AI上下文/&lt;relative path&gt;.groups.json</c> for one dictionary file.
@@ -43,26 +44,26 @@ public static class VisibleTextGrouping
             return null;
         }
 
-        Dictionary<int, string> functions = BuildFunctionMap(sourceText);
+        Dictionary<int, ScreenLayout> layout = VisibleTextScreenMap.Build(sourceText);
         var sourceEntries = new List<ErbTranslationSourceEntry>(entries.Count);
         for (int index = 0; index < entries.Count; index++)
         {
             VisibleTextEntry entry = entries[index];
-            string functionId = ResolveFunction(functions, entry.Line);
+            ScreenLayout position = VisibleTextScreenMap.Resolve(layout, entry.Line);
             sourceEntries.Add(new ErbTranslationSourceEntry(
                 Key: BuildKey(relativePath, index),
                 Original: entry.Template,
                 Sequence: index,
                 ParsedLine: entry.Line,
-                FunctionId: functionId,
+                FunctionId: position.FunctionId,
                 OutputType: MapOutputType(entry.Kind, entry.Command),
-                BranchPath: string.Empty,
-                ControlScopeId: string.Empty,
-                BranchLabel: string.Empty,
+                BranchPath: position.BranchPath,
+                ControlScopeId: position.ScreenId,
+                BranchLabel: position.BranchLabel,
                 CallTarget: null));
         }
 
-        IReadOnlyList<ErbTranslationControlMarker> markers = BuildControlMarkers(functions, sourceText);
+        IReadOnlyList<ErbTranslationControlMarker> markers = BuildControlMarkers(layout, sourceText);
         string fingerprint;
         try
         {
@@ -84,7 +85,8 @@ public static class VisibleTextGrouping
             sourceEntries,
             markers,
             out string sidecarPath,
-            out warning);
+            out warning,
+            packing: ScreenPacking);
         return written ? sidecarPath : null;
     }
 
@@ -92,60 +94,8 @@ public static class VisibleTextGrouping
     internal static string BuildKey(string relativePath, int index) =>
         VisibleTextExtractor.BuildKey(relativePath, index);
 
-    /// <summary>Maps 1-based line numbers to the ERB function (<c>@NAME</c>) that contains them.</summary>
-    internal static Dictionary<int, string> BuildFunctionMap(string text)
-    {
-        var map = new Dictionary<int, string>();
-        string current = "(global)";
-        int lineNumber = 0;
-        int start = 0;
-        while (start <= text.Length)
-        {
-            int newline = text.IndexOf('\n', start);
-            string line = newline < 0 ? text[start..] : text[start..newline];
-            lineNumber++;
-            string trimmed = line.TrimStart();
-            if (trimmed.StartsWith('@') && trimmed.Length > 1)
-            {
-                string name = ReadFunctionName(trimmed);
-                if (name.Length > 0)
-                {
-                    current = name;
-                }
-            }
-
-            map[lineNumber] = current;
-            if (newline < 0)
-            {
-                break;
-            }
-
-            start = newline + 1;
-        }
-
-        return map;
-    }
-
-    private static string ReadFunctionName(string trimmedLine)
-    {
-        int index = 1;
-        while (index < trimmedLine.Length &&
-               !char.IsWhiteSpace(trimmedLine[index]) &&
-               trimmedLine[index] != '(' &&
-               trimmedLine[index] != ',' &&
-               trimmedLine[index] != ';')
-        {
-            index++;
-        }
-
-        return trimmedLine[1..index];
-    }
-
-    private static string ResolveFunction(Dictionary<int, string> functions, int line) =>
-        functions.TryGetValue(line, out string? functionId) ? functionId : "(global)";
-
     private static IReadOnlyList<ErbTranslationControlMarker> BuildControlMarkers(
-        Dictionary<int, string> functions,
+        Dictionary<int, ScreenLayout> layout,
         string text)
     {
         var markers = new List<ErbTranslationControlMarker>();
@@ -160,10 +110,11 @@ public static class VisibleTextGrouping
             string command = ReadCommand(trimmed);
             if (InteractionCommands.Contains(command))
             {
+                ScreenLayout position = VisibleTextScreenMap.Resolve(layout, lineNumber);
                 markers.Add(new ErbTranslationControlMarker(
                     lineNumber,
-                    ResolveFunction(functions, lineNumber),
-                    string.Empty,
+                    position.FunctionId,
+                    position.BranchPath,
                     command.ToUpperInvariant()));
             }
 
@@ -204,7 +155,6 @@ public static class VisibleTextGrouping
             : command.Equals("PUTFORM", StringComparison.OrdinalIgnoreCase)
                 ? "PUTFORM"
                 : "PRINT",
-        "var" => "PRINT",
         _ => "PRINT"
     };
 }

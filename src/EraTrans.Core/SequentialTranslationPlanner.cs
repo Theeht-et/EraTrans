@@ -90,7 +90,8 @@ public sealed class SequentialTranslationPlanner
         if (sources.Count == 0)
             return new WindowPlan([], 0, 0, 0, 0, 0);
 
-        List<List<SourceItem>> runs = BuildFunctionRuns(sources);
+        bool screenPacking = string.Equals(index.Packing, "screen", StringComparison.OrdinalIgnoreCase);
+        List<List<SourceItem>> runs = BuildFunctionRuns(sources, screenPacking);
         Dictionary<string, int> joinByKey = BuildJoinSignals(sources);
         Dictionary<string, string> altByKey = BuildAltGroups(runs);
 
@@ -197,14 +198,27 @@ public sealed class SequentialTranslationPlanner
             allLines.Count(line => line.AltGroup is not null));
     }
 
-    private static List<List<SourceItem>> BuildFunctionRuns(List<SourceItem> sources)
+    private static List<List<SourceItem>> BuildFunctionRuns(List<SourceItem> sources, bool screenPacking)
     {
         var runs = new List<List<SourceItem>>();
         foreach (SourceItem item in sources)
         {
-            string functionId = item.Link.FunctionId;
-            if (runs.Count == 0 ||
-                !string.Equals(runs[^1][^1].Link.FunctionId, functionId, StringComparison.Ordinal))
+            bool startsRun = runs.Count == 0;
+            if (!startsRun)
+            {
+                SourceItem previous = runs[^1][^1];
+                startsRun = !string.Equals(previous.Link.FunctionId, item.Link.FunctionId, StringComparison.Ordinal);
+                if (!startsRun && screenPacking && !string.IsNullOrWhiteSpace(item.Link.ControlScopeId))
+                {
+                    // One screen is one packing unit: text shown together stays together.
+                    startsRun = !string.Equals(
+                        previous.Link.ControlScopeId,
+                        item.Link.ControlScopeId,
+                        StringComparison.Ordinal);
+                }
+            }
+
+            if (startsRun)
             {
                 runs.Add([]);
             }

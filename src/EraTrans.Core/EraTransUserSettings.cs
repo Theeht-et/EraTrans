@@ -15,6 +15,10 @@ public sealed class EraTransUserSettings
     public const int DefaultWindowCharacters = 3000;
     public const int DefaultWindowLines = 60;
 
+    public const int MinimumTranslationConcurrency = 1;
+    public const int MaximumTranslationConcurrency = 50;
+    public const int DefaultTranslationConcurrency = 1;
+
     public string FileEncodingId { get; set; } = "utf8-bom";
     public bool ForceFilterVariableNames { get; set; } = true;
     public bool AutoOpenFolder { get; set; } = true;
@@ -33,6 +37,12 @@ public sealed class EraTransUserSettings
     /// </summary>
     public int WindowMaxCharacters { get; set; } = DefaultWindowCharacters;
     public int WindowMaxLines { get; set; } = DefaultWindowLines;
+
+    /// <summary>
+    /// How many translation requests may be in flight at the same time. 1 keeps
+    /// the previous strictly sequential behaviour.
+    /// </summary>
+    public int TranslationConcurrency { get; set; } = DefaultTranslationConcurrency;
 
     // Last opened workspace. Empty values keep older settings files fully compatible.
     public string LastGameDirectory { get; set; } = string.Empty;
@@ -109,12 +119,14 @@ public sealed class EraTransUserSettings
             throw new InvalidDataException($"不支持的文件编码设置：{FileEncodingId}");
         }
 
-        // Keep older settings files usable: an out-of-range window size falls back
-        // to the allowed range instead of failing to load.
+        // Keep older settings files usable: an out-of-range number falls back into
+        // the allowed range instead of failing to load.
         WindowMaxCharacters = Math.Clamp(
             WindowMaxCharacters, MinimumWindowCharacters, MaximumWindowCharacters);
         WindowMaxLines = Math.Clamp(
             WindowMaxLines, MinimumWindowLines, MaximumWindowLines);
+        TranslationConcurrency = Math.Clamp(
+            TranslationConcurrency, MinimumTranslationConcurrency, MaximumTranslationConcurrency);
 
         ValidateList(TargetFileExtensions, "游戏文件扩展名", value =>
             value.StartsWith(".", StringComparison.Ordinal) &&

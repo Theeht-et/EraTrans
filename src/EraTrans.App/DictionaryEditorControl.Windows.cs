@@ -1,4 +1,5 @@
 using EraTrans.Core;
+using System.Collections.Concurrent;
 using System.Windows;
 
 namespace EraTrans.App;
@@ -11,6 +12,9 @@ namespace EraTrans.App;
 ///   no ordering analysis at all;
 /// * ordered windows (the switch is on): consecutive ERB functions in source order,
 ///   never cutting a function in half.
+///
+/// Requests may run in parallel; results are applied on the UI thread as each one
+/// completes, so the grid fills in progressively.
 /// </summary>
 public partial class DictionaryEditorControl
 {
@@ -30,6 +34,11 @@ public partial class DictionaryEditorControl
         _settings.WindowMaxLines,
         EraTransUserSettings.MinimumWindowLines,
         EraTransUserSettings.MaximumWindowLines);
+
+    private int TranslationConcurrency => Math.Clamp(
+        _settings.TranslationConcurrency,
+        EraTransUserSettings.MinimumTranslationConcurrency,
+        EraTransUserSettings.MaximumTranslationConcurrency);
 
     /// <summary>Entry point used by both translate buttons.</summary>
     private async Task TranslateWindowsAsync(IReadOnlyList<DictionaryEditorEntry> entries)
@@ -193,6 +202,7 @@ public partial class DictionaryEditorControl
             return;
 
         var entriesByIndex = _document.Entries.ToDictionary(entry => entry.Index);
+        int concurrency = Math.Min(TranslationConcurrency, windows.Count);
 
         using var cancellation = new CancellationTokenSource();
         _translationCancellation = cancellation;
@@ -200,50 +210,69 @@ public partial class DictionaryEditorControl
         SetTranslationControlsEnabled(false);
         UpdateDocumentStatus();
 
+        var pending = new ConcurrentQueue<TranslationWindow>(windows);
         int applied = 0;
         int skipped = 0;
-        int requestNumber = 0;
+        int completed = 0;
         int totalRequests = windows.Count;
         int totalLines = windows.Sum(window => window.TargetCount);
+        Exception? failure = null;
 
         StatusTextBlock.Text = skippedSplitFunctions > 0
-            ? $"准备{statusPrefix}：{totalRequests} 个请求，{totalLines} 行；被切开的函数 {skippedSplitFunctions} 个。"
-            : $"准备{statusPrefix}：{totalRequests} 个请求，{totalLines} 行。";
+            ? $"准备{statusPrefix}：{totalRequests} 个请求，{totalLines} 行；被切开的函数 {skippedSplitFunctions} 个；并发 {concurrency}。"
+            : $"准备{statusPrefix}：{totalRequests} 个请求，{totalLines} 行；并发 {concurrency}。";
 
-        try
+        // Each worker pulls the next request when it becomes free. Continuations run
+        // on the UI thread, so applying results and refreshing the grid is safe.
+        async Task WorkerAsync()
         {
-            foreach (TranslationWindow window in windows)
+            while (failure is null && pending.TryDequeue(out TranslationWindow? window))
             {
                 cancellation.Token.ThrowIfCancellationRequested();
-                requestNumber++;
-
-                StatusTextBlock.Text = batchSize > 0
-                    ? $"{statusPrefix}：第 {requestNumber}/{totalRequests} 批，本批 {window.TargetCount} 行……"
-                    : $"{statusPrefix}：窗口 {requestNumber}/{totalRequests}（{window.FunctionId}，本窗 {window.TargetCount} 行）……";
 
                 WindowTranslationOutcome outcome = await _translationService.TranslateWindowAsync(
-                    profile, window, reasoning: null, cancellation.Token);
-                ApplyOutcome(outcome, entriesByIndex, ref applied, ref skipped);
+                    profile, window!, reasoning: null, cancellation.Token);
+                ApplyWindowResults(outcome, entriesByIndex);
 
                 if (outcome.MissingIds.Count > 0)
                 {
                     // Only the unanswered lines are sent again, so a partially broken
                     // answer never wastes the whole request.
-                    TranslationWindow retry = RetryWindowForIds(window, outcome.MissingIds);
+                    TranslationWindow retry = RetryWindowForIds(window!, outcome.MissingIds);
                     WindowTranslationOutcome retryOutcome = await _translationService.TranslateWindowAsync(
                         profile, retry, reasoning: null, cancellation.Token);
-                    ApplyOutcome(retryOutcome, entriesByIndex, ref applied, ref skipped);
-
-                    if (retryOutcome.MissingIds.Count > 0)
-                    {
-                        skipped += retryOutcome.MissingIds.Count;
-                        StatusTextBlock.Text =
-                            $"第 {requestNumber} 次请求：{retryOutcome.MissingIds.Count} 行未返回译文，已跳过。";
-                    }
+                    ApplyWindowResults(retryOutcome, entriesByIndex);
                 }
+
+                completed++;
+                StatusTextBlock.Text =
+                    $"{statusPrefix}：已完成 {completed}/{totalRequests} 个请求" +
+                    $"（并发 {concurrency}），回填 {applied} 行，跳过 {skipped} 行。";
 
                 EntriesDataGrid.Items.Refresh();
                 UpdateDocumentStatus();
+            }
+        }
+
+        try
+        {
+            Task[] workers = Enumerable.Range(0, concurrency)
+                .Select(_ => WorkerAsync())
+                .ToArray();
+
+            try
+            {
+                await Task.WhenAll(workers);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                failure = ex;
+                cancellation.Cancel();
+                throw;
             }
 
             StatusTextBlock.Text =
@@ -252,11 +281,13 @@ public partial class DictionaryEditorControl
         }
         catch (OperationCanceledException)
         {
-            StatusTextBlock.Text = $"翻译已取消：已回填 {applied} 行，尚未自动保存。";
+            StatusTextBlock.Text =
+                $"翻译已取消：已完成 {completed}/{totalRequests} 个请求，回填 {applied} 行，尚未自动保存。";
         }
         catch (Exception ex)
         {
-            StatusTextBlock.Text = $"翻译中断：已回填 {applied} 行，尚未自动保存。";
+            StatusTextBlock.Text =
+                $"翻译中断：已完成 {completed}/{totalRequests} 个请求，回填 {applied} 行，尚未自动保存。";
             MessageBox.Show(OwnerWindow, ex.Message, "AI 翻译失败",
                 MessageBoxButton.OK, MessageBoxImage.Error);
         }
@@ -270,6 +301,25 @@ public partial class DictionaryEditorControl
             UpdateProviderStatus();
         }
     }
+
+    private void ApplyWindowResults(
+        WindowTranslationOutcome outcome,
+        IReadOnlyDictionary<int, DictionaryEditorEntry> entriesByIndex)
+    {
+        foreach (AiTranslationResult result in outcome.Translations)
+        {
+            if (!entriesByIndex.TryGetValue(result.Id, out DictionaryEditorEntry? entry))
+                continue;
+
+            if (entry.TryApplyAiTranslation(entry.Key, entry.Original, result.Translation))
+                appliedCount++;
+            else
+                skippedCount++;
+        }
+    }
+
+    private int appliedCount;
+    private int skippedCount;
 
     private bool TryGetTranslationProfile(out AiProviderProfile? profile)
     {
@@ -317,24 +367,6 @@ public partial class DictionaryEditorControl
             .ToArray();
 
         return _windowPlanner.Build(sources, _activeGroupingIndex, WindowMaxCharacters, WindowMaxLines);
-    }
-
-    private void ApplyOutcome(
-        WindowTranslationOutcome outcome,
-        IReadOnlyDictionary<int, DictionaryEditorEntry> entriesByIndex,
-        ref int applied,
-        ref int skipped)
-    {
-        foreach (AiTranslationResult result in outcome.Translations)
-        {
-            if (!entriesByIndex.TryGetValue(result.Id, out DictionaryEditorEntry? entry))
-                continue;
-
-            if (entry.TryApplyAiTranslation(entry.Key, entry.Original, result.Translation))
-                applied++;
-            else
-                skipped++;
-        }
     }
 
     private static TranslationWindow RetryWindowForIds(

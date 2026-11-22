@@ -89,7 +89,7 @@ public sealed class TranslationApplierTests
         var result = new TranslationApplier().Apply(game, dictionaries, output);
 
         string copy = Path.Combine(output, "resources", "sprites.csv");
-        string expected = string.Join(Environment.NewLine,
+        string expected = string.Join("\n",
         [
             "龙图标,32,64",
             ";SpriteB,comment",

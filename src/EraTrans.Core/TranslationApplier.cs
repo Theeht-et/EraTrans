@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
+using EraTrans.Core.WriteBack;
 using Newtonsoft.Json.Linq;
 
 namespace EraTrans.Core;
@@ -12,7 +13,14 @@ public sealed record TranslationApplyResult(
     IReadOnlyList<string> CopiedFiles,
     IReadOnlyList<string> ModifiedFiles,
     IReadOnlyList<RenamedGameFile> RenamedFiles,
-    IReadOnlyList<string> Warnings);
+    IReadOnlyList<string> Warnings)
+{
+    /// <summary>Entries written through exact position sidecars (no global search).</summary>
+    public int SpanReplacedCount { get; init; }
+
+    /// <summary>Entries written by whole-file source matching (legacy path).</summary>
+    public int FallbackReplacedCount { get; init; }
+}
 
 /// <summary>
 /// Applies translated dictionaries only to copies of game files in a separate workspace.
@@ -24,7 +32,8 @@ public sealed class TranslationApplier
         string gameDirectory,
         string dictionaryDirectory,
         string outputDirectory,
-        EraParserOptions? options = null)
+        EraParserOptions? options = null,
+        SpanCatalog? spanCatalog = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(gameDirectory);
         ArgumentException.ThrowIfNullOrWhiteSpace(dictionaryDirectory);
@@ -60,6 +69,7 @@ public sealed class TranslationApplier
             GameFileWorkspace.CopyDirectoryForModification(gameRoot, outputRoot);
 
         var warnings = new ConcurrentBag<string>();
+        var spanCatalogResolved = spanCatalog ?? SpanCatalog.LoadFromSidecar(dictionaryRoot, warnings.Add);
         var copiedBySource = new ConcurrentDictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (string destinationPath in copiedDestinationFiles)
         {
@@ -69,7 +79,9 @@ public sealed class TranslationApplier
         }
 
         var modifiedFiles = new ConcurrentBag<string>();
-        var operations = BuildOperations(gameRoot, dictionaryRoot, outputRoot, parserOptions, warnings);
+        var operations = BuildOperations(gameRoot, dictionaryRoot, outputRoot, parserOptions, spanCatalogResolved, warnings);
+        int spanReplaced = 0;
+        int fallbackReplaced = 0;
 
         Parallel.ForEach(operations, operation =>
         {
@@ -81,13 +93,46 @@ public sealed class TranslationApplier
                     throw new IOException("完整游戏副本中缺少待处理文件。");
                 }
 
-                string content = File.ReadAllText(operation.DestinationPath, parserOptions.FileEncoding);
-                string translated = operation.IsResourceCsv
-                    ? TranslateResourceConfig(content, operation.ResourceReplacements!)
-                    : RegexReplace(content, operation.ReplacementPlan);
+                GameFileText file = GameFileText.Read(operation.DestinationPath);
+                string content = file.Text;
+                string translated = content;
 
-                File.WriteAllText(operation.DestinationPath, translated, parserOptions.FileEncoding);
-                modifiedFiles.Add(operation.DestinationPath);
+                if (operation.SpanSeeds is { } seeds)
+                {
+                    string newLine = DetectNewLine(content);
+                    SpanEdit[] edits = seeds
+                        .Select(seed => new SpanEdit(
+                            seed.Key,
+                            seed.Span,
+                            seed.Original,
+                            NormalizeReplacement(seed.Translation, newLine)))
+                        .ToArray();
+
+                    SpanApplyResult spanResult = SpanApplier.Apply(content, edits);
+                    translated = spanResult.Text;
+                    Interlocked.Add(ref spanReplaced, spanResult.AppliedCount);
+                    foreach (string warning in spanResult.Warnings)
+                    {
+                        warnings.Add($"按位置写回：{operation.RelativePath} - {warning}");
+                    }
+                }
+                else if (operation.IsResourceCsv)
+                {
+                    translated = TranslateResourceConfig(content, operation.ResourceReplacements!);
+                }
+                else if (operation.ReplacementPlan is not null)
+                {
+                    translated = RegexReplace(content, operation.ReplacementPlan);
+                }
+
+                if (!string.Equals(translated, content, StringComparison.Ordinal))
+                {
+                    file.Text = translated;
+                    file.Write(operation.DestinationPath);
+                    modifiedFiles.Add(operation.DestinationPath);
+                }
+
+                Interlocked.Add(ref fallbackReplaced, operation.FallbackEntryCount);
             }
             catch (Exception ex)
             {
@@ -137,7 +182,11 @@ public sealed class TranslationApplier
                 .ToArray(),
             warnings
                 .OrderBy(warning => warning, StringComparer.Ordinal)
-                .ToArray());
+                .ToArray())
+        {
+            SpanReplacedCount = spanReplaced,
+            FallbackReplacedCount = fallbackReplaced
+        };
     }
 
     private static List<FileApplyOperation> BuildOperations(
@@ -145,6 +194,7 @@ public sealed class TranslationApplier
         string dictionaryRoot,
         string outputRoot,
         EraParserOptions options,
+        SpanCatalog spanCatalog,
         ConcurrentBag<string> warnings)
     {
         var operations = new List<FileApplyOperation>();
@@ -162,6 +212,14 @@ public sealed class TranslationApplier
             // The ERD name dictionary is consumed by the rename pass, not applied to a
             // same-named game script.
             if (normalizedRelativePath.Equals("CSV/ERD字典.json", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            // AI sidecars (grouping/locate files) share the output tree but are not dictionaries.
+            if (normalizedRelativePath.StartsWith("AI上下文/", StringComparison.OrdinalIgnoreCase) ||
+                normalizedRelativePath.EndsWith(".spans.json", StringComparison.OrdinalIgnoreCase) ||
+                normalizedRelativePath.EndsWith(".groups.json", StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }
@@ -226,17 +284,87 @@ public sealed class TranslationApplier
                     continue;
                 }
 
+                List<SpanSeed>? spanSeeds = null;
+                int fallbackEntryCount = 0;
+
+                if (!isResourceCsv && spanCatalog.TryGetSpans(relativeGamePath, out IReadOnlyDictionary<string, TextSpan> spansByKey))
+                {
+                    // The file has an extraction sidecar: only exact-position edits are allowed,
+                    // otherwise a global replace could hit the same text in unrelated lines.
+                    spanSeeds = BuildSpanSeeds(jsonArray, spansByKey, relativeGamePath, warnings);
+                }
+                else
+                {
+                    fallbackEntryCount = jsonArray.Children<JObject>().Count(entry => GetStage(entry) > 0);
+                }
+
                 operations.Add(new FileApplyOperation(
                     relativeGamePath,
                     sourcePath,
                     destinationPath,
                     isResourceCsv,
                     replacementPlan,
-                    resourceReplacements));
+                    resourceReplacements,
+                    spanSeeds,
+                    fallbackEntryCount));
             }
         }
 
         return operations;
+    }
+
+    private static List<SpanSeed> BuildSpanSeeds(
+        JArray jsonArray,
+        IReadOnlyDictionary<string, TextSpan> spansByKey,
+        string relativeGamePath,
+        ConcurrentBag<string> warnings)
+    {
+        var seeds = new List<SpanSeed>();
+        int unlocated = 0;
+
+        foreach (JObject entry in jsonArray.Children<JObject>())
+        {
+            if (GetStage(entry) <= 0)
+            {
+                continue;
+            }
+
+            string? key = entry["key"]?.ToString();
+            string translation = entry["translation"]?.ToString() ?? string.Empty;
+            if (key is null || !spansByKey.TryGetValue(key, out TextSpan span))
+            {
+                unlocated++;
+                continue;
+            }
+
+            if (translation.Length == 0)
+            {
+                continue;
+            }
+
+            seeds.Add(new SpanSeed(key, span, entry["original"]?.ToString() ?? string.Empty, translation));
+        }
+
+        if (unlocated > 0)
+        {
+            warnings.Add($"按位置写回：{relativeGamePath} 有 {unlocated} 条已翻译词条缺少定位信息，本次未写入");
+        }
+
+        return seeds;
+    }
+
+    private static string DetectNewLine(string content)
+    {
+        return content.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+    }
+
+    private static string NormalizeReplacement(string translation, string newLine)
+    {
+        string text = translation
+            .Replace("\r\n", "\n")
+            .Replace('\r', '\n')
+            .Replace("<Tab>", "\t");
+        return newLine == "\n" ? text : text.Replace("\n", newLine);
     }
 
     private static List<string> ResolveTargetFiles(
@@ -331,21 +459,16 @@ public sealed class TranslationApplier
 
     private static string RegexReplace(string gameContent, RegexReplacePlan? plan)
     {
-        gameContent = NormalizeGameContent(gameContent);
         if (plan is null)
         {
             return gameContent;
         }
 
+        string newLine = DetectNewLine(gameContent);
         return plan.Pattern.Replace(gameContent, match =>
-        {
-            if (plan.Replacements.TryGetValue(match.Value, out string? value))
-            {
-                return value.Replace("\\n", Environment.NewLine);
-            }
-
-            return match.Value.Replace("\\n", Environment.NewLine);
-        });
+            plan.Replacements.TryGetValue(match.Value, out string? value)
+                ? NormalizeReplacement(value, newLine)
+                : match.Value);
     }
 
     private static string TranslateResourceConfig(
@@ -353,10 +476,12 @@ public sealed class TranslationApplier
         IReadOnlyDictionary<string, string> replacements)
     {
         // This deliberately follows the legacy RES-config line splitting and matching
-        // behavior so existing dictionaries keep their expected results.
-        string[] lines = gameContent.Contains("\r\n", StringComparison.Ordinal)
-            ? gameContent.Split("\r\n".ToCharArray(), StringSplitOptions.None)
-            : gameContent.Split("\n".ToArray(), StringSplitOptions.None);
+        // behavior so existing dictionaries keep their expected results. Line endings are
+        // now preserved instead of being rewritten to the host platform's newline.
+        string newLine = DetectNewLine(gameContent);
+        string[] lines = newLine == "\r\n"
+            ? gameContent.Split("\r\n", StringSplitOptions.None)
+            : gameContent.Split('\n');
 
         var replacedLines = new List<string>(lines.Length);
         foreach (string line in lines)
@@ -374,7 +499,7 @@ public sealed class TranslationApplier
             replacedLines.Add(translatedLine);
         }
 
-        return string.Join(Environment.NewLine, replacedLines);
+        return string.Join(newLine, replacedLines);
     }
 
     private static void ApplyVariableAutoCorrection(
@@ -482,10 +607,14 @@ public sealed class TranslationApplier
 
             try
             {
-                string content = File.ReadAllText(destinationPath, options.FileEncoding);
-                string corrected = RegexReplace(content, replacementPlan);
-                File.WriteAllText(destinationPath, corrected, options.FileEncoding);
-                modifiedFiles.Add(destinationPath);
+                GameFileText file = GameFileText.Read(destinationPath);
+                string corrected = RegexReplace(file.Text, replacementPlan);
+                if (!string.Equals(corrected, file.Text, StringComparison.Ordinal))
+                {
+                    file.Text = corrected;
+                    file.Write(destinationPath);
+                    modifiedFiles.Add(destinationPath);
+                }
             }
             catch (Exception ex)
             {
@@ -642,13 +771,6 @@ public sealed class TranslationApplier
             : 0;
     }
 
-    private static string NormalizeGameContent(string content)
-    {
-        return content.Replace("\r\n", "\n")
-            .Replace("\r", "\n")
-            .Replace("<Tab>", "\t");
-    }
-
     private static string NormalizeDictionaryText(string? content)
     {
         return (content ?? string.Empty)
@@ -712,7 +834,11 @@ public sealed class TranslationApplier
         string DestinationPath,
         bool IsResourceCsv,
         RegexReplacePlan? ReplacementPlan,
-        IReadOnlyDictionary<string, string>? ResourceReplacements);
+        IReadOnlyDictionary<string, string>? ResourceReplacements,
+        IReadOnlyList<SpanSeed>? SpanSeeds,
+        int FallbackEntryCount);
+
+    private sealed record SpanSeed(string Key, TextSpan Span, string Original, string Translation);
 
     private sealed record RegexReplacePlan(
         Regex Pattern,

@@ -889,7 +889,7 @@ public partial class DictionaryEditorControl : UserControl
             SaveCurrentDocument();
             e.Handled = true;
         }
-        else if (Keyboard.Modifiers == Key.F)
+        else if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.F)
         {
             EntrySearchTextBox.Focus();
             EntrySearchTextBox.SelectAll();

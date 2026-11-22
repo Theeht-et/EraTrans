@@ -44,6 +44,7 @@ public partial class ParserSettingsWindow : Window
 
         WindowMaxCharactersTextBox.Text = settings.WindowMaxCharacters.ToString(System.Globalization.CultureInfo.InvariantCulture);
         WindowMaxLinesTextBox.Text = settings.WindowMaxLines.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        TranslationConcurrencyTextBox.Text = settings.TranslationConcurrency.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
         TargetFileExtensionsTextBox.Text = string.Join(Environment.NewLine, settings.TargetFileExtensions);
         AutoReplaceReferenceFilesTextBox.Text = string.Join(Environment.NewLine, settings.AutoReplaceReferenceFiles);
@@ -109,6 +110,12 @@ public partial class ParserSettingsWindow : Window
                     EraTransUserSettings.MaximumWindowLines,
                     EraTransUserSettings.DefaultWindowLines,
                     "每个窗口的行数上限"),
+                TranslationConcurrency = ReadLimit(
+                    TranslationConcurrencyTextBox,
+                    EraTransUserSettings.MinimumTranslationConcurrency,
+                    EraTransUserSettings.MaximumTranslationConcurrency,
+                    EraTransUserSettings.DefaultTranslationConcurrency,
+                    "同时发送的请求数"),
                 LastGameDirectory = _settingsToPreserve.LastGameDirectory,
                 LastOutputRootDirectory = _settingsToPreserve.LastOutputRootDirectory,
                 LastDictionaryFileRelativePath = _settingsToPreserve.LastDictionaryFileRelativePath,

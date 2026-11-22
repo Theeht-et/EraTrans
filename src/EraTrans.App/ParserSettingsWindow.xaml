@@ -2,7 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="解析与输出设置"
-        Width="850"
+        Width="880"
         Height="900"
         MinWidth="720"
         MinHeight="680"
@@ -159,6 +159,8 @@
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="12" />
                                 <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="12" />
+                                <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
                             <StackPanel>
                                 <TextBlock Text="每个窗口的字符上限"
@@ -182,9 +184,20 @@
                                          VerticalContentAlignment="Center"
                                          ToolTip="默认 60。只作辅助限制，防止短行把窗口拉得过长。" />
                             </StackPanel>
+                            <StackPanel Grid.Column="4">
+                                <TextBlock Text="同时发送的请求数"
+                                           Margin="0,0,0,5"
+                                           FontWeight="SemiBold"
+                                           Foreground="#39414A" />
+                                <TextBox x:Name="TranslationConcurrencyTextBox"
+                                         Height="32"
+                                         Padding="8,0"
+                                         VerticalContentAlignment="Center"
+                                         ToolTip="1–50，默认 1（逐个发送）。调高可同时发送多个窗口，按服务商限流情况自行调整。" />
+                            </StackPanel>
                         </Grid>
 
-                        <TextBlock Text="两个上限只影响“按原文顺序整段翻译”；固定批次方式固定为每批 12 条。"
+                        <TextBlock Text="前两个上限只影响“按原文顺序整段翻译”；固定批次方式固定为每批 12 条。并发数对两种方式都生效。"
                                    Margin="0,8,0,0"
                                    TextWrapping="Wrap"
                                    FontSize="11"

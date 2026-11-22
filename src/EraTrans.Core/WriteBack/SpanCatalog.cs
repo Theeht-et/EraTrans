@@ -25,13 +25,19 @@ public sealed class SpanCatalog
     private const string SidecarSuffix = ".spans.json";
 
     private readonly Dictionary<string, Dictionary<string, SpanInfo>> _byFile;
+    private readonly Dictionary<string, string> _hashByFile;
 
-    private SpanCatalog(Dictionary<string, Dictionary<string, SpanInfo>> byFile)
+    private SpanCatalog(
+        Dictionary<string, Dictionary<string, SpanInfo>> byFile,
+        Dictionary<string, string> hashByFile)
     {
         _byFile = byFile;
+        _hashByFile = hashByFile;
     }
 
-    public static SpanCatalog Empty { get; } = new(new Dictionary<string, Dictionary<string, SpanInfo>>(StringComparer.OrdinalIgnoreCase));
+    public static SpanCatalog Empty { get; } = new(
+        new Dictionary<string, Dictionary<string, SpanInfo>>(StringComparer.OrdinalIgnoreCase),
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
 
     public int FileCount => _byFile.Count;
 
@@ -50,6 +56,7 @@ public sealed class SpanCatalog
         }
 
         var byFile = new Dictionary<string, Dictionary<string, SpanInfo>>(StringComparer.OrdinalIgnoreCase);
+        var hashByFile = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (string path in Directory.EnumerateFiles(sidecarRoot, "*" + SidecarSuffix, SearchOption.AllDirectories))
         {
             string relativeSidecar = Path.GetRelativePath(sidecarRoot, path);
@@ -78,9 +85,18 @@ public sealed class SpanCatalog
                     map[key] = info;
                 }
 
-                if (map.Count > 0)
+                // Register the file even when it has no spans: an empty locator means "nothing in
+                // this file can be written by position", and falling back to a whole-file replace
+                // would reintroduce the "same text replaced everywhere" bug this pipeline fixes.
+                byFile[relativeGamePath] = map;
+                if (document.RootElement.TryGetProperty("fileHash", out JsonElement hash) &&
+                    hash.ValueKind == JsonValueKind.String)
                 {
-                    byFile[relativeGamePath] = map;
+                    string? value = hash.GetString();
+                    if (!string.IsNullOrWhiteSpace(value))
+                    {
+                        hashByFile[relativeGamePath] = value;
+                    }
                 }
             }
             catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
@@ -91,7 +107,41 @@ public sealed class SpanCatalog
 
         return byFile.Count == 0
             ? Empty
-            : new SpanCatalog(byFile);
+            : new SpanCatalog(byFile, hashByFile);
+    }
+
+    /// <summary>
+    /// Exact-path test (no stem fallback). Used when a dictionary can map to several game files
+    /// (.erb/.erh): only the file the locator was extracted from may be rewritten.
+    /// </summary>
+    /// <summary>Source fingerprint recorded when the locators were extracted, if any.</summary>
+    public bool TryGetFileHash(string relativeGamePath, out string hash)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(relativeGamePath);
+        string normalized = relativeGamePath.Replace('\\', '/');
+        if (_hashByFile.TryGetValue(normalized, out hash!))
+        {
+            return true;
+        }
+
+        string stem = StripExtension(normalized);
+        foreach ((string path, string value) in _hashByFile)
+        {
+            if (string.Equals(StripExtension(path), stem, StringComparison.OrdinalIgnoreCase))
+            {
+                hash = value;
+                return true;
+            }
+        }
+
+        hash = string.Empty;
+        return false;
+    }
+
+    public bool ContainsGamePath(string relativeGamePath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(relativeGamePath);
+        return _byFile.ContainsKey(relativeGamePath.Replace('\\', '/'));
     }
 
     public bool TryGetSpans(string relativeGamePath, out IReadOnlyDictionary<string, TextSpan> spans)

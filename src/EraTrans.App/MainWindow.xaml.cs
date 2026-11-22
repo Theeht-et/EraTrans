@@ -307,11 +307,19 @@ public partial class MainWindow : Window
                 options));
 
             StatusText.Text =
-                $"副本处理完成：完整复制 {result.CopiedFiles.Count} 个游戏文件，应用译文 {result.ModifiedFiles.Count} 个，重命名 ERD {result.RenamedFiles.Count} 个，{result.Warnings.Count} 条警告。";
+                $"副本处理完成：完整复制 {result.CopiedFiles.Count} 个游戏文件，应用译文 {result.ModifiedFiles.Count} 个"
+                + $"（精确位置 {result.SpanReplacedCount} 条 / 原文匹配 {result.FallbackReplacedCount} 条）"
+                + $"{(result.SkippedByEncodingCount > 0 ? $"，编码不兼容跳过 {result.SkippedByEncodingCount} 条" : string.Empty)}"
+                + $"，重命名 ERD {result.RenamedFiles.Count} 个，{result.Warnings.Count} 条警告。";
 
             string message =
                 $"完整复制游戏文件：{result.CopiedFiles.Count}\n" +
                 $"应用译文：{result.ModifiedFiles.Count}\n" +
+                $"  精确位置替换：{result.SpanReplacedCount} 条\n" +
+                $"  原文匹配替换：{result.FallbackReplacedCount} 条\n" +
+                (result.SkippedByEncodingCount > 0
+                    ? $"  编码不兼容跳过：{result.SkippedByEncodingCount} 条\n"
+                    : string.Empty) +
                 $"重命名 ERD：{result.RenamedFiles.Count}\n" +
                 $"警告：{result.Warnings.Count}\n输出位置：{workingCopyDirectory}";
             if (result.Warnings.Count > 0)

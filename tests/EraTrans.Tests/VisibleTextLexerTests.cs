@@ -45,6 +45,59 @@ public sealed class VisibleTextLexerTests
         Assert.Equal("[901] - 先頭", Slice(text, Assert.Single(entry.Parts)));
     }
 
+    [Fact]
+    public void PrintForm_ConcatenatedLiteralInsidePlaceholder_KeepsOuterText()
+    {
+        const string text = "@SHOW\nPRINTFORMW あ%GETNAME(1) + \"所属\",24,LEFT%い\n";
+
+        VisibleTextFileResult result = Lex(text);
+
+        // The argument contains an expression, so it cannot be one template: the literal text
+        // around the placeholder and the displayed literal inside it become three entries.
+        Assert.Equal(3, result.Entries.Count);
+        Assert.Equal(new[] { "あ", "所属", "い" }, result.Entries.Select(entry => entry.Template).ToArray());
+        foreach (VisibleTextEntry entry in result.Entries)
+        {
+            Assert.Equal(entry.Template, Slice(text, entry.Span));
+        }
+    }
+
+    [Fact]
+    public void PrintForms_ExpressionArgument_IsNotExtracted()
+    {
+        const string text = "@SHOW\nPRINTFORMS STR:0\nPRINTFORMS GET_NAME(1)\n";
+
+        VisibleTextFileResult result = Lex(text);
+
+        // FORMS evaluates a string expression and formats the result: translating `STR:0` would
+        // replace an identifier and break the script at load time.
+        Assert.Empty(result.Entries);
+    }
+
+    [Fact]
+    public void PrintForms_QuotedLiteral_IsExtractedWithoutQuotes()
+    {
+        const string text = "@SHOW\nPRINTFORMS \"ほげ%X%ぴよ\"\n";
+
+        VisibleTextFileResult result = Lex(text);
+
+        VisibleTextEntry entry = Assert.Single(result.Entries);
+        Assert.Equal("ほげ%X%ぴよ", entry.Template);
+        Assert.Equal("ほげ%X%ぴよ", Slice(text, entry.Span));
+    }
+
+    [Fact]
+    public void PrintForm_EscapedPercentAndBrace_AreKeptInTheTemplate()
+    {
+        const string text = "@SHOW\nPRINTFORMW 100\\%です\nPRINTFORMW \\{テスト\\}\n";
+
+        VisibleTextFileResult result = Lex(text);
+
+        Assert.Equal(2, result.Entries.Count);
+        Assert.Equal("100\\%です", result.Entries[0].Template);
+        Assert.Equal("\\{テスト\\}", result.Entries[1].Template);
+    }
+
     private static VisibleTextFileResult Lex(string text, IReadOnlyCollection<string>? macros = null)
     {
         return ErbVisibleTextLexer.ExtractFile("ERB/test.erb", text, macros ?? NoMacros);
@@ -221,6 +274,54 @@ public sealed class VisibleTextLexerTests
     }
 
     [Fact]
+    public void BraceJoinedBlock_ExtractsTextFromItsPhysicalLines()
+    {
+        const string text =
+            "@FUNC\n" +
+            "{\n" +
+            "\tPRINTFORML メナスポイント[ {TENTACLE_MENACE_POINT} ]\n" +
+            "\t→ [ {TENTACLE_MENACE_POINT + 5} ]\n" +
+            "}\n";
+        VisibleTextFileResult result = Lex(text);
+
+        // The block is one logical line, but each span must stay inside the physical line it came
+        // from, otherwise write-back could not locate it again.
+        Assert.Contains(result.Entries, e => e.Template.StartsWith("メナスポイント[", StringComparison.Ordinal));
+        Assert.Contains(result.Entries, e => e.Template.StartsWith("→ [", StringComparison.Ordinal));
+        Assert.All(result.Entries, e => Assert.Equal(e.Template, text.Substring(e.Span.Start, e.Span.Length)));
+        Assert.All(result.Entries, e => Assert.Equal(2, e.Line));
+    }
+
+    [Fact]
+    public void HtmlPrint_ConcatenatedLiterals_AreMergedBeforeMarkupIsSplit()
+    {
+        const string text = "@FUNC\nHTML_PRINT \"<p><img src='rev\" + \"000\" + \"'>テキスト</p>\"\n";
+        VisibleTextFileResult result = Lex(text);
+
+        Assert.Equal(new[] { "テキスト" }, result.Entries.Select(e => e.Template).ToArray());
+    }
+
+    [Fact]
+    public void HtmlAttribute_PlaceholderQuotes_DoNotEndTheTag()
+    {
+        const string text =
+            "@FUNC\nHTML_PRINT @\"<font color='#%TOSTR(設定色３,\"X6\")%'><u>カード名表示</u></font>\",1\n";
+        VisibleTextFileResult result = Lex(text);
+
+        Assert.Contains(result.Entries, e => e.Template == "カード名表示");
+        Assert.DoesNotContain(result.Entries, e => e.Template.Contains("TOSTR", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void PrintButton_StrFormPlusLiteral_ExtractsBothFragments()
+    {
+        const string text = "@FUNC\nPRINTBUTTON STRFORM(\"お\") + \"か\", 100\n";
+        VisibleTextFileResult result = Lex(text);
+
+        Assert.Equal(new[] { "お", "か" }, result.Entries.Select(e => e.Template).ToArray());
+    }
+
+    [Fact]
     public void EscapedBrace_DoesNotOpenAJoin()
     {
         const string text = "@FUNC\nLOCALS:0 = \\{\nPRINTFORML 表示される\n";
@@ -264,5 +365,47 @@ public sealed class VisibleTextLexerTests
 
         VisibleTextEntry entry = Assert.Single(result.Entries);
         Assert.Contains("\uff7c\uff9e\uff70\uff6f", entry.Template);
+    }
+    [Fact]
+    public void HtmlPrint_ExtractsTooltipTitleAndSkipsButtonValue()
+    {
+        const string text = "@SHOP\nHTML_PRINT \"<button value='{100 + 1}' title='\u8aac\u660e\u6587'>\u62bc\u3059</button>\"\n";
+        VisibleTextFileResult result = Lex(text);
+
+        Assert.Equal(2, result.Entries.Count);
+        Assert.Equal(new[] { "\u8aac\u660e\u6587", "\u62bc\u3059" }, result.Entries.Select(e => e.Template).ToArray());
+        Assert.All(result.Entries, entry => Assert.Equal("html", entry.Kind));
+        Assert.All(result.Entries, entry => Assert.Equal(Slice(text, Assert.Single(entry.Parts)), entry.Template));
+    }
+
+    [Fact]
+    public void HtmlTitle_WithNestedTagsAndPlaceholder_IsSplitIntoTextNodes()
+    {
+        const string text = "@SHOP\nHTML_PRINT @\"<nonbutton title='\u2605\u540c\u884c\u8005<br>%\u540d\u524d%\u3068\u884c\u304f'>\u73fe\u5728</nonbutton>\"\n";
+        VisibleTextFileResult result = Lex(text);
+
+        Assert.Equal(
+            new[] { "\u2605\u540c\u884c\u8005", "\u3068\u884c\u304f", "\u73fe\u5728" },
+            result.Entries.Select(e => e.Template).ToArray());
+        Assert.All(result.Entries, entry => Assert.Equal(Slice(text, Assert.Single(entry.Parts)), entry.Template));
+    }
+
+    [Fact]
+    public void HtmlTitle_ContainingGreaterThan_DoesNotSwallowTheRestOfTheLine()
+    {
+        const string text = "@SHOP\nHTML_PRINT \"<button value='x' title='a>b'>\u62bc\u3059</button>\"\n";
+        VisibleTextFileResult result = Lex(text);
+
+        Assert.Equal(new[] { "a>b", "\u62bc\u3059" }, result.Entries.Select(e => e.Template).ToArray());
+    }
+
+    [Fact]
+    public void HtmlComment_IsNotExtracted()
+    {
+        const string text = "@SHOP\nHTML_PRINT \"<!-- \u30b3\u30e1\u30f3\u30c8 -->\u8868\u793a\"\n";
+        VisibleTextFileResult result = Lex(text);
+
+        VisibleTextEntry entry = Assert.Single(result.Entries);
+        Assert.Equal("\u8868\u793a", entry.Template);
     }
 }

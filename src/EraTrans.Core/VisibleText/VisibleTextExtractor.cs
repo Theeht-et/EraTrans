@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using EraTrans.Core.WriteBack;
@@ -70,6 +72,7 @@ public sealed class VisibleTextExtractor
         int entryCount = 0;
         int preservedTranslations = 0;
         int resetTranslations = 0;
+        int removedStaleFiles = 0;
 
         foreach (string file in files)
         {
@@ -82,6 +85,20 @@ public sealed class VisibleTextExtractor
                 diagnostics.MergeFrom(lexed.Diagnostics);
                 if (lexed.Entries.Count == 0)
                 {
+                    // The file no longer has visible text (or became unreadable to the lexer).
+                    // Leaving last round's dictionary behind would show entries that do not exist
+                    // any more, and their translations could still be applied by the fallback
+                    // original-match path, so remove them.
+                    if (DeleteIfExists(ResolveDictionaryPath(dictionaryRootFull, relativePath)))
+                    {
+                        removedStaleFiles++;
+                    }
+
+                    if (DeleteIfExists(ResolveSidecarPath(sidecarRoot, relativePath)))
+                    {
+                        removedStaleFiles++;
+                    }
+
                     continue;
                 }
 
@@ -98,7 +115,7 @@ public sealed class VisibleTextExtractor
                 generatedFiles.Add(dictionaryPath);
 
                 string sidecarPath = ResolveSidecarPath(sidecarRoot, relativePath);
-                if (WriteSidecar(sidecarPath, relativePath, lexed.Entries))
+                if (WriteSidecar(sidecarPath, relativePath, text, lexed.Entries))
                 {
                     generatedFiles.Add(sidecarPath);
                 }
@@ -129,12 +146,19 @@ public sealed class VisibleTextExtractor
             }
         }
 
+        removedStaleFiles += RemoveOrphanDictionaries(gameRoot, dictionaryRootFull, sidecarRoot, sourceSubdirectory, warnings);
+
         if (!diagnostics.IsEmpty)
         {
             string reportPath = Path.Combine(sidecarRoot, SidecarDirectoryName, ReportFileName);
             WriteDiagnosticsReport(reportPath, diagnostics);
             generatedFiles.Add(reportPath);
             warnings.Add(BuildDiagnosticsSummary(diagnostics, reportPath));
+        }
+
+        if (removedStaleFiles > 0)
+        {
+            warnings.Add($"清理了 {removedStaleFiles} 个上一轮遗留、源文件已不存在的字典/定位文件。");
         }
 
         return new VisibleTextExtractionResult(generatedFiles, warnings, files.Length, entryCount)
@@ -427,7 +451,11 @@ public sealed class VisibleTextExtractor
     /// <c>slice(span) == original</c> holds for every entry, including templates with
     /// placeholders (the replacement keeps the placeholders verbatim).
     /// </summary>
-    private static bool WriteSidecar(string path, string relativePath, IReadOnlyList<VisibleTextEntry> entries)
+    private static bool WriteSidecar(
+        string path,
+        string relativePath,
+        string sourceText,
+        IReadOnlyList<VisibleTextEntry> entries)
     {
         var spans = new List<(string Key, VisibleTextSpan Span, int Line, string Command, string Kind)>();
         for (int i = 0; i < entries.Count; i++)
@@ -452,6 +480,7 @@ public sealed class VisibleTextExtractor
         writer.WriteStartObject();
         writer.WriteNumber("schema", 1);
         writer.WriteString("file", relativePath);
+        writer.WriteString("fileHash", ComputeFileHash(sourceText));
         writer.WriteStartArray("spans");
         foreach ((string key, VisibleTextSpan span, int line, string command, string kind) in spans)
         {
@@ -471,11 +500,87 @@ public sealed class VisibleTextExtractor
     }
 
     /// <summary>
+    /// Fingerprint of the decoded source text; the write-back pass refuses to use locators whose
+    /// source no longer matches, so a changed game file cannot be edited at stale offsets.
+    /// </summary>
+    internal static string ComputeFileHash(string text)
+    {
+        byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(text));
+        return Convert.ToHexString(hash);
+    }
+
+    /// <summary>
     /// <c>"文本" + game-relative path without extension, backslash separated + 5 digit ordinal</c>,
     /// the key format the legacy dictionaries already use.
     /// </summary>
     internal static string BuildKey(string relativePath, int sequence) =>
         "文本" + Path.ChangeExtension(relativePath, string.Empty).Replace('/', '\\') + sequence.ToString("D5");
+
+    private static bool DeleteIfExists(string path)
+    {
+        if (!File.Exists(path))
+        {
+            return false;
+        }
+
+        File.Delete(path);
+        return true;
+    }
+
+    /// <summary>
+    /// Removes dictionaries (and their span sidecars) whose source file is gone. Only files below
+    /// <paramref name="sourceSubdirectory"/> are considered, so dictionaries written by the legacy
+    /// parser for CSV/ERD/XML live in the same directory unharmed.
+    /// </summary>
+    private static int RemoveOrphanDictionaries(
+        string gameRoot,
+        string dictionaryRoot,
+        string sidecarRoot,
+        string sourceSubdirectory,
+        List<string> warnings)
+    {
+        string prefix = sourceSubdirectory.Replace('\\', '/').Trim('/') + "/";
+        int removed = 0;
+        foreach (string dictionaryPath in Directory.GetFiles(dictionaryRoot, "*.json", SearchOption.AllDirectories))
+        {
+            string relative = Path.GetRelativePath(dictionaryRoot, dictionaryPath).Replace('\\', '/');
+            if (!relative.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (relative.EndsWith(".spans.json", StringComparison.OrdinalIgnoreCase) ||
+                relative.EndsWith(".groups.json", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            string stem = relative[..^".json".Length];
+            string absoluteStem = Path.Combine(gameRoot, stem.Replace('/', Path.DirectorySeparatorChar));
+            if (File.Exists(absoluteStem + ".erb") || File.Exists(absoluteStem + ".erh") ||
+                File.Exists(absoluteStem + ".ERB") || File.Exists(absoluteStem + ".ERH"))
+            {
+                continue;
+            }
+
+            try
+            {
+                File.Delete(dictionaryPath);
+                removed++;
+                string sidecar = ResolveSidecarPath(sidecarRoot, stem + ".erb");
+                if (DeleteIfExists(sidecar))
+                {
+                    removed++;
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                warnings.Add($"{relative}: 无法删除已失效的字典（{ex.Message}）。");
+            }
+        }
+
+        return removed;
+    }
 
     private static string ResolveDictionaryPath(string dictionaryRoot, string relativePath) =>
         Path.Combine(dictionaryRoot, Path.ChangeExtension(relativePath, ".json"));

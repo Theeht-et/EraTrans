@@ -139,8 +139,109 @@ public sealed class VisibleTextExtractorTests
         }
     }
 
+    [Fact]
+    public void Extract_GivesButtonAndLocalsEntriesUsableSpans()
+    {
+        string root = CreateTempRoot();
+        try
+        {
+            string gameDirectory = Path.Combine(root, "game");
+            string dictionaryRoot = Path.Combine(root, "out", "字典");
+            Directory.CreateDirectory(Path.Combine(gameDirectory, "ERB"));
+            string source = Path.Combine(gameDirectory, "ERB", "ui.erb");
+            File.WriteAllText(
+                source,
+                "@UI\r\nLOCALS = 体力(%CALLNAME:MASTER%)\r\nPRINTBUTTON \"[自宅位置]\", 120\r\nPRINTFORM %LOCALS%\r\n",
+                new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+
+            var extractor = new VisibleTextExtractor();
+            extractor.Extract(gameDirectory, dictionaryRoot, "ERB", new EraParserOptions { WriteContext = true });
+
+            string sidecarPath = Path.Combine(root, "out", "AI上下文", "ERB", "ui.spans.json");
+            using JsonDocument sidecar = JsonDocument.Parse(File.ReadAllBytes(sidecarPath));
+            string text = File.ReadAllText(source, Encoding.UTF8);
+
+            var spans = sidecar.RootElement.GetProperty("spans").EnumerateArray()
+                .Select(span => (
+                    Key: span.GetProperty("key").GetString()!,
+                    Start: span.GetProperty("start").GetInt32(),
+                    End: span.GetProperty("end").GetInt32()))
+                .ToList();
+
+            // Button text and LOCALS content used to be dropped from the sidecar (zero-length span),
+            // which silently prevented them from ever being written back into the game.
+            Assert.Contains(spans, span => text[span.Start..span.End] == "[自宅位置]");
+            Assert.Contains(spans, span => text[span.Start..span.End] == "体力(%CALLNAME:MASTER%)");
+        }
+        finally
+        {
+            TryDelete(root);
+        }
+    }
+
     private static string Slice(string text, VisibleTextSpan span) =>
         text.Substring(span.Start, span.End - span.Start);
+
+    [Fact]
+    public void Extract_RemovesDictionaryWhenTheFileNoLongerHasVisibleText()
+    {
+        string root = CreateTempRoot();
+        try
+        {
+            string gameDirectory = Path.Combine(root, "game");
+            string dictionaryRoot = Path.Combine(root, "out", "字典");
+            Directory.CreateDirectory(Path.Combine(gameDirectory, "ERB"));
+            string source = Path.Combine(gameDirectory, "ERB", "hello.erb");
+            File.WriteAllText(source, "@HELLO\n" + PlainLine + "\n", new UTF8Encoding(false));
+
+            var extractor = new VisibleTextExtractor();
+            extractor.Extract(gameDirectory, dictionaryRoot, "ERB", new EraParserOptions());
+
+            string dictionaryPath = Path.Combine(dictionaryRoot, "ERB", "hello.json");
+            Assert.True(File.Exists(dictionaryPath));
+
+            // The same file is rewritten without translatable text: last round's dictionary (and
+            // its span sidecar) would otherwise keep showing entries that no longer exist.
+            File.WriteAllText(source, "@HELLO\n; 表示するものがなくなった\n", new UTF8Encoding(false));
+            extractor.Extract(gameDirectory, dictionaryRoot, "ERB", new EraParserOptions());
+
+            Assert.False(File.Exists(dictionaryPath));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Extract_RemovesDictionaryWhoseSourceFileIsGone()
+    {
+        string root = CreateTempRoot();
+        try
+        {
+            string gameDirectory = Path.Combine(root, "game");
+            string dictionaryRoot = Path.Combine(root, "out", "字典");
+            Directory.CreateDirectory(Path.Combine(gameDirectory, "ERB"));
+            string source = Path.Combine(gameDirectory, "ERB", "hello.erb");
+            File.WriteAllText(source, "@HELLO\n" + PlainLine + "\n", new UTF8Encoding(false));
+
+            var extractor = new VisibleTextExtractor();
+            extractor.Extract(gameDirectory, dictionaryRoot, "ERB", new EraParserOptions());
+            string dictionaryPath = Path.Combine(dictionaryRoot, "ERB", "hello.json");
+            Assert.True(File.Exists(dictionaryPath));
+
+            File.Delete(source);
+            VisibleTextExtractionResult second = extractor.Extract(
+                gameDirectory, dictionaryRoot, "ERB", new EraParserOptions());
+
+            Assert.False(File.Exists(dictionaryPath));
+            Assert.Contains(second.Warnings, warning => warning.Contains("清理", StringComparison.Ordinal));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
 
     private static string CreateTempRoot()
     {

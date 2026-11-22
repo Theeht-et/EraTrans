@@ -85,7 +85,6 @@ public static class ErbVisibleTextLexer
         var printedVars = new HashSet<string>(StringComparer.Ordinal);
         var literalAssignments = new List<(string Var, string Function, int Line, string Text)>();
         int dataDepth = 0;
-        int braceDepth = 0;
         string functionName = string.Empty;
 
         for (int li = 0; li < lines.Count; li++)
@@ -97,20 +96,75 @@ public static class ErbVisibleTextLexer
 
             // Emuera line continuation (EraStreamReader): only a line that is exactly "{" opens the
             // block and only a line that is exactly "}" closes it. Anything else is ordinary text,
-            // e.g. ASCII art that happens to end with a brace.
-            if (braceDepth > 0)
-            {
-                if (string.Equals(trimmedLine, "}", StringComparison.Ordinal))
-                {
-                    braceDepth = 0;
-                }
-
-                continue;
-            }
-
+            // e.g. ASCII art that happens to end with a brace. The block is one logical line whose
+            // parts are joined with a single space, so it is lexed as such and every emitted span is
+            // then mapped back to the physical line it came from.
             if (string.Equals(trimmedLine, "{", StringComparison.Ordinal))
             {
-                braceDepth = 1;
+                var joined = new StringBuilder();
+                var segments = new List<(int MergedStart, int MergedEnd, int SourceStart)>();
+                int blockLine = li;
+                li++;
+                bool closed = false;
+                while (li < lines.Count)
+                {
+                    string inner = lines[li].Line;
+                    if (string.Equals(inner.Trim(), "}", StringComparison.Ordinal))
+                    {
+                        closed = true;
+                        break;
+                    }
+
+                    if (joined.Length > 0)
+                    {
+                        joined.Append(' ');
+                    }
+
+                    int mergedStart = joined.Length;
+                    joined.Append(inner);
+                    segments.Add((mergedStart, joined.Length, lines[li].Start));
+                    li++;
+                }
+
+                if (closed && joined.Length > 0 && segments.Count > 0)
+                {
+                    VisibleTextFileResult nested = ExtractFile(relativePath, joined.ToString(), macros);
+                    warnings.AddRange(nested.Warnings);
+                    diagnostics.MergeFrom(nested.Diagnostics);
+                    foreach (VisibleTextEntry entry in nested.Entries)
+                    {
+                        foreach ((int mergedStart, int mergedEnd, int sourceStart) in segments)
+                        {
+                            int lo = Math.Max(entry.Span.Start, mergedStart);
+                            int hi = Math.Min(entry.Span.End, mergedEnd);
+                            if (hi <= lo)
+                            {
+                                continue;
+                            }
+
+                            int rawStart = sourceStart + (lo - mergedStart);
+                            int rawEnd = sourceStart + (hi - mergedStart);
+                            string raw = text.Substring(rawStart, rawEnd - rawStart);
+                            if (!IsWorth(raw.Trim()))
+                            {
+                                continue;
+                            }
+
+                            int s = rawStart + (raw.Length - raw.TrimStart().Length);
+                            int e = rawEnd - (raw.Length - raw.TrimEnd().Length);
+                            string slice = text.Substring(s, e - s);
+                            result.Add(new VisibleTextEntry(
+                                normalizedRelativePath,
+                                blockLine + 1,
+                                entry.Command,
+                                entry.Kind,
+                                slice,
+                                new[] { new VisibleTextSpan(s, e) },
+                                new VisibleTextSpan(s, e)));
+                        }
+                    }
+                }
+
                 continue;
             }
 
@@ -220,11 +274,12 @@ public static class ErbVisibleTextLexer
                     }
                 }
 
-                var (parts, template, _) = BuildParts(
+                var (parts, template, span) = BuildParts(
                     line, rhsStart, line.Length, ContainsForm(line.Substring(rhsStart)) ? "form" : "plain");
                 if (parts.Count > 0 && IsWorth(template))
                 {
                     assignment.Parts = parts;
+                    assignment.Span = span;
                     assignment.Template = template;
                     scope[varName] = assignment;
                 }
@@ -268,22 +323,6 @@ public static class ErbVisibleTextLexer
                     continue;
                 }
 
-                DraftEntry? entry = cls switch
-                {
-                    "form" => BuildLineEntry(li, lineStart, functionName, line, tokenEnd2, "form", token),
-                    "str" => BuildStrExprEntry(li, lineStart, functionName, line, tokenEnd2, token),
-                    _ => BuildLineEntry(li, lineStart, functionName, line, tokenEnd2, "plain", token)
-                };
-                if (entry is not null)
-                {
-                    if (cls != "form")
-                    {
-                        entry.Kind = "print";
-                    }
-
-                    result.Add(Materialize(entry, normalizedRelativePath));
-                }
-
                 int argStart = tokenEnd2;
                 if (argStart < line.Length && IsSeparator(line[argStart]) && line[argStart] != ',')
                 {
@@ -292,13 +331,37 @@ public static class ErbVisibleTextLexer
 
                 if (cls == "form")
                 {
-                    AddConcatLiteralEntriesInForm(
-                        line, argStart, line.Length, li, lineStart, functionName, token, normalizedRelativePath, result);
+                    AddFormEntries(
+                        line, argStart, li, lineStart, functionName, token, normalizedRelativePath, result);
                 }
-                else if (cls == "str")
+                else
                 {
-                    AddConcatLiteralEntries(
-                        line, argStart, line.Length, li, lineStart, functionName, token, normalizedRelativePath, result);
+                    int parentIndex = -1;
+                    DraftEntry? entry = cls == "str"
+                        ? BuildStrExprEntry(li, lineStart, functionName, line, tokenEnd2, token)
+                        : BuildLineEntry(li, lineStart, functionName, line, tokenEnd2, "plain", token);
+                    if (entry is not null)
+                    {
+                        entry.Kind = "print";
+                        parentIndex = result.Count;
+                        result.Add(Materialize(entry, normalizedRelativePath));
+                    }
+
+                    if (cls == "str")
+                    {
+                        AddConcatLiteralEntries(
+                            line, argStart, line.Length, li, lineStart, functionName, token, normalizedRelativePath, result);
+                    }
+
+                    if (parentIndex >= 0 &&
+                        result.Count > parentIndex + 1 &&
+                        !CanKeepWholeArgumentTemplate(result[parentIndex].Template))
+                    {
+                        // The argument is a concatenation of several literals: the whole-argument
+                        // template would contain quotes and '+' operators and could not be written
+                        // back safely, so only the literal fragments extracted above remain.
+                        result.RemoveAt(parentIndex);
+                    }
                 }
 
                 AddVarRefs(line, scope, result, normalizedRelativePath);
@@ -312,9 +375,11 @@ public static class ErbVisibleTextLexer
                 case "PRINTBUTTONC":
                 case "PRINTBUTTONLC":
                 {
+                    int parentIndex = -1;
                     DraftEntry? entry = BuildButtonEntry(li, lineStart, functionName, line, tokenEnd2, token);
                     if (entry is not null)
                     {
+                        parentIndex = result.Count;
                         result.Add(Materialize(entry, normalizedRelativePath));
                     }
 
@@ -335,6 +400,13 @@ public static class ErbVisibleTextLexer
                         token,
                         normalizedRelativePath,
                         result);
+
+                    if (parentIndex >= 0 &&
+                        result.Count > parentIndex + 1 &&
+                        !CanKeepWholeArgumentTemplate(result[parentIndex].Template))
+                    {
+                        result.RemoveAt(parentIndex);
+                    }
 
                     AddVarRefs(line, scope, result, normalizedRelativePath);
                     TrackPrintLine(line, functionName, diagnostics, printedVars);
@@ -547,6 +619,7 @@ public static class ErbVisibleTextLexer
         public int LineStart;
         public string FunctionName = string.Empty;
         public List<DraftPart>? Parts;
+        public DraftPart Span;
         public string? Template;
         public string? AliasVar;
         public bool Emitted;
@@ -575,8 +648,14 @@ public static class ErbVisibleTextLexer
             parts.Add(new VisibleTextSpan(draft.LineStart + part.Start, draft.LineStart + part.End));
         }
 
-        VisibleTextSpan span = draft.Span.End > draft.Span.Start
-            ? new VisibleTextSpan(draft.LineStart + draft.Span.Start, draft.LineStart + draft.Span.End)
+        DraftPart spanPart = draft.Span;
+        if (spanPart.End <= spanPart.Start && draft.Parts.Count == 1)
+        {
+            spanPart = draft.Parts[0];
+        }
+
+        VisibleTextSpan span = spanPart.End > spanPart.Start
+            ? new VisibleTextSpan(draft.LineStart + spanPart.Start, draft.LineStart + spanPart.End)
             : new VisibleTextSpan(draft.LineStart, draft.LineStart);
 
         return new VisibleTextEntry(
@@ -804,6 +883,7 @@ public static class ErbVisibleTextLexer
                 Command = assignment.Var + " (var)",
                 Kind = "var",
                 Template = assignment.Template,
+                Span = assignment.Span,
                 Parts = assignment.Parts is null ? new List<DraftPart>() : new List<DraftPart>(assignment.Parts)
             };
             result.Add(Materialize(draft, relativePath));
@@ -877,7 +957,7 @@ public static class ErbVisibleTextLexer
             }
 
             bool concatenated = PreviousNonSpace(line, i, start) == '+' || NextNonSpace(line, close + 1, end) == '+';
-            if (concatenated && close - i - 1 >= 2)
+            if (concatenated && close - i - 1 >= 1)
             {
                 string text = line.Substring(i + 1, close - i - 1);
                 if (HasJapanese(text) && IsWorth(text))
@@ -902,6 +982,69 @@ public static class ErbVisibleTextLexer
     }
 
     /// <summary>Same as <see cref="AddConcatLiteralEntries"/>, but only inside <c>%...%</c> regions.</summary>
+    /// <summary>
+    /// A form argument is the whole printable template, but a quoted literal inside a placeholder
+    /// (<c>%GETNAME(1) + "所属"</c>) is still displayed. In that case the argument cannot be one
+    /// template (the placeholder is an expression, not text), so the literal segments outside the
+    /// placeholders become their own entries and the inner literals are added as fragments too.
+    /// </summary>
+    private static void AddFormEntries(
+        string line,
+        int argStart,
+        int lineIndex,
+        int lineStart,
+        string functionName,
+        string command,
+        string relativePath,
+        List<VisibleTextEntry> result)
+    {
+        DraftEntry? entry = BuildLineEntry(lineIndex, lineStart, functionName, line, argStart, "form", command);
+        var fragments = new List<VisibleTextEntry>();
+        AddConcatLiteralEntriesInForm(
+            line, argStart, line.Length, lineIndex, lineStart, functionName, command, relativePath, fragments);
+
+        if (fragments.Count == 0)
+        {
+            if (entry is not null)
+            {
+                result.Add(Materialize(entry, relativePath));
+            }
+
+            return;
+        }
+
+        var emitted = new List<VisibleTextEntry>(fragments.Count + 2);
+        if (entry is not null)
+        {
+            foreach (DraftPart part in entry.Parts)
+            {
+                string slice = line.Substring(part.Start, part.End - part.Start);
+                if (!IsWorth(slice))
+                {
+                    continue;
+                }
+
+                emitted.Add(Materialize(
+                    new DraftEntry
+                    {
+                        Line = lineIndex + 1,
+                        LineStart = lineStart,
+                        FunctionName = functionName,
+                        Command = command,
+                        Kind = "form",
+                        Template = slice,
+                        Span = part,
+                        Parts = { part }
+                    },
+                    relativePath));
+            }
+        }
+
+        emitted.AddRange(fragments);
+        emitted.Sort((left, right) => left.Span.Start.CompareTo(right.Span.Start));
+        result.AddRange(emitted);
+    }
+
     private static void AddConcatLiteralEntriesInForm(
         string line,
         int start,
@@ -1043,6 +1186,7 @@ public static class ErbVisibleTextLexer
                 Command = command,
                 Kind = "plain",
                 Template = text,
+                Span = new DraftPart(start + 1, close),
                 Parts = { new DraftPart(start + 1, close) }
             };
         }
@@ -1051,7 +1195,7 @@ public static class ErbVisibleTextLexer
         {
             return BuildEntry(
                 lineIndex, lineStart, functionName, line, start + 2,
-                FindQuote(line, start + 1, line.Length), "form", command);
+                FindQuoteForm(line, start + 1, line.Length), "form", command);
         }
 
         return null;
@@ -1101,6 +1245,7 @@ public static class ErbVisibleTextLexer
                 Command = command,
                 Kind = "button",
                 Template = text,
+                Span = new DraftPart(start + 1, close),
                 Parts = { new DraftPart(start + 1, close) }
             };
         }
@@ -1109,7 +1254,7 @@ public static class ErbVisibleTextLexer
         {
             DraftEntry? entry = BuildEntry(
                 lineIndex, lineStart, functionName, line, start + 2,
-                FindQuote(line, start + 1, line.Length), "form", command);
+                FindQuoteForm(line, start + 1, line.Length), "form", command);
             if (entry is not null)
             {
                 entry.Kind = "button";
@@ -1154,6 +1299,7 @@ public static class ErbVisibleTextLexer
                     Command = command,
                     Kind = "button",
                     Template = text,
+                    Span = new DraftPart(inner + 1, close),
                     Parts = { new DraftPart(inner + 1, close) }
                 };
             }
@@ -1207,74 +1353,278 @@ public static class ErbVisibleTextLexer
             return list;
         }
 
-        int close = FindQuote(line, start, line.Length);
+        int close = form ? FindQuoteForm(line, start, line.Length) : FindQuote(line, start, line.Length);
         if (close < 0)
         {
             return list;
         }
 
-        int contentStart = start + 1;
-        int contentEnd = close;
+        // What the player sees is the concatenation of the argument's adjacent string literals
+        // (HTML_PRINT "<p>" + "text" + "</p>" renders one document), so merge them into a single
+        // virtual string and remember where every piece came from.
+        var merged = new StringBuilder();
+        var segments = new List<(int MergedStart, int MergedEnd, int SourceStart)>();
 
-        // Walk the HTML: skip tags, treat placeholders as breaks, emit every text node.
-        int i = contentStart;
-        int literalStart = contentStart;
+        void AppendLiteral(int contentStart, int contentEnd)
+        {
+            if (contentEnd <= contentStart)
+            {
+                return;
+            }
 
-        void Flush(int a, int b)
+            int m0 = merged.Length;
+            merged.Append(line, contentStart, contentEnd - contentStart);
+            segments.Add((m0, merged.Length, contentStart));
+        }
+
+        AppendLiteral(start + 1, close);
+        int nextLiteral = close + 1;
+        while (nextLiteral < line.Length)
+        {
+            int q = nextLiteral;
+            while (q < line.Length && char.IsWhiteSpace(line[q]))
+            {
+                q++;
+            }
+
+            if (q >= line.Length || line[q] != '+')
+            {
+                break;
+            }
+
+            q++;
+            while (q < line.Length && char.IsWhiteSpace(line[q]))
+            {
+                q++;
+            }
+
+            if (q >= line.Length || line[q] != '"')
+            {
+                break;
+            }
+
+            int pieceEnd = FindQuoteForm(line, q, line.Length);
+            if (pieceEnd < 0)
+            {
+                break;
+            }
+
+            AppendLiteral(q + 1, pieceEnd);
+            nextLiteral = pieceEnd + 1;
+        }
+
+        if (merged.Length == 0)
+        {
+            return list;
+        }
+
+        string markup = merged.ToString();
+
+        // A merged range can cover several source literals: emit one entry per covered piece so
+        // every span stays inside a single physical line.
+        void EmitMapped(int a, int b)
         {
             if (b <= a)
             {
                 return;
             }
 
-            string raw = line.Substring(a, b - a);
-            string trimmed = raw.Trim();
-            if (!IsWorth(trimmed))
+            foreach ((int mergedStart, int mergedEnd, int sourceStart) in segments)
             {
-                return;
-            }
+                int lo = Math.Max(a, mergedStart);
+                int hi = Math.Min(b, mergedEnd);
+                if (hi <= lo)
+                {
+                    continue;
+                }
 
-            int s = a + (raw.Length - raw.TrimStart().Length);
-            int e = b - (raw.Length - raw.TrimEnd().Length);
-            string text = line.Substring(s, e - s);
-            list.Add(new DraftEntry
-            {
-                Line = lineIndex + 1,
-                LineStart = lineStart,
-                FunctionName = functionName,
-                Command = command,
-                Kind = "html",
-                Template = text,
-                Parts = { new DraftPart(s, e) }
-            });
+                int rawStart = sourceStart + (lo - mergedStart);
+                int rawEnd = sourceStart + (hi - mergedStart);
+                string raw = line.Substring(rawStart, rawEnd - rawStart);
+                if (!IsWorth(raw.Trim()))
+                {
+                    continue;
+                }
+
+                int s = rawStart + (raw.Length - raw.TrimStart().Length);
+                int e = rawEnd - (raw.Length - raw.TrimEnd().Length);
+                string text = line.Substring(s, e - s);
+                if (!IsWorth(text))
+                {
+                    continue;
+                }
+
+                list.Add(new DraftEntry
+                {
+                    Line = lineIndex + 1,
+                    LineStart = lineStart,
+                    FunctionName = functionName,
+                    Command = command,
+                    Kind = "html",
+                    Template = text,
+                    Span = new DraftPart(s, e),
+                    Parts = { new DraftPart(s, e) }
+                });
+            }
         }
 
-        while (i < contentEnd)
+        void Flush(int a, int b) => EmitMapped(a, b);
+
+        void ScanAttributeText(int valueStart, int valueEnd)
         {
-            char c = line[i];
+            int a = valueStart;
+            int k = valueStart;
+            while (k < valueEnd)
+            {
+                char ac = markup[k];
+                if (ac == '<')
+                {
+                    Flush(a, k);
+                    int innerEnd = FindTagEnd(markup, k, valueEnd, form);
+                    if (innerEnd < 0)
+                    {
+                        k = valueEnd;
+                        break;
+                    }
+
+                    k = innerEnd + 1;
+                    a = k;
+                }
+                else if (form && ac == '%')
+                {
+                    Flush(a, k);
+                    k = SkipPercent(markup, k, valueEnd);
+                    a = k;
+                }
+                else if (form && ac == '{')
+                {
+                    Flush(a, k);
+                    k = SkipBrace(markup, k, valueEnd);
+                    a = k;
+                }
+                else
+                {
+                    k++;
+                }
+            }
+
+            Flush(a, valueEnd);
+        }
+
+        void EmitTagAttributes(int tagStart, int tagEnd)
+        {
+            int p = tagStart + 1;
+            while (p < tagEnd && !char.IsWhiteSpace(markup[p]))
+            {
+                p++;
+            }
+
+            while (p < tagEnd)
+            {
+                while (p < tagEnd && char.IsWhiteSpace(markup[p]))
+                {
+                    p++;
+                }
+
+                int nameStart = p;
+                while (p < tagEnd && markup[p] != '=' && markup[p] != '\'' && markup[p] != '"' && !char.IsWhiteSpace(markup[p]))
+                {
+                    p++;
+                }
+
+                int nameEnd = p;
+                while (p < tagEnd && char.IsWhiteSpace(markup[p]))
+                {
+                    p++;
+                }
+
+                if (nameEnd == nameStart)
+                {
+                    // Not an attribute start (malformed markup): always advance so we cannot loop.
+                    p++;
+                    continue;
+                }
+
+                if (p >= tagEnd || markup[p] != '=')
+                {
+                    continue;
+                }
+
+                p++;
+                while (p < tagEnd && char.IsWhiteSpace(markup[p]))
+                {
+                    p++;
+                }
+
+                int valueStart;
+                int valueEnd;
+                if (p < tagEnd && (markup[p] == '\'' || markup[p] == '"'))
+                {
+                    char quote = markup[p];
+                    valueStart = p + 1;
+                    valueEnd = FindQuoteEnd(markup, quote, valueStart, tagEnd, form);
+                    if (valueEnd < 0)
+                    {
+                        break;
+                    }
+
+                    p = valueEnd + 1;
+                }
+                else
+                {
+                    valueStart = p;
+                    while (p < tagEnd && !char.IsWhiteSpace(markup[p]))
+                    {
+                        p++;
+                    }
+
+                    valueEnd = p;
+                }
+
+                string name = markup.Substring(nameStart, nameEnd - nameStart);
+                if (name.EndsWith("/", StringComparison.Ordinal))
+                {
+                    name = name[..^1];
+                }
+
+                // Only the tooltip text is shown to the player: value= is the button's return
+                // value, src=/param= hold file names and numbers.
+                if (string.Equals(name, "title", StringComparison.OrdinalIgnoreCase) && valueEnd > valueStart)
+                {
+                    ScanAttributeText(valueStart, valueEnd);
+                }
+            }
+        }
+
+        int i = 0;
+        int literalStart = 0;
+        while (i < markup.Length)
+        {
+            char c = markup[i];
             if (c == '<')
             {
                 Flush(literalStart, i);
-                int gt = line.IndexOf('>', i);
-                if (gt < 0 || gt >= contentEnd)
+                int tagEnd = FindTagEnd(markup, i, markup.Length, form);
+                if (tagEnd < 0)
                 {
-                    i = contentEnd;
+                    i = markup.Length;
                     break;
                 }
 
-                i = gt + 1;
+                EmitTagAttributes(i, tagEnd);
+                i = tagEnd + 1;
                 literalStart = i;
             }
             else if (form && c == '%')
             {
                 Flush(literalStart, i);
-                i = SkipPercent(line, i, contentEnd);
+                i = SkipPercent(markup, i, markup.Length);
                 literalStart = i;
             }
             else if (form && c == '{')
             {
                 Flush(literalStart, i);
-                i = SkipBrace(line, i, contentEnd);
+                i = SkipBrace(markup, i, markup.Length);
                 literalStart = i;
             }
             else
@@ -1283,8 +1633,63 @@ public static class ErbVisibleTextLexer
             }
         }
 
-        Flush(literalStart, contentEnd);
+        Flush(literalStart, markup.Length);
         return list;
+    }
+
+    // Finds the '>' that closes the tag starting at <paramref name="start"/>, skipping quoted
+    // attribute values (a tooltip may contain "<br>" or ">" itself) and HTML comments.
+    private static int FindTagEnd(string line, int start, int limit, bool form)
+    {
+        if (start + 3 < limit && line[start] == '<' && line[start + 1] == '!' && line[start + 2] == '-' && line[start + 3] == '-')
+        {
+            int comment = line.IndexOf("-->", start + 4, StringComparison.Ordinal);
+            if (comment < 0 || comment + 2 >= limit)
+            {
+                return -1;
+            }
+
+            return comment + 2;
+        }
+
+        char quote = '\0';
+        for (int i = start + 1; i < limit; i++)
+        {
+            char c = line[i];
+
+            // Inside a formatted HTML string a quoted attribute may contain %..% or {..} whose
+            // own quotes are part of the expression, not of the markup.
+            if (form && (c == '%' || c == '{'))
+            {
+                int skipped = c == '%' ? SkipPercent(line, i, limit) : SkipBrace(line, i, limit);
+                if (skipped > i)
+                {
+                    i = skipped - 1;
+                    continue;
+                }
+            }
+
+            if (quote != '\0')
+            {
+                if (c == quote)
+                {
+                    quote = '\0';
+                }
+
+                continue;
+            }
+
+            if (c == '\'' || c == '"')
+            {
+                quote = c;
+            }
+            else if (c == '>')
+            {
+                return i;
+            }
+        }
+
+        return -1;
     }
 
     private static DraftEntry? BuildEntry(
@@ -1402,6 +1807,13 @@ public static class ErbVisibleTextLexer
                 Flush(literalStart, i);
                 i = SkipBrace(s, i, end);
                 literalStart = i;
+            }
+            else if (c == '\\' && i + 1 < end && s[i + 1] != '@')
+            {
+                // Escaped character (\%, \{, \}): the pair is displayed as the second character,
+                // but it stays in the template so writing the translation back cannot create a
+                // placeholder by accident.
+                i += 2;
             }
             else if (c == '\\' && i + 1 < end && s[i + 1] == '@')
             {
@@ -1688,6 +2100,72 @@ public static class ErbVisibleTextLexer
         return -1;
     }
 
+    // Scans for the closing quote of a formatted (@"...") string, stepping over %..% and {..}
+    // placeholders: those may contain quotes of their own (e.g. %TOSTR(x,"X6")%).
+    private static int FindQuoteForm(string s, int i, int end)
+    {
+        int j = i + 1;
+        while (j < end)
+        {
+            char c = s[j];
+            if (c == '%' || c == '{')
+            {
+                int skipped = c == '%' ? SkipPercent(s, j, end) : SkipBrace(s, j, end);
+                if (skipped > j)
+                {
+                    j = skipped;
+                    continue;
+                }
+            }
+
+            if (c == '"')
+            {
+                if (j + 1 < end && s[j + 1] == '"')
+                {
+                    j += 2;
+                    continue;
+                }
+
+                return j;
+            }
+
+            j++;
+        }
+
+        return -1;
+    }
+
+    // Finds the closing quote of an attribute value without being fooled by quotes that sit
+    // inside a placeholder expression.
+    private static int FindQuoteEnd(string s, char quote, int start, int limit, bool form)
+    {
+        for (int i = start; i < limit; i++)
+        {
+            char c = s[i];
+            if (form && (c == '%' || c == '{'))
+            {
+                int skipped = c == '%' ? SkipPercent(s, i, limit) : SkipBrace(s, i, limit);
+                if (skipped > i)
+                {
+                    i = skipped - 1;
+                    continue;
+                }
+            }
+
+            if (c == quote)
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    // A whole-argument template is only safe to translate as one entry when it has no quotes or
+    // '+' operators: otherwise the translation would replace code as well as text.
+    private static bool CanKeepWholeArgumentTemplate(string template) =>
+        template.IndexOf('"') < 0 && template.IndexOf('+') < 0;
+
     private static int FindQuote(string s, int i, int end)
     {
         int j = i + 1;
@@ -1824,7 +2302,9 @@ public static class ErbVisibleTextLexer
 
         if (HasPrefix(name, i, "FORMS", name.Length))
         {
-            return "form";
+            // FORMS takes a *string expression* and formats the resulting value: `PRINTFORMS STR:X`
+            // must not be treated as a printable template, or the identifier would be translated.
+            return "str";
         }
 
         if (HasPrefix(name, i, "FORM", name.Length))

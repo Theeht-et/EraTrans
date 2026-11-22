@@ -202,7 +202,7 @@ public partial class DictionaryEditorControl
             return;
 
         var entriesByIndex = _document.Entries.ToDictionary(entry => entry.Index);
-        int concurrency = Math.Min(TranslationConcurrency, windows.Count);
+        int concurrency = Math.Max(1, Math.Min(TranslationConcurrency, windows.Count));
 
         using var cancellation = new CancellationTokenSource();
         _translationCancellation = cancellation;
@@ -216,7 +216,6 @@ public partial class DictionaryEditorControl
         int completed = 0;
         int totalRequests = windows.Count;
         int totalLines = windows.Sum(window => window.TargetCount);
-        Exception? failure = null;
 
         StatusTextBlock.Text = skippedSplitFunctions > 0
             ? $"准备{statusPrefix}：{totalRequests} 个请求，{totalLines} 行；被切开的函数 {skippedSplitFunctions} 个；并发 {concurrency}。"
@@ -226,22 +225,22 @@ public partial class DictionaryEditorControl
         // on the UI thread, so applying results and refreshing the grid is safe.
         async Task WorkerAsync()
         {
-            while (failure is null && pending.TryDequeue(out TranslationWindow? window))
+            while (pending.TryDequeue(out TranslationWindow? window))
             {
                 cancellation.Token.ThrowIfCancellationRequested();
 
                 WindowTranslationOutcome outcome = await _translationService.TranslateWindowAsync(
-                    profile, window!, reasoning: null, cancellation.Token);
-                ApplyWindowResults(outcome, entriesByIndex);
+                    profile, window, reasoning: null, cancellation.Token);
+                applied += ApplyWindowResults(outcome, entriesByIndex, ref skipped);
 
                 if (outcome.MissingIds.Count > 0)
                 {
                     // Only the unanswered lines are sent again, so a partially broken
                     // answer never wastes the whole request.
-                    TranslationWindow retry = RetryWindowForIds(window!, outcome.MissingIds);
+                    TranslationWindow retry = RetryWindowForIds(window, outcome.MissingIds);
                     WindowTranslationOutcome retryOutcome = await _translationService.TranslateWindowAsync(
                         profile, retry, reasoning: null, cancellation.Token);
-                    ApplyWindowResults(retryOutcome, entriesByIndex);
+                    applied += ApplyWindowResults(retryOutcome, entriesByIndex, ref skipped);
                 }
 
                 completed++;
@@ -264,13 +263,9 @@ public partial class DictionaryEditorControl
             {
                 await Task.WhenAll(workers);
             }
-            catch (OperationCanceledException)
+            catch
             {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                failure = ex;
+                // Stop the remaining workers before reporting the failure.
                 cancellation.Cancel();
                 throw;
             }
@@ -302,24 +297,26 @@ public partial class DictionaryEditorControl
         }
     }
 
-    private void ApplyWindowResults(
+    /// <summary>Applies one answer and returns how many lines were written.</summary>
+    private static int ApplyWindowResults(
         WindowTranslationOutcome outcome,
-        IReadOnlyDictionary<int, DictionaryEditorEntry> entriesByIndex)
+        IReadOnlyDictionary<int, DictionaryEditorEntry> entriesByIndex,
+        ref int skipped)
     {
+        int applied = 0;
         foreach (AiTranslationResult result in outcome.Translations)
         {
             if (!entriesByIndex.TryGetValue(result.Id, out DictionaryEditorEntry? entry))
                 continue;
 
             if (entry.TryApplyAiTranslation(entry.Key, entry.Original, result.Translation))
-                appliedCount++;
+                applied++;
             else
-                skippedCount++;
+                skipped++;
         }
-    }
 
-    private int appliedCount;
-    private int skippedCount;
+        return applied;
+    }
 
     private bool TryGetTranslationProfile(out AiProviderProfile? profile)
     {

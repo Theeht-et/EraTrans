@@ -138,6 +138,34 @@
                         BorderThickness="1"
                         CornerRadius="8">
                     <StackPanel>
+                        <TextBlock Text="文本抽取方式"
+                                   FontSize="16"
+                                   FontWeight="SemiBold"
+                                   Foreground="#20242A" />
+
+                        <ComboBox x:Name="ExtractionModeComboBox"
+                                  Height="34"
+                                  Margin="0,12,0,6"
+                                  VerticalContentAlignment="Center">
+                            <ComboBoxItem Content="旧版（当前，按字符长相提取）" Tag="legacy" />
+                            <ComboBoxItem Content="新版（仅提取玩家看得见的文本）" Tag="lexer" />
+                            <ComboBoxItem Content="新版（引擎解析，尚未实现）" Tag="engine" IsEnabled="False" />
+                        </ComboBox>
+
+                        <TextBlock Text="只影响 ERB 脚本；CSV / RES / XML / ERD 始终由原有解析器处理。切换方式后必须重新提取，两版生成的字典内容不同，不能混用。"
+                                   TextWrapping="Wrap"
+                                   FontSize="11"
+                                   Foreground="#68717D" />
+                    </StackPanel>
+                </Border>
+
+                <Border Padding="16"
+                        Margin="0,0,0,12"
+                        Background="White"
+                        BorderBrush="#E3E6EA"
+                        BorderThickness="1"
+                        CornerRadius="8">
+                    <StackPanel>
                         <TextBlock Text="AI 翻译方式"
                                    FontSize="16"
                                    FontWeight="SemiBold"

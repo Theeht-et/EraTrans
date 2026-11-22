@@ -1,4 +1,5 @@
 using System.Text;
+using EraTrans.Core.VisibleText;
 
 namespace EraTrans.Core;
 
@@ -7,6 +8,12 @@ namespace EraTrans.Core;
 /// </summary>
 public sealed class EraParserOptions
 {
+    /// <summary>
+    /// Which extractor produces the ERB dictionaries. The CSV/RES/XML/ERD branches always
+    /// use the legacy parsers; only the ERB branch switches.
+    /// </summary>
+    public ExtractionMode ExtractionMode { get; init; } = ExtractionMode.Legacy;
+
     public Encoding FileEncoding { get; init; } = new UTF8Encoding(encoderShouldEmitUTF8Identifier: true);
     public bool ForceFilterVariableNames { get; init; } = true;
     public bool HideEnglishText { get; init; } = true;

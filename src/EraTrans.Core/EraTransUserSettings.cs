@@ -1,4 +1,5 @@
 using System.Text;
+using EraTrans.Core.VisibleText;
 
 namespace EraTrans.Core;
 
@@ -29,6 +30,12 @@ public sealed class EraTransUserSettings
     public bool MergeConcatenatedStrings { get; set; } = true;
     public bool WriteContext { get; set; } = true;
     public bool EnableErbSemanticGroupingTranslation { get; set; } = false;
+
+    /// <summary>
+    /// Extractor used for the ERB branch: "legacy", "lexer" (visible text only) or "engine".
+    /// The CSV/RES/XML/ERD branches always use the legacy parsers.
+    /// </summary>
+    public string ErbExtractionMode { get; set; } = "legacy";
 
     /// <summary>
     /// Size of one ordered translation window. Only used when
@@ -77,6 +84,13 @@ public sealed class EraTransUserSettings
 
     public static EraTransUserSettings CreateDefault() => new();
 
+    private static ExtractionMode ParseExtractionMode(string? mode) => mode?.Trim().ToLowerInvariant() switch
+    {
+        "lexer" => ExtractionMode.Lexer,
+        "engine" => ExtractionMode.Engine,
+        _ => ExtractionMode.Legacy
+    };
+
     public Encoding CreateFileEncoding()
     {
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
@@ -97,6 +111,7 @@ public sealed class EraTransUserSettings
 
         return new EraParserOptions
         {
+            ExtractionMode = ParseExtractionMode(ErbExtractionMode),
             FileEncoding = CreateFileEncoding(),
             ForceFilterVariableNames = ForceFilterVariableNames,
             HideEnglishText = HideEnglishText,
@@ -118,6 +133,13 @@ public sealed class EraTransUserSettings
         {
             throw new InvalidDataException($"不支持的文件编码设置：{FileEncodingId}");
         }
+
+        ErbExtractionMode = ErbExtractionMode?.Trim().ToLowerInvariant() switch
+        {
+            "lexer" => "lexer",
+            "engine" => "engine",
+            _ => "legacy"
+        };
 
         // Keep older settings files usable: an out-of-range number falls back into
         // the allowed range instead of failing to load.

@@ -1,0 +1,403 @@
+using System.Text.Encodings.Web;
+using System.Text.Json;
+using EraTrans.Core.WriteBack;
+
+namespace EraTrans.Core.VisibleText;
+
+/// <summary>
+/// Extracts every visible literal of an entire ERB tree into per-file dictionaries plus the
+/// position sidecars used for write-back.
+/// <para>
+/// Dictionaries go to <c>&lt;dictionaryRoot&gt;/&lt;relative path&gt;.json</c> and sidecars to
+/// <c>&lt;output root&gt;/AI上下文/&lt;relative path&gt;.spans.json</c>, matching
+/// <see cref="SpanCatalog"/>. <c>&lt;output root&gt;</c> is the parent of a
+/// <c>dictionaryRoot</c> whose last segment is <c>字典</c>, otherwise <c>dictionaryRoot</c> itself.
+/// </para>
+/// </summary>
+public sealed class VisibleTextExtractor
+{
+    private const string SidecarDirectoryName = "AI上下文";
+    private const string SidecarSuffix = ".spans.json";
+    private const string DictionaryDirectoryName = "字典";
+
+    private static readonly JsonWriterOptions WriterOptions = new()
+    {
+        Indented = true,
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+    };
+
+    /// <summary>
+    /// Scans <c>gameDirectory/sourceSubdirectory</c> recursively for <c>*.erb</c> files and
+    /// writes one dictionary file per non-empty source file.
+    /// </summary>
+    public VisibleTextExtractionResult Extract(
+        string gameDirectory,
+        string dictionaryRoot,
+        string sourceSubdirectory,
+        EraParserOptions options)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(gameDirectory);
+        ArgumentException.ThrowIfNullOrWhiteSpace(dictionaryRoot);
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourceSubdirectory);
+        ArgumentNullException.ThrowIfNull(options);
+
+        string gameRoot = Path.GetFullPath(gameDirectory);
+        if (!Directory.Exists(gameRoot))
+        {
+            throw new DirectoryNotFoundException($"Game directory does not exist: {gameRoot}");
+        }
+
+        string sourceRoot = Path.GetFullPath(Path.Combine(gameRoot, sourceSubdirectory));
+        if (!Directory.Exists(sourceRoot))
+        {
+            throw new DirectoryNotFoundException($"Source directory does not exist: {sourceRoot}");
+        }
+
+        string dictionaryRootFull = Path.GetFullPath(dictionaryRoot);
+        string sidecarRoot = ResolveSidecarRoot(dictionaryRootFull);
+        IReadOnlyCollection<string> macros = LoadMacros(gameRoot);
+
+        string[] files = Directory
+            .GetFiles(sourceRoot, "*.erb", SearchOption.AllDirectories)
+            .OrderBy(path => Path.GetRelativePath(gameRoot, path), StringComparer.OrdinalIgnoreCase)
+            .ThenBy(path => Path.GetRelativePath(gameRoot, path), StringComparer.Ordinal)
+            .ToArray();
+
+        var warnings = new List<string>();
+        var generatedFiles = new List<string>();
+        int entryCount = 0;
+        int preservedTranslations = 0;
+        int resetTranslations = 0;
+
+        foreach (string file in files)
+        {
+            string relativePath = Path.GetRelativePath(gameRoot, file).Replace('\\', '/');
+            try
+            {
+                string text = GameFileText.Read(file).Text;
+                VisibleTextFileResult lexed = ErbVisibleTextLexer.ExtractFile(relativePath, text, macros);
+                warnings.AddRange(lexed.Warnings);
+                if (lexed.Entries.Count == 0)
+                {
+                    continue;
+                }
+
+                List<LineInfo> lineInfo = BuildLineInfo(text);
+                string dictionaryPath = ResolveDictionaryPath(dictionaryRootFull, relativePath);
+                DictionaryWriteStats stats = WriteDictionary(dictionaryPath, lexed.Entries, lineInfo, options.WriteContext);
+                preservedTranslations += stats.Preserved;
+                resetTranslations += stats.Reset;
+                if (stats.Warning is not null)
+                {
+                    warnings.Add($"{relativePath}: {stats.Warning}");
+                }
+
+                generatedFiles.Add(dictionaryPath);
+
+                string sidecarPath = ResolveSidecarPath(sidecarRoot, relativePath);
+                if (WriteSidecar(sidecarPath, relativePath, lexed.Entries))
+                {
+                    generatedFiles.Add(sidecarPath);
+                }
+
+                entryCount += lexed.Entries.Count;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
+            {
+                warnings.Add($"{relativePath}: {ex.Message}");
+            }
+        }
+
+        return new VisibleTextExtractionResult(generatedFiles, warnings, files.Length, entryCount)
+        {
+            PreservedTranslations = preservedTranslations,
+            ResetTranslations = resetTranslations
+        };
+    }
+
+    /// <summary>
+    /// Collects <c>#DEFINE</c> names from the game's <c>.erh</c> files. This mirrors the
+    /// prototype and Emuera's ERB loader: <c>ERH</c>, <c>erb</c> and <c>ERB</c> at the game root.
+    /// </summary>
+    private static IReadOnlyCollection<string> LoadMacros(string gameRoot)
+    {
+        var macros = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var seenDirectories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (string directoryName in new[] { "ERH", "erb", "ERB" })
+        {
+            string directory = Path.Combine(gameRoot, directoryName);
+            if (!Directory.Exists(directory) || !seenDirectories.Add(Path.GetFullPath(directory)))
+            {
+                continue;
+            }
+
+            foreach (string file in Directory.EnumerateFiles(directory, "*.erh", SearchOption.TopDirectoryOnly))
+            {
+                foreach (string rawLine in File.ReadLines(file))
+                {
+                    string? macro = ParseDefine(rawLine);
+                    if (macro is not null)
+                    {
+                        macros.Add(macro);
+                    }
+                }
+            }
+        }
+
+        return macros;
+    }
+
+    /// <summary>Parses <c>#DEFINE NAME</c> / <c>#DEFINE NAME(a,b)</c>; returns the macro name.</summary>
+    private static string? ParseDefine(string rawLine)
+    {
+        string line = rawLine.Trim();
+        if (line.Length < 7 || !line.StartsWith("#DEFINE", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        int index = 7;
+        while (index < line.Length && (line[index] == ' ' || line[index] == '\t'))
+        {
+            index++;
+        }
+
+        int start = index;
+        while (index < line.Length && line[index] != ' ' && line[index] != '\t' &&
+               line[index] != ',' && line[index] != '(')
+        {
+            index++;
+        }
+
+        return index > start ? line.Substring(start, index - start) : null;
+    }
+
+    private static List<LineInfo> BuildLineInfo(string text)
+    {
+        List<(string Line, int Start)> lines = ErbVisibleTextLexer.SplitLines(text);
+        var info = new List<LineInfo>(lines.Count);
+        string currentFunction = string.Empty;
+
+        foreach ((string line, _) in lines)
+        {
+            int p = 0;
+            while (p < line.Length && (line[p] == ' ' || line[p] == '\t'))
+            {
+                p++;
+            }
+
+            if (p < line.Length && line[p] == '@')
+            {
+                currentFunction = ErbVisibleTextLexer.ParseFunctionName(line, p);
+            }
+
+            info.Add(new LineInfo(currentFunction, line));
+        }
+
+        return info;
+    }
+
+    /// <summary>Context shown next to a dictionary entry in the translation UI.</summary>
+    private static string BuildContext(VisibleTextEntry entry, List<LineInfo> lineInfo)
+    {
+        if (entry.Line < 1 || entry.Line > lineInfo.Count)
+        {
+            return string.Empty;
+        }
+
+        LineInfo info = lineInfo[entry.Line - 1];
+        string function = info.Function.Length == 0 ? "(unnamed)" : info.Function;
+        return $"@{function} 行 {entry.Line}: {info.Line.TrimEnd()}";
+    }
+
+    private static DictionaryWriteStats WriteDictionary(
+        string path,
+        IReadOnlyList<VisibleTextEntry> entries,
+        List<LineInfo> lineInfo,
+        bool writeContext)
+    {
+        Dictionary<string, ExistingEntry>? existing = null;
+        string? warning = null;
+        if (File.Exists(path))
+        {
+            try
+            {
+                existing = LoadExistingDictionary(path);
+            }
+            catch (Exception ex) when (ex is IOException or System.Text.Json.JsonException)
+            {
+                warning = $"已有字典无法读取，按新建处理：{ex.Message}";
+            }
+        }
+
+        int preserved = 0;
+        int reset = 0;
+
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        using FileStream stream = File.Create(path);
+        using var writer = new Utf8JsonWriter(stream, WriterOptions);
+        writer.WriteStartArray();
+        for (int i = 0; i < entries.Count; i++)
+        {
+            VisibleTextEntry entry = entries[i];
+            string key = BuildKey(entry.RelativePath, i);
+            string translation = string.Empty;
+            int stage = 0;
+
+            if (existing is not null && existing.TryGetValue(key, out ExistingEntry old))
+            {
+                if (string.Equals(old.Original, entry.Template, StringComparison.Ordinal))
+                {
+                    // Same position and same source text: keep whatever the user or the AI wrote.
+                    if (old.Translation.Length > 0 || old.Stage != 0)
+                    {
+                        translation = old.Translation;
+                        stage = old.Stage;
+                        preserved++;
+                    }
+                }
+                else if (old.Translation.Length > 0)
+                {
+                    // The source text at this position changed; the old translation no longer applies.
+                    reset++;
+                }
+            }
+
+            writer.WriteStartObject();
+            writer.WriteString("key", key);
+            writer.WriteString("original", entry.Template);
+            writer.WriteString("translation", translation);
+            writer.WriteNumber("stage", stage);
+            writer.WriteString("context", writeContext ? BuildContext(entry, lineInfo) : string.Empty);
+            writer.WriteEndObject();
+        }
+
+        writer.WriteEndArray();
+        return new DictionaryWriteStats(preserved, reset, warning);
+    }
+
+    private static Dictionary<string, ExistingEntry> LoadExistingDictionary(string path)
+    {
+        var map = new Dictionary<string, ExistingEntry>(StringComparer.Ordinal);
+        using JsonDocument document = JsonDocument.Parse(File.ReadAllText(path));
+        if (document.RootElement.ValueKind != JsonValueKind.Array)
+        {
+            return map;
+        }
+
+        foreach (JsonElement item in document.RootElement.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object ||
+                !item.TryGetProperty("key", out JsonElement keyElement) ||
+                keyElement.GetString() is not { Length: > 0 } key)
+            {
+                continue;
+            }
+
+            string original = item.TryGetProperty("original", out JsonElement originalElement) &&
+                              originalElement.ValueKind == JsonValueKind.String
+                ? originalElement.GetString() ?? string.Empty
+                : string.Empty;
+            string translation = item.TryGetProperty("translation", out JsonElement translationElement) &&
+                                 translationElement.ValueKind == JsonValueKind.String
+                ? translationElement.GetString() ?? string.Empty
+                : string.Empty;
+            int stage = item.TryGetProperty("stage", out JsonElement stageElement) &&
+                        stageElement.TryGetInt32(out int parsedStage)
+                ? parsedStage
+                : 0;
+
+            map[key] = new ExistingEntry(original, translation, stage);
+        }
+
+        return map;
+    }
+
+    private readonly record struct ExistingEntry(string Original, string Translation, int Stage);
+
+    private readonly record struct DictionaryWriteStats(int Preserved, int Reset, string? Warning);
+
+    /// <summary>
+    /// Writes the position sidecar. The stored span covers the whole template, so
+    /// <c>slice(span) == original</c> holds for every entry, including templates with
+    /// placeholders (the replacement keeps the placeholders verbatim).
+    /// </summary>
+    private static bool WriteSidecar(string path, string relativePath, IReadOnlyList<VisibleTextEntry> entries)
+    {
+        var spans = new List<(string Key, VisibleTextSpan Span)>();
+        for (int i = 0; i < entries.Count; i++)
+        {
+            VisibleTextEntry entry = entries[i];
+            if (entry.Template.Length == 0 || !entry.Span.IsValid || entry.Span.Length != entry.Template.Length)
+            {
+                continue;
+            }
+
+            spans.Add((BuildKey(entry.RelativePath, i), entry.Span));
+        }
+
+        if (spans.Count == 0)
+        {
+            return false;
+        }
+
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        using FileStream stream = File.Create(path);
+        using var writer = new Utf8JsonWriter(stream, WriterOptions);
+        writer.WriteStartObject();
+        writer.WriteNumber("schema", 1);
+        writer.WriteString("file", relativePath);
+        writer.WriteStartArray("spans");
+        foreach ((string key, VisibleTextSpan span) in spans)
+        {
+            writer.WriteStartObject();
+            writer.WriteString("key", key);
+            writer.WriteNumber("start", span.Start);
+            writer.WriteNumber("end", span.End);
+            writer.WriteEndObject();
+        }
+
+        writer.WriteEndArray();
+        writer.WriteEndObject();
+        return true;
+    }
+
+    /// <summary>
+    /// <c>"文本" + game-relative path without extension, backslash separated + 5 digit ordinal</c>,
+    /// the key format the legacy dictionaries already use.
+    /// </summary>
+    private static string BuildKey(string relativePath, int sequence) =>
+        "文本" + Path.ChangeExtension(relativePath, string.Empty).Replace('/', '\\') + sequence.ToString("D5");
+
+    private static string ResolveDictionaryPath(string dictionaryRoot, string relativePath) =>
+        Path.Combine(dictionaryRoot, Path.ChangeExtension(relativePath, ".json"));
+
+    private static string ResolveSidecarPath(string sidecarRoot, string relativePath) =>
+        Path.Combine(
+            sidecarRoot,
+            SidecarDirectoryName,
+            StripExtension(relativePath) + SidecarSuffix);
+
+    /// <summary>
+    /// Removes the file extension including its dot. <see cref="Path.ChangeExtension(string, string)"/>
+    /// keeps the dot when the replacement extension is empty, which would turn <c>x.erb</c> into
+    /// <c>x..spans.json</c> for the sidecar name.
+    /// </summary>
+    private static string StripExtension(string relativePath)
+    {
+        string extension = Path.GetExtension(relativePath);
+        return extension.Length == 0 ? relativePath : relativePath[..^extension.Length];
+    }
+
+    private static string ResolveSidecarRoot(string dictionaryRoot)
+    {
+        string root = Path.GetFullPath(dictionaryRoot);
+        string outputRoot = string.Equals(Path.GetFileName(root), DictionaryDirectoryName, StringComparison.OrdinalIgnoreCase)
+            ? Directory.GetParent(root)?.FullName ?? root
+            : root;
+        return outputRoot;
+    }
+
+    private readonly record struct LineInfo(string Function, string Line);
+}

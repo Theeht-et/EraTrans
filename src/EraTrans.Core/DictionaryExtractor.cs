@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
+using EraTrans.Core.VisibleText;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -55,12 +56,26 @@ public sealed class DictionaryExtractor
 
         lock (LegacyParserRuntime.SyncRoot)
         {
-            LegacyParserRuntime.Initialize(options ?? new EraParserOptions());
+            EraParserOptions effectiveOptions = options ?? new EraParserOptions();
+            LegacyParserRuntime.Initialize(effectiveOptions);
 
             var scannedFiles = GameDirectoryScanner.Scan(gameRoot);
             if (!Directory.Exists(Path.Combine(gameRoot, "XML")))
             {
                 scannedFiles = scannedFiles.Where(file => file.Kind != GameFileKind.Xml).ToArray();
+            }
+
+            WriteExtractorMarker(outputRoot, effectiveOptions.ExtractionMode, warnings);
+            if (effectiveOptions.ExtractionMode != ExtractionMode.Legacy)
+            {
+                scannedFiles = ExtractVisibleTextErb(
+                    gameRoot,
+                    outputRoot,
+                    referenceRoot,
+                    effectiveOptions,
+                    scannedFiles,
+                    generatedFiles,
+                    warnings);
             }
 
             var erdFiles = scannedFiles
@@ -498,4 +513,108 @@ public sealed class DictionaryExtractor
             throw new InvalidOperationException("Output directory must be outside every source directory.");
         }
     }
+
+    /// <summary>
+    /// Replaces the legacy ERB branch with the visible-text extractor. CSV/RES/XML/ERD files are
+    /// still processed by the legacy parsers, so only ERB entries are removed from the returned list.
+    /// </summary>
+    private static IReadOnlyList<GameFile> ExtractVisibleTextErb(
+        string gameRoot,
+        string outputRoot,
+        string? referenceRoot,
+        EraParserOptions options,
+        IReadOnlyList<GameFile> scannedFiles,
+        ConcurrentBag<string> generatedFiles,
+        ConcurrentBag<string> warnings)
+    {
+        if (options.ExtractionMode == ExtractionMode.Engine)
+        {
+            throw new NotSupportedException("引擎抽取模式尚未实现，请选择旧版或新版（仅可见文本）。");
+        }
+
+        GameFile[] erbFiles = scannedFiles.Where(file => file.Kind == GameFileKind.Erb).ToArray();
+        if (erbFiles.Length == 0)
+        {
+            return scannedFiles;
+        }
+
+        if (referenceRoot is not null)
+        {
+            warnings.Add("参考目录填充只在旧版 ERB 抽取下可用，本次已忽略参考目录。");
+        }
+
+        string firstRelative = erbFiles[0].RelativePath.Replace('\\', '/');
+        string erbRootName = firstRelative.Contains('/') ? firstRelative[..firstRelative.IndexOf('/')] : "ERB";
+
+        VisibleTextExtractionResult result = new VisibleTextExtractor()
+            .Extract(gameRoot, outputRoot, erbRootName, options);
+
+        foreach (string file in result.GeneratedFiles)
+        {
+            generatedFiles.Add(file);
+        }
+        foreach (string warning in result.Warnings)
+        {
+            warnings.Add(warning);
+        }
+        warnings.Add(
+            $"新版可见文本抽取：{result.FileCount} 个 ERB / {result.EntryCount} 条；保留译文 {result.PreservedTranslations} 条" +
+            (result.ResetTranslations > 0
+                ? $"，因原文变化重置 {result.ResetTranslations} 条。"
+                : "。"));
+
+        return scannedFiles.Where(file => file.Kind != GameFileKind.Erb).ToArray();
+    }
+
+    /// <summary>
+    /// Records which extractor produced the dictionaries in this output directory. Re-extracting
+    /// with another mode overwrites the ERB dictionaries, so the next run can warn about it.
+    /// </summary>
+    private static void WriteExtractorMarker(
+        string outputRoot,
+        ExtractionMode mode,
+        ConcurrentBag<string> warnings)
+    {
+        string modeName = mode switch
+        {
+            ExtractionMode.Lexer => "lexer",
+            ExtractionMode.Engine => "engine",
+            _ => "legacy"
+        };
+
+        string path = Path.Combine(outputRoot, "extractor.json");
+        if (File.Exists(path))
+        {
+            try
+            {
+                JObject existing = JObject.Parse(File.ReadAllText(path));
+                string? previousMode = existing.Value<string>("mode");
+                if (!string.IsNullOrEmpty(previousMode) &&
+                    !string.Equals(previousMode, modeName, StringComparison.OrdinalIgnoreCase))
+                {
+                    warnings.Add(
+                        $"该输出目录上一次由「{DescribeExtractionMode(previousMode)}」提取，本次改为「{DescribeExtractionMode(modeName)}」并覆盖 ERB 字典；" +
+                        "如需保留旧字典，请先备份输出目录或改用另一个目录。");
+                }
+            }
+            catch (JsonException)
+            {
+                warnings.Add("extractor.json 无法解析，已按本次抽取方式重写该标记。");
+            }
+        }
+
+        var marker = new JObject
+        {
+            ["schema"] = 1,
+            ["mode"] = modeName
+        };
+        File.WriteAllText(path, marker.ToString(Formatting.Indented));
+    }
+
+    private static string DescribeExtractionMode(string mode) => mode.ToLowerInvariant() switch
+    {
+        "lexer" => "新版（仅可见文本）",
+        "engine" => "新版（引擎）",
+        _ => "旧版"
+    };
 }

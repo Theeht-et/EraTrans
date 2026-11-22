@@ -32,6 +32,13 @@ public partial class ParserSettingsWindow : Window
                 settings.FileEncodingId,
                 StringComparison.Ordinal));
 
+        ExtractionModeComboBox.SelectedItem = ExtractionModeComboBox.Items
+            .OfType<ComboBoxItem>()
+            .FirstOrDefault(item => string.Equals(
+                item.Tag?.ToString(),
+                settings.ErbExtractionMode,
+                StringComparison.OrdinalIgnoreCase));
+
         ForceFilterVariableNamesCheckBox.IsChecked = settings.ForceFilterVariableNames;
         AutoOpenFolderCheckBox.IsChecked = settings.AutoOpenFolder;
         EnableVariableAutoCorrectionCheckBox.IsChecked = settings.EnableVariableAutoCorrection;
@@ -86,9 +93,16 @@ public partial class ParserSettingsWindow : Window
                 throw new InvalidDataException("请选择有效的文件编码。");
             }
 
+            if (ExtractionModeComboBox.SelectedItem is not ComboBoxItem extractionItem ||
+                extractionItem.Tag is not string extractionMode)
+            {
+                throw new InvalidDataException("请选择有效的文本抽取方式。");
+            }
+
             var settings = new EraTransUserSettings
             {
                 FileEncodingId = encodingId,
+                ErbExtractionMode = extractionMode,
                 ForceFilterVariableNames = ForceFilterVariableNamesCheckBox.IsChecked == true,
                 AutoOpenFolder = AutoOpenFolderCheckBox.IsChecked == true,
                 EnableVariableAutoCorrection = EnableVariableAutoCorrectionCheckBox.IsChecked == true,
@@ -126,9 +140,15 @@ public partial class ParserSettingsWindow : Window
             };
 
             _store.Save(settings);
+            bool modeChanged = !string.Equals(
+                extractionMode,
+                _settingsToPreserve.ErbExtractionMode,
+                StringComparison.OrdinalIgnoreCase);
             MessageBox.Show(
                 this,
-                "设置已保存。下一次提取或应用译文时生效。",
+                modeChanged
+                    ? "设置已保存。文本抽取方式已改变：请重新提取字典，两版字典内容不同，不能混用。"
+                    : "设置已保存。下一次提取或应用译文时生效。",
                 "保存成功",
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);

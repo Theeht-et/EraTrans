@@ -10,6 +10,9 @@ namespace EraTrans.App;
 
 public partial class DictionaryEditorControl : UserControl
 {
+    private const int GroupPreviewMaxLines = 60;
+    private const int GroupPreviewMaxLineLength = 240;
+
     private string _dictionaryDirectory = string.Empty;
     private string _gameDirectory = string.Empty;
     private EraTransUserSettings _settings;
@@ -23,6 +26,9 @@ public partial class DictionaryEditorControl : UserControl
     private readonly AiProviderSettingsStore _providerStore = new();
     private ErbTranslationGroupingIndex? _activeGroupingIndex;
     private string? _groupingFallbackReason;
+    private Dictionary<string, ErbTranslationGroupEntry>? _groupLinksByKey;
+    private Dictionary<string, ErbTranslationGroup>? _groupsById;
+    private Dictionary<string, DictionaryEditorEntry>? _entriesByKey;
     private readonly AiTranslationLogStore _translationLogStore = new();
     private readonly AiTranslationService _translationService;
     private readonly Dictionary<string, TreeViewItem> _fileTreeItems = new(StringComparer.OrdinalIgnoreCase);
@@ -215,6 +221,9 @@ public partial class DictionaryEditorControl : UserControl
         _entriesView = null;
         _activeGroupingIndex = null;
         _groupingFallbackReason = null;
+        _groupLinksByKey = null;
+        _groupsById = null;
+        _entriesByKey = null;
         EntriesDataGrid.ItemsSource = null;
         EntrySearchTextBox.Text = string.Empty;
         EntryGroupTextBox.Text = string.Empty;
@@ -418,6 +427,8 @@ public partial class DictionaryEditorControl : UserControl
             _currentFile = file;
             _activeGroupingIndex = null;
             _groupingFallbackReason = null;
+            _groupLinksByKey = null;
+            _groupsById = null;
 
             string outputRoot = Directory.GetParent(_dictionaryDirectory)?.FullName ?? _dictionaryDirectory;
             string sidecarPath = Path.Combine(
@@ -439,6 +450,7 @@ public partial class DictionaryEditorControl : UserControl
                         out string? reason))
                 {
                     _activeGroupingIndex = groupingIndex;
+                    PrepareGroupLookup(groupingIndex!, document.Entries);
                     ApplySemanticGroupDisplay(document.Entries, groupingIndex!);
                 }
                 else
@@ -477,6 +489,9 @@ public partial class DictionaryEditorControl : UserControl
             _document = null;
             _currentFile = null;
             _entriesView = null;
+            _entriesByKey = null;
+            _groupLinksByKey = null;
+            _groupsById = null;
             EntriesDataGrid.ItemsSource = null;
             EntryContextTextBox.Text = string.Empty;
             EntryGroupTextBox.Text = string.Empty;
@@ -493,6 +508,25 @@ public partial class DictionaryEditorControl : UserControl
         }
     }
 
+    /// <summary>
+    /// Builds the lookups used by the on-demand group preview once per file.
+    /// </summary>
+    private void PrepareGroupLookup(
+        ErbTranslationGroupingIndex index,
+        IReadOnlyList<DictionaryEditorEntry> entries)
+    {
+        _groupLinksByKey = index.Entries.ToDictionary(
+            entry => entry.Key, StringComparer.Ordinal);
+        _groupsById = index.Groups.ToDictionary(
+            group => group.Id, StringComparer.Ordinal);
+        _entriesByKey = entries.ToDictionary(
+            entry => entry.Key, StringComparer.Ordinal);
+    }
+
+    /// <summary>
+    /// Sets only the group label. The member preview is built on demand, because
+    /// pre-building it for every group of a large file dominated file switching.
+    /// </summary>
     private static void ApplySemanticGroupDisplay(
         IReadOnlyList<DictionaryEditorEntry> dictionaryEntries,
         ErbTranslationGroupingIndex index)
@@ -500,23 +534,61 @@ public partial class DictionaryEditorControl : UserControl
         var entriesByKey = dictionaryEntries.ToDictionary(entry => entry.Key, StringComparer.Ordinal);
         foreach (ErbTranslationGroup group in index.Groups)
         {
-            string typeLabel = group.Type switch
-            {
-                "dialogue" => "对白",
-                "menu" => "菜单",
-                "branch" => "分支",
-                "condition" => "条件",
-                _ => "语义"
-            };
-            string label = $"{typeLabel} {group.Id.Replace("group_", "#", StringComparison.Ordinal)}";
-            string preview = string.Join(Environment.NewLine,
-                group.EntryKeys.Where(entriesByKey.ContainsKey)
-                    .Select(key => $"{key}  {entriesByKey[key].Original}"));
-
+            string label = $"{DescribeGroupType(group.Type)} {group.Id.Replace("group_", "#", StringComparison.Ordinal)}";
             foreach (string key in group.EntryKeys)
+            {
                 if (entriesByKey.TryGetValue(key, out DictionaryEditorEntry? entry))
-                    entry.SetSemanticGroupInfo(label, preview);
+                    entry.SetSemanticGroupInfo(label, string.Empty);
+            }
         }
+    }
+
+    private static string DescribeGroupType(string type) => type switch
+    {
+        "dialogue" => "对白",
+        "menu" => "菜单",
+        "branch" => "分支",
+        "condition" => "条件",
+        "html" => "界面",
+        _ => "语义"
+    };
+
+    /// <summary>Preview of the selected entry's group, built only when asked for.</summary>
+    private string BuildGroupPreview(string key)
+    {
+        if (_groupsById is null || _groupLinksByKey is null)
+            return string.Empty;
+        if (!_groupLinksByKey.TryGetValue(key, out ErbTranslationGroupEntry? link))
+            return string.Empty;
+        if (!_groupsById.TryGetValue(link.GroupId, out ErbTranslationGroup? group))
+            return string.Empty;
+
+        var builder = new System.Text.StringBuilder();
+        int written = 0;
+        foreach (string memberKey in group.EntryKeys)
+        {
+            if (written >= GroupPreviewMaxLines)
+            {
+                builder.AppendLine("……（本组还有更多行）");
+                break;
+            }
+
+            if (_entriesByKey is null ||
+                !_entriesByKey.TryGetValue(memberKey, out DictionaryEditorEntry? member))
+            {
+                continue;
+            }
+
+            string original = member.Original.Length > GroupPreviewMaxLineLength
+                ? member.Original[..GroupPreviewMaxLineLength] + "…"
+                : member.Original;
+            if (builder.Length > 0)
+                builder.AppendLine();
+            builder.Append(memberKey).Append("  ").Append(original);
+            written++;
+        }
+
+        return builder.ToString();
     }
 
     private bool FilterEntry(object item)
@@ -535,8 +607,7 @@ public partial class DictionaryEditorControl : UserControl
         return Contains(entry.Key, search) ||
                Contains(entry.Original, search) ||
                Contains(entry.Translation, search) ||
-               Contains(entry.Context, search) ||
-               Contains(entry.SemanticGroupEntriesPreview, search);
+               Contains(entry.Context, search);
     }
 
     private static bool Contains(string source, string search) =>
@@ -604,9 +675,11 @@ public partial class DictionaryEditorControl : UserControl
         EntryGroupLabelTextBlock.Text = entry is null || string.IsNullOrWhiteSpace(entry.SemanticGroupLabel)
             ? "同组条目"
             : $"同组条目 · {entry.SemanticGroupLabel}";
-        EntryGroupTextBox.Text = entry is null || string.IsNullOrWhiteSpace(entry.SemanticGroupEntriesPreview)
+
+        string groupPreview = entry is null ? string.Empty : BuildGroupPreview(entry.Key);
+        EntryGroupTextBox.Text = string.IsNullOrWhiteSpace(groupPreview)
             ? "当前词条没有可用的 ERB 语义分组信息。"
-            : entry.SemanticGroupEntriesPreview;
+            : groupPreview;
 
         EntryContextTextBox.Text = entry is null
             ? "选择一个词条查看上下文。"
@@ -816,7 +889,7 @@ public partial class DictionaryEditorControl : UserControl
             SaveCurrentDocument();
             e.Handled = true;
         }
-        else if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.F)
+        else if (Keyboard.Modifiers == Key.F)
         {
             EntrySearchTextBox.Focus();
             EntrySearchTextBox.SelectAll();

@@ -91,6 +91,10 @@ public sealed class VisibleTextExtractorTests
                 "おはよう%CALLNAME%、いい朝だ",
                 text[firstSpan.GetProperty("start").GetInt32()..firstSpan.GetProperty("end").GetInt32()]);
 
+            Assert.True(firstSpan.GetProperty("line").GetInt32() > 0);
+            Assert.Equal("PRINTFORMW", firstSpan.GetProperty("command").GetString());
+            Assert.Equal("form", firstSpan.GetProperty("kind").GetString());
+
             JsonElement secondSpan = spans[1];
             Assert.Equal(@"文本ERB\hello.00001", secondSpan.GetProperty("key").GetString());
             Assert.Equal(

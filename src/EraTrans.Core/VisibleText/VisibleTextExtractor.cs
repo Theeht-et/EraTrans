@@ -343,7 +343,7 @@ public sealed class VisibleTextExtractor
     /// </summary>
     private static bool WriteSidecar(string path, string relativePath, IReadOnlyList<VisibleTextEntry> entries)
     {
-        var spans = new List<(string Key, VisibleTextSpan Span)>();
+        var spans = new List<(string Key, VisibleTextSpan Span, int Line, string Command, string Kind)>();
         for (int i = 0; i < entries.Count; i++)
         {
             VisibleTextEntry entry = entries[i];
@@ -352,7 +352,7 @@ public sealed class VisibleTextExtractor
                 continue;
             }
 
-            spans.Add((BuildKey(entry.RelativePath, i), entry.Span));
+            spans.Add((BuildKey(entry.RelativePath, i), entry.Span, entry.Line, entry.Command, entry.Kind));
         }
 
         if (spans.Count == 0)
@@ -367,12 +367,15 @@ public sealed class VisibleTextExtractor
         writer.WriteNumber("schema", 1);
         writer.WriteString("file", relativePath);
         writer.WriteStartArray("spans");
-        foreach ((string key, VisibleTextSpan span) in spans)
+        foreach ((string key, VisibleTextSpan span, int line, string command, string kind) in spans)
         {
             writer.WriteStartObject();
             writer.WriteString("key", key);
             writer.WriteNumber("start", span.Start);
             writer.WriteNumber("end", span.End);
+            writer.WriteNumber("line", line);
+            writer.WriteString("command", command);
+            writer.WriteString("kind", kind);
             writer.WriteEndObject();
         }
 

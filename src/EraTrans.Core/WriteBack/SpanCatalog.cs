@@ -13,26 +13,31 @@ namespace EraTrans.Core.WriteBack;
 /// Shape:
 /// <code>
 /// { "schema": 1, "file": "ERB/foo.erb",
-///   "spans": [ { "key": "文本ERB\\foo.00001", "start": 12, "end": 24 } ] }
+///   "spans": [ { "key": "文本ERB\\foo.00001", "start": 12, "end": 24,
+///                "line": 7, "command": "PRINTFORM", "kind": "form" } ] }
 /// </code>
+/// <c>line</c>/<c>command</c>/<c>kind</c> are optional additions written by the visible-text
+/// extractor; older sidecars without them are still accepted.
 /// </summary>
 public sealed class SpanCatalog
 {
     private const string SidecarDirectoryName = "AI上下文";
     private const string SidecarSuffix = ".spans.json";
 
-    private readonly Dictionary<string, Dictionary<string, TextSpan>> _byFile;
+    private readonly Dictionary<string, Dictionary<string, SpanInfo>> _byFile;
 
-    private SpanCatalog(Dictionary<string, Dictionary<string, TextSpan>> byFile)
+    private SpanCatalog(Dictionary<string, Dictionary<string, SpanInfo>> byFile)
     {
         _byFile = byFile;
     }
 
-    public static SpanCatalog Empty { get; } = new(new Dictionary<string, Dictionary<string, TextSpan>>(StringComparer.OrdinalIgnoreCase));
+    public static SpanCatalog Empty { get; } = new(new Dictionary<string, Dictionary<string, SpanInfo>>(StringComparer.OrdinalIgnoreCase));
 
     public int FileCount => _byFile.Count;
 
     public int SpanCount => _byFile.Values.Sum(spans => spans.Count);
+
+    public IReadOnlyCollection<string> GamePaths => _byFile.Keys;
 
     public static SpanCatalog LoadFromSidecar(string dictionaryDirectory, Action<string>? onWarning = null)
     {
@@ -44,7 +49,7 @@ public sealed class SpanCatalog
             return Empty;
         }
 
-        var byFile = new Dictionary<string, Dictionary<string, TextSpan>>(StringComparer.OrdinalIgnoreCase);
+        var byFile = new Dictionary<string, Dictionary<string, SpanInfo>>(StringComparer.OrdinalIgnoreCase);
         foreach (string path in Directory.EnumerateFiles(sidecarRoot, "*" + SidecarSuffix, SearchOption.AllDirectories))
         {
             string relativeSidecar = Path.GetRelativePath(sidecarRoot, path);
@@ -62,15 +67,15 @@ public sealed class SpanCatalog
                     continue;
                 }
 
-                var map = new Dictionary<string, TextSpan>(StringComparer.Ordinal);
+                var map = new Dictionary<string, SpanInfo>(StringComparer.Ordinal);
                 foreach (JsonElement item in spans.EnumerateArray())
                 {
-                    if (!TryReadSpan(item, out string key, out TextSpan span))
+                    if (!TryReadSpan(item, out string key, out SpanInfo info))
                     {
                         continue;
                     }
 
-                    map[key] = span;
+                    map[key] = info;
                 }
 
                 if (map.Count > 0)
@@ -91,16 +96,68 @@ public sealed class SpanCatalog
 
     public bool TryGetSpans(string relativeGamePath, out IReadOnlyDictionary<string, TextSpan> spans)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(relativeGamePath);
-        string normalized = relativeGamePath.Replace('\\', '/');
-        if (_byFile.TryGetValue(normalized, out Dictionary<string, TextSpan>? found))
+        if (TryGetFile(relativeGamePath, out Dictionary<string, SpanInfo>? found))
         {
-            spans = found;
+            var map = new Dictionary<string, TextSpan>(found.Count, StringComparer.Ordinal);
+            foreach ((string key, SpanInfo info) in found)
+            {
+                map[key] = info.Span;
+            }
+
+            spans = map;
             return true;
         }
 
         spans = new Dictionary<string, TextSpan>();
         return false;
+    }
+
+    /// <summary>
+    /// Looks up the extractor metadata of one entry. <paramref name="relativeGamePath"/> may be
+    /// the recorded game file (<c>ERB/foo.erb</c>) or its stem (<c>ERB/foo</c>), and both slash
+    /// directions are accepted.
+    /// </summary>
+    public bool TryGetInfo(string relativeGamePath, string key, out SpanInfo info)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+        if (TryGetFile(relativeGamePath, out Dictionary<string, SpanInfo>? found) &&
+            found!.TryGetValue(key, out info))
+        {
+            return true;
+        }
+
+        info = default;
+        return false;
+    }
+
+    private bool TryGetFile(string relativeGamePath, out Dictionary<string, SpanInfo>? found)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(relativeGamePath);
+        string normalized = relativeGamePath.Replace('\\', '/');
+        if (_byFile.TryGetValue(normalized, out found))
+        {
+            return true;
+        }
+
+        string stem = StripExtension(normalized);
+        foreach ((string path, Dictionary<string, SpanInfo> map) in _byFile)
+        {
+            if (string.Equals(StripExtension(path), stem, StringComparison.OrdinalIgnoreCase))
+            {
+                found = map;
+                return true;
+            }
+        }
+
+        found = null;
+        return false;
+    }
+
+    private static string StripExtension(string path)
+    {
+        int separator = path.LastIndexOf('/');
+        int dot = path.LastIndexOf('.');
+        return dot > separator ? path[..dot] : path;
     }
 
     private static string ReadGamePath(JsonElement root, string fallback)
@@ -117,10 +174,10 @@ public sealed class SpanCatalog
         return fallback;
     }
 
-    private static bool TryReadSpan(JsonElement item, out string key, out TextSpan span)
+    private static bool TryReadSpan(JsonElement item, out string key, out SpanInfo info)
     {
         key = string.Empty;
-        span = default;
+        info = default;
 
         if (item.ValueKind != JsonValueKind.Object ||
             !item.TryGetProperty("key", out JsonElement keyElement) ||
@@ -138,10 +195,27 @@ public sealed class SpanCatalog
             return false;
         }
 
+        var span = new TextSpan(start, end);
+        if (!span.IsValid)
+        {
+            return false;
+        }
+
+        int line = item.TryGetProperty("line", out JsonElement lineElement) && lineElement.TryGetInt32(out int parsedLine)
+            ? parsedLine
+            : 0;
+        string command = ReadString(item, "command");
+        string kind = ReadString(item, "kind");
+
         key = text;
-        span = new TextSpan(start, end);
-        return span.IsValid;
+        info = new SpanInfo(span, line, command, kind);
+        return true;
     }
+
+    private static string ReadString(JsonElement item, string name) =>
+        item.TryGetProperty(name, out JsonElement element) && element.ValueKind == JsonValueKind.String
+            ? element.GetString() ?? string.Empty
+            : string.Empty;
 
     private static string ResolveSidecarRoot(string dictionaryDirectory)
     {
@@ -152,3 +226,6 @@ public sealed class SpanCatalog
         return Path.Combine(outputRoot, SidecarDirectoryName);
     }
 }
+
+/// <summary>One extractor entry: where it lives in the source plus which command produced it.</summary>
+public readonly record struct SpanInfo(TextSpan Span, int Line, string Command, string Kind);

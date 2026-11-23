@@ -310,30 +310,31 @@ public sealed class VisibleTextExtractorTests
     }
 
     [Fact]
-    public void Extract_RejectsAmbiguousEncodingBeforeCreatingVisibleTextDictionaries()
+    public void Extract_RejectsUndecodableFileBeforeCreatingVisibleTextDictionaries()
     {
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
         string root = CreateTempRoot();
         try
         {
             string gameDirectory = Path.Combine(root, "game");
-            string source = Path.Combine(gameDirectory, "ERB", "ambiguous.erb");
+            string source = Path.Combine(gameDirectory, "ERB", "invalid.erb");
             string dictionaryRoot = Path.Combine(root, "out", "字典");
             Directory.CreateDirectory(Path.GetDirectoryName(source)!);
-            byte[] gbkBytes = Encoding.GetEncoding(936).GetBytes("学习");
-            File.WriteAllBytes(source, gbkBytes);
+            byte[] invalidBytes = [0xFF, 0xFE, 0x00];
+            File.WriteAllBytes(source, invalidBytes);
 
             InvalidDataException error = Assert.Throws<InvalidDataException>(() =>
                 new VisibleTextExtractor().Extract(
                     gameDirectory,
                     dictionaryRoot,
                     "ERB",
-                    new EraParserOptions { FileEncoding = Encoding.GetEncoding(936) }));
+                    new EraParserOptions { FileEncoding = Encoding.GetEncoding(936) },
+                    ignoreEncodingIssueFiles: false));
 
-            Assert.Contains("ERB/ambiguous.erb", error.Message);
-            Assert.Contains("歧义", error.Message);
+            Assert.Contains("ERB/invalid.erb", error.Message);
+            Assert.Contains("无损解码", error.Message);
             Assert.False(Directory.Exists(dictionaryRoot));
-            Assert.Equal(gbkBytes, File.ReadAllBytes(source));
+            Assert.Equal(invalidBytes, File.ReadAllBytes(source));
         }
         finally
         {
@@ -343,7 +344,7 @@ public sealed class VisibleTextExtractorTests
 
 
     [Fact]
-    public void Extract_CanIgnoreAmbiguousAndInvalidFiles_AndContinueExtractingValidErb()
+    public void Extract_SkipsUndecodableFilesByDefaultAndKeepsDecodableOnes()
     {
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
         Encoding gbk = Encoding.GetEncoding(936);
@@ -361,26 +362,23 @@ public sealed class VisibleTextExtractorTests
                 new UTF8Encoding(true));
             File.WriteAllBytes(
                 Path.Combine(gameDirectory, "ERB", "ambiguous.erb"),
-                gbk.GetBytes("学习"));
+                gbk.GetBytes("@MAIN\n" + PlainLine.Replace("こんにちは", "学习") + "\n"));
             File.WriteAllBytes(
                 Path.Combine(gameDirectory, "ERB", "invalid.erb"),
                 [0xFF, 0xFE, 0x00]);
 
             var options = new EraParserOptions { FileEncoding = gbk };
-            var extractor = new VisibleTextExtractor();
-
-            VisibleTextExtractionResult result = extractor.Extract(
+            VisibleTextExtractionResult result = new VisibleTextExtractor().Extract(
                 gameDirectory,
                 dictionaryRoot,
                 "ERB",
-                options,
-                ignoreEncodingIssueFiles: true);
+                options);
 
             Assert.True(File.Exists(Path.Combine(dictionaryRoot, "ERB", "valid.json")));
-            Assert.False(File.Exists(Path.Combine(dictionaryRoot, "ERB", "ambiguous.json")));
+            Assert.True(File.Exists(Path.Combine(dictionaryRoot, "ERB", "ambiguous.json")));
             Assert.False(File.Exists(Path.Combine(dictionaryRoot, "ERB", "invalid.json")));
-            Assert.Contains(result.Warnings, warning => warning.Contains("ERB/ambiguous.erb", StringComparison.Ordinal));
             Assert.Contains(result.Warnings, warning => warning.Contains("ERB/invalid.erb", StringComparison.Ordinal));
+            Assert.Contains(result.Warnings, warning => warning.Contains("1 个文件无法可靠解码", StringComparison.Ordinal));
         }
         finally
         {

@@ -25,7 +25,7 @@ public sealed class DictionaryExtractor
         string outputDirectory,
         string? referenceGameDirectory = null,
         EraParserOptions? options = null,
-        bool ignoreEncodingIssueFiles = false)
+        bool ignoreEncodingIssueFiles = true)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(gameDirectory);
         ArgumentException.ThrowIfNullOrWhiteSpace(outputDirectory);
@@ -81,6 +81,11 @@ public sealed class DictionaryExtractor
                 ? "；该文件为宏定义文件，可能影响依赖它的条件编译"
                 : string.Empty;
             warnings.Add($"已忽略编码异常文件（未提取）：{issue.RelativePath}（{issue.KindLabel}）{macroNote}");
+        }
+
+        if (encodingIssues.Count > 0)
+        {
+            warnings.Add($"文本编码：共 {encodingIssues.Count} 个文件无法可靠解码，已跳过（原文件未改动）。");
         }
 
         lock (LegacyParserRuntime.SyncRoot)

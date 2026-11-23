@@ -146,7 +146,7 @@ public sealed class GameFileTextTests : IDisposable
 
 
     [Fact]
-    public void DetectEncoding_RejectsGbkBytesThatAreAlsoValidUtf8WithDifferentText()
+    public void DetectEncoding_PrefersLegacyCodePageWhenUtf8DecodeLooksLikeMojibake()
     {
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
         Encoding gbk = Encoding.GetEncoding(936);
@@ -155,10 +155,10 @@ public sealed class GameFileTextTests : IDisposable
         Assert.Equal("学习", gbk.GetString(bytes));
         Assert.Equal("ѧϰ", new UTF8Encoding(false, true).GetString(bytes));
 
-        InvalidDataException error = Assert.Throws<InvalidDataException>(
-            () => GameFileText.DetectEncoding(bytes, gbk));
+        DetectedEncoding detected = GameFileText.DetectEncoding(bytes, gbk);
 
-        Assert.Contains("歧义", error.Message);
+        Assert.Equal(936, detected.Encoding.CodePage);
+        Assert.Equal("学习", detected.Encoding.GetString(bytes));
     }
 
     [Fact]

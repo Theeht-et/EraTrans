@@ -145,15 +145,10 @@ internal static class GameFileEncodingValidator
 
             try
             {
-                string text = GameFileText.Read(fullPath, fallbackEncoding).Text;
-                if (text.Contains('\uFFFD'))
-                {
-                    issues.Add(new GameFileEncodingIssue(
-                        fullPath,
-                        displayPath,
-                        GameFileEncodingIssueKind.DecodeFailed,
-                        "解码结果包含替换字符。"));
-                }
+                // Decoding uses strict fallbacks, so a successful read never substitutes
+                // characters. A literal U+FFFD in the file is therefore author content,
+                // not a decoding failure, and must not be reported as one.
+                _ = GameFileText.Read(fullPath, fallbackEncoding);
             }
             catch (InvalidDataException ex)
             {

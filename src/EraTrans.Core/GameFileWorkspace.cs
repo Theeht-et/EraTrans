@@ -23,7 +23,7 @@ public static class GameFileWorkspace
         string gameDirectory,
         string outputDirectory,
         EraParserOptions options,
-        bool ignoreEncodingIssueFiles = false,
+        bool ignoreEncodingIssueFiles = true,
         ICollection<GameFileEncodingIssue>? skippedEncodingIssues = null)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -41,7 +41,7 @@ public static class GameFileWorkspace
         string outputDirectory,
         Encoding? fallbackEncoding,
         IReadOnlyList<string>? targetFileExtensions,
-        bool ignoreEncodingIssueFiles = false,
+        bool ignoreEncodingIssueFiles = true,
         ICollection<GameFileEncodingIssue>? skippedEncodingIssues = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(gameDirectory);
@@ -233,15 +233,20 @@ public static class GameFileWorkspace
                 {
                     string relativePath = Path.GetRelativePath(sourceRoot, sourcePath).Replace('\\', '/');
                     string text = GameFileText.Read(sourcePath, fallbackEncoding).Text;
-                    if (text.Contains('\uFFFD'))
-                    {
-                        throw new InvalidDataException(
-                            $"文本文件解码产生替换字符，拒绝生成可能乱码的 UTF-8 副本：{relativePath}。请检查游戏原始编码，并将异常文件转换为 UTF-8 BOM。");
-                    }
+                    // Decoding uses strict fallbacks, so a successful read never substitutes
+                    // characters; a literal U+FFFD here is author content and is kept as is.
                     if (Path.GetExtension(sourcePath).Equals(".xml", StringComparison.OrdinalIgnoreCase))
                         text = NormalizeXmlEncodingDeclaration(text);
-                    File.WriteAllText(destinationPath, text,
-                        new UTF8Encoding(encoderShouldEmitUTF8Identifier: true, throwOnInvalidBytes: true));
+                    try
+                    {
+                        File.WriteAllText(destinationPath, text, Utf8WithBomAndStrictEncoder);
+                    }
+                    catch (EncoderFallbackException)
+                    {
+                        // Unpaired surrogates cannot be represented as UTF-8; keep the
+                        // original bytes rather than writing a lossy copy.
+                        File.Copy(sourcePath, destinationPath, overwrite: false);
+                    }
                 }
                 else
                 {
@@ -256,6 +261,9 @@ public static class GameFileWorkspace
             }
         }
     }
+
+    private static readonly UTF8Encoding Utf8WithBomAndStrictEncoder =
+        new(encoderShouldEmitUTF8Identifier: true, throwOnInvalidBytes: true);
 
     private static bool IsGameTextFile(string path, IReadOnlySet<string> textExtensions) =>
         textExtensions.Contains(Path.GetExtension(path));

@@ -142,8 +142,16 @@ public sealed class GameFileText
             if (TryDecodeWithCp932Aliases(bytes, legacyEncoding, out string legacyText) &&
                 !string.Equals(utf8Text, legacyText, StringComparison.Ordinal))
             {
-                throw new InvalidDataException(
-                    $"编码歧义：无 BOM 文件同时符合严格 UTF-8 和 CP{configured.CodePage}，但解码结果不同，无法可靠判断原始编码。为避免静默乱码，请先用文本编辑器确认编码，并将该文件转换为 UTF-8 BOM 后重试。");
+                // BOM-less Japanese UTF-8 is frequently also decodable as CP932, because
+                // UTF-8 trail bytes fall inside the CP932 trail-byte ranges. Aborting the
+                // whole run would punish the common case, so decide by plausibility:
+                // kana and common CJK score positive, while the private-use and
+                // replacement characters typical of mojibake score strongly negative.
+                int utf8Score = ScoreText(utf8Text);
+                int legacyScore = ScoreText(legacyText);
+                return utf8Score >= legacyScore
+                    ? new DetectedEncoding(StrictUtf8, [], 0)
+                    : new DetectedEncoding(legacyEncoding, [], 0);
             }
             return new DetectedEncoding(StrictUtf8, [], 0);
         }
@@ -155,6 +163,41 @@ public sealed class GameFileText
 
         throw new InvalidDataException(
             $"文件既不是有效的严格 UTF-8，也无法按所选游戏编码 CP{selectedFallback.CodePage} 无损解码。请在文本编辑器中确认编码，并转换为 UTF-8 BOM 后重试。");
+    }
+
+    /// <summary>
+    /// Heuristic plausibility of decoded text. Used only to break the tie when strict UTF-8
+    /// and the legacy code page both decode the same bytes to different strings. Kana and
+    /// common CJK characters score positive; private-use area, replacement characters and
+    /// control characters score strongly negative, which is what mojibake looks like.
+    /// </summary>
+    internal static int ScoreText(string text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        int score = 0;
+        foreach (char ch in text)
+        {
+            if (ch == '\uFFFD')
+                score -= 100;
+            else if (ch >= '\uE000' && ch <= '\uF8FF')
+                score -= 50;
+            else if (ch < ' ' && ch != '\t' && ch != '\r' && ch != '\n')
+                score -= 20;
+            else if (ch == '\u007F')
+                score -= 10;
+            else if (ch >= '\u3041' && ch <= '\u309F')
+                score += 4;
+            else if (ch >= '\u30A1' && ch <= '\u30FF')
+                score += 3;
+            else if (ch >= '\uFF61' && ch <= '\uFF9F')
+                score -= 2;
+            else if (ch >= '\u4E00' && ch <= '\u9FFF')
+                score += 1;
+            else if (ch >= '\u3400' && ch <= '\u4DBF')
+                score -= 1;
+        }
+
+        return score;
     }
 
     private static Encoding? GetXmlDeclaredEncoding(string path, ReadOnlySpan<byte> bytes)

@@ -39,7 +39,7 @@ public sealed class VisibleTextExtractor
         string sourceSubdirectory,
         EraParserOptions options,
         IReadOnlySet<string>? ignoredFilePaths = null,
-        bool ignoreEncodingIssueFiles = false)
+        bool ignoreEncodingIssueFiles = true)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(gameDirectory);
         ArgumentException.ThrowIfNullOrWhiteSpace(dictionaryRoot);
@@ -110,6 +110,8 @@ public sealed class VisibleTextExtractor
                     : string.Empty;
                 warnings.Add($"已忽略编码异常文件（未提取）：{issue.RelativePath}（{issue.KindLabel}）{macroNote}");
             }
+
+            warnings.Add($"文本编码：共 {encodingIssues.Count} 个文件无法可靠解码，已跳过（原文件未改动）。");
 
             files = files.Where(path => !ignored.Contains(Path.GetFullPath(path))).ToArray();
             macroFiles = macroFiles.Where(path => !ignored.Contains(Path.GetFullPath(path))).ToArray();

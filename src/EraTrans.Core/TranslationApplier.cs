@@ -41,7 +41,7 @@ public sealed class TranslationApplier
         string outputDirectory,
         EraParserOptions? options = null,
         SpanCatalog? spanCatalog = null,
-        bool ignoreEncodingIssueFiles = false)
+        bool ignoreEncodingIssueFiles = true)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(gameDirectory);
         ArgumentException.ThrowIfNullOrWhiteSpace(dictionaryDirectory);

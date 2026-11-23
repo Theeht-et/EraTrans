@@ -363,27 +363,38 @@ public sealed class DictionaryExtractorTests
     }
 
     [Fact]
-    public void Extract_RejectsAmbiguousEncodingBeforeCreatingDictionaryOutput()
+    public void Extract_SkipsUndecodableFilesByDefaultAndStillExtractsValidOnes()
     {
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+
         string root = CreateTempDirectory();
         string game = Path.Combine(root, "Game");
         string output = Path.Combine(root, "Output");
-        string source = Path.Combine(game, "ERB", "ambiguous.erb");
-        Directory.CreateDirectory(Path.GetDirectoryName(source)!);
-        byte[] gbkBytes = Encoding.GetEncoding(936).GetBytes("学习");
-        File.WriteAllBytes(source, gbkBytes);
+        string strictOutput = Path.Combine(root, "OutputStrict");
+        string valid = Path.Combine(game, "ERB", "valid.erb");
+        string invalid = Path.Combine(game, "ERB", "invalid.erb");
+        Directory.CreateDirectory(Path.GetDirectoryName(valid)!);
+        File.WriteAllText(valid, "@MAIN\r\nPRINTL 你好世界\r\n", Encoding.GetEncoding(936));
+        byte[] invalidBytes = [0xFF, 0xFE, 0x00];
+        File.WriteAllBytes(invalid, invalidBytes);
+
+        var options = new EraParserOptions { FileEncoding = Encoding.GetEncoding(936) };
+        var extractor = new DictionaryExtractor();
+
+        DictionaryExtractionResult result = extractor.Extract(game, output, options: options);
+
+        Assert.True(File.Exists(Path.Combine(output, "ERB", "valid.json")));
+        Assert.False(File.Exists(Path.Combine(output, "ERB", "invalid.json")));
+        Assert.Contains(result.Warnings, warning => warning.Contains("ERB/invalid.erb", StringComparison.Ordinal));
+        Assert.Contains(result.Warnings, warning => warning.Contains("1 个文件无法可靠解码", StringComparison.Ordinal));
+        Assert.Equal(invalidBytes, File.ReadAllBytes(invalid));
 
         InvalidDataException error = Assert.Throws<InvalidDataException>(() =>
-            new DictionaryExtractor().Extract(
-                game,
-                output,
-                options: new EraParserOptions { FileEncoding = Encoding.GetEncoding(936) }));
+            extractor.Extract(game, strictOutput, options: options, ignoreEncodingIssueFiles: false));
 
-        Assert.Contains("ERB/ambiguous.erb", error.Message);
-        Assert.Contains("歧义", error.Message);
-        Assert.False(Directory.Exists(output));
-        Assert.Equal(gbkBytes, File.ReadAllBytes(source));
+        Assert.Contains("ERB/invalid.erb", error.Message);
+        Assert.Contains("无损解码", error.Message);
+        Assert.False(Directory.Exists(strictOutput));
     }
 
 
@@ -491,7 +502,7 @@ public sealed class DictionaryExtractorTests
     }
 
     [Fact]
-    public void Extract_CanIgnoreAmbiguousAndInvalidFiles_AndContinueExtractingValidFiles()
+    public void Extract_TreatsGbkBytesThatAreAlsoValidUtf8AsGbk()
     {
         System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
         System.Text.Encoding gbk = System.Text.Encoding.GetEncoding(936);
@@ -506,7 +517,7 @@ public sealed class DictionaryExtractorTests
             gbk.GetBytes("@MAIN\r\nPRINTL 你好世界\r\n"));
         File.WriteAllBytes(
             Path.Combine(game, "ERB", "ambiguous.erb"),
-            gbk.GetBytes("学习"));
+            gbk.GetBytes("@MAIN\r\nPRINTL 学习\r\n"));
         File.WriteAllBytes(
             Path.Combine(game, "ERB", "invalid.erb"),
             [0xFF, 0xFE, 0x00]);
@@ -514,22 +525,12 @@ public sealed class DictionaryExtractorTests
         var options = new EraParserOptions { FileEncoding = gbk };
         var extractor = new DictionaryExtractor();
 
-        InvalidDataException error = Assert.Throws<InvalidDataException>(() =>
-            extractor.Extract(game, output, options: options));
-        Assert.True(GameFileEncodingPreflightException.TryExtract(error, out GameFileEncodingPreflightException? preflight));
-        Assert.Equal(2, preflight!.Issues.Count);
-        Assert.False(Directory.Exists(output));
-
-        DictionaryExtractionResult result = extractor.Extract(
-            game,
-            output,
-            options: options,
-            ignoreEncodingIssueFiles: true);
+        DictionaryExtractionResult result = extractor.Extract(game, output, options: options);
 
         Assert.True(File.Exists(Path.Combine(output, "ERB", "valid.json")));
-        Assert.False(File.Exists(Path.Combine(output, "ERB", "ambiguous.json")));
+        Assert.True(File.Exists(Path.Combine(output, "ERB", "ambiguous.json")));
         Assert.False(File.Exists(Path.Combine(output, "ERB", "invalid.json")));
-        Assert.Contains(result.Warnings, warning => warning.Contains("ERB/ambiguous.erb", StringComparison.Ordinal));
+        Assert.Contains("学习", File.ReadAllText(Path.Combine(output, "ERB", "ambiguous.json")), StringComparison.Ordinal);
         Assert.Contains(result.Warnings, warning => warning.Contains("ERB/invalid.erb", StringComparison.Ordinal));
     }
 

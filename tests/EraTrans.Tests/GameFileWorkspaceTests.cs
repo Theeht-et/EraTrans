@@ -103,30 +103,34 @@ public sealed class FullGameWorkspaceCopyTests
     }
 
     [Fact]
-    public void CopyDirectoryForModification_RejectsAmbiguousTextBeforeCreatingWorkspace()
+    public void CopyDirectoryForModification_RejectsUndecodableTextBeforeCreatingWorkspace()
     {
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
         using var game = new TemporaryDirectory();
         using var outputParent = new TemporaryDirectory();
 
-        byte[] ambiguousBytes = Encoding.GetEncoding(936).GetBytes("学习");
-        string ambiguous = game.CreateFile("ERB/ambiguous.erb", string.Empty);
-        File.WriteAllBytes(ambiguous, ambiguousBytes);
+        byte[] invalidBytes = [0xFF, 0xFE, 0x00];
+        string invalid = game.CreateFile("ERB/invalid.erb", string.Empty);
+        File.WriteAllBytes(invalid, invalidBytes);
 
         var options = new EraParserOptions { FileEncoding = Encoding.GetEncoding(936) };
         string output = Path.Combine(outputParent.Path, "Output", "游戏副本");
         InvalidDataException error = Assert.Throws<InvalidDataException>(
-            () => GameFileWorkspace.CopyDirectoryForModification(game.Path, output, options));
+            () => GameFileWorkspace.CopyDirectoryForModification(
+                game.Path,
+                output,
+                options,
+                ignoreEncodingIssueFiles: false));
 
-        Assert.Contains("ERB/ambiguous.erb", error.Message);
-        Assert.Contains("编码歧义", error.Message);
+        Assert.Contains("ERB/invalid.erb", error.Message);
+        Assert.Contains("无损解码", error.Message);
         Assert.Contains("未生成游戏副本", error.Message);
         Assert.False(Directory.Exists(output));
-        Assert.Equal(ambiguousBytes, File.ReadAllBytes(ambiguous));
+        Assert.Equal(invalidBytes, File.ReadAllBytes(invalid));
     }
 
     [Fact]
-    public void CopyDirectoryForModification_CanIgnoreAmbiguousAndInvalidFilesAndCopyThemByteForByte()
+    public void CopyDirectoryForModification_SkipsUndecodableFilesByDefaultAndCopiesThemByteForByte()
     {
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
         Encoding gbk = Encoding.GetEncoding(936);
@@ -140,35 +144,25 @@ public sealed class FullGameWorkspaceCopyTests
         Directory.CreateDirectory(Path.GetDirectoryName(normal)!);
 
         File.WriteAllBytes(normal, gbk.GetBytes("PRINTL 你好，世界\r\n"));
-        byte[] ambiguousBytes = gbk.GetBytes("学习");
-        byte[] invalidBytes = [0xFF, 0xFE, 0x00]; // Odd-length UTF-16 BOM -> invalid decode
-        File.WriteAllBytes(ambiguous, ambiguousBytes);
+        File.WriteAllBytes(ambiguous, gbk.GetBytes("PRINTL 学习\r\n"));
+        byte[] invalidBytes = [0xFF, 0xFE, 0x00];
         File.WriteAllBytes(invalid, invalidBytes);
 
         string output = Path.Combine(outputParent.Path, "游戏副本");
         var options = new EraParserOptions { FileEncoding = gbk };
-
-        InvalidDataException error = Assert.Throws<InvalidDataException>(() =>
-            GameFileWorkspace.CopyDirectoryForModification(game.Path, output, options));
-        Assert.True(GameFileEncodingPreflightException.TryExtract(error, out GameFileEncodingPreflightException? preflight));
-        Assert.Equal(2, preflight!.Issues.Count);
-        Assert.Contains(preflight.Issues, issue =>
-            issue.RelativePath == "ERB/ambiguous.erb" && issue.Kind == GameFileEncodingIssueKind.Ambiguous);
-        Assert.Contains(preflight.Issues, issue =>
-            issue.RelativePath == "ERB/invalid.erb" && issue.Kind == GameFileEncodingIssueKind.DecodeFailed);
-        Assert.False(Directory.Exists(output));
 
         var skipped = new List<GameFileEncodingIssue>();
         GameFileWorkspace.CopyDirectoryForModification(
             game.Path,
             output,
             options,
-            ignoreEncodingIssueFiles: true,
             skippedEncodingIssues: skipped);
 
-        Assert.Equal(2, skipped.Count);
+        Assert.Single(skipped);
+        Assert.Equal("ERB/invalid.erb", skipped[0].RelativePath);
+        Assert.Equal(GameFileEncodingIssueKind.DecodeFailed, skipped[0].Kind);
         AssertUtf8BomText(Path.Combine(output, "ERB", "normal.erb"), "PRINTL 你好，世界\r\n");
-        Assert.Equal(ambiguousBytes, File.ReadAllBytes(Path.Combine(output, "ERB", "ambiguous.erb")));
+        AssertUtf8BomText(Path.Combine(output, "ERB", "ambiguous.erb"), "PRINTL 学习\r\n");
         Assert.Equal(invalidBytes, File.ReadAllBytes(Path.Combine(output, "ERB", "invalid.erb")));
     }
 

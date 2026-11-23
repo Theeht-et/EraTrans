@@ -76,7 +76,9 @@ public sealed class AiTranslationService
         1. 只返回一个 JSON 对象，键是 id，值是译文，例如 {"12":"译文"}。不要代码块、不要解释、不要输出 do 为 0 的行。
         2. 相邻且 join 相同的行属于同一句话：先整段理解，再逐行输出。不要让半句各自成句，拼起来要通顺，不要重复主语。
         3. alt 相同的行是互斥分支：不要把它们的译文接成连续对话，但人名、称呼、术语要与本请求其他行保持一致。
-        4. 保留原文的变量占位符（如 %CALLNAME:MASTER%）、行内条件（\@ 条件 ? A # B \@）、控制码、标点和换行结构；无法翻译时原样返回原文。
+        4. sid 相同的行属于同一屏；整窗只含一屏时还会给出 scene（id/type）。同一屏内的称呼、语气与术语必须一致；type 为 menu 时是同一菜单的并列选项，type 为 dialogue 时是连续对白。
+        5. cmd/kind 说明该行的显示方式：button 是按钮文字（简短、以动作开头、不加句号），data 是数据块选项，html 是界面文本；print/form 是正文对白，按句翻译。menu 为 1 的行是同一菜单的选项，句式与长度要互相一致。
+        6. 保留原文的变量占位符（如 %CALLNAME:MASTER%）、行内条件（\@ 条件 ? A # B \@）、控制码、标点和换行结构；无法翻译时原样返回原文。
 
         part 大于 1 表示这是同一函数前一段的延续，人称和译法沿用它。
         同一请求内，同一人名、称呼和术语必须使用同一译法。
@@ -372,6 +374,14 @@ public sealed class AiTranslationService
                 item["cond"] = 1;
             if (line.Reference)
                 item["ref"] = 1;
+            if (!string.IsNullOrWhiteSpace(line.Command))
+                item["cmd"] = line.Command;
+            if (!string.IsNullOrWhiteSpace(line.Kind))
+                item["kind"] = line.Kind;
+            if (!string.IsNullOrWhiteSpace(line.SceneId))
+                item["sid"] = line.SceneId;
+            if (line.Menu)
+                item["menu"] = 1;
 
             lines.Add(item);
         }
@@ -379,6 +389,16 @@ public sealed class AiTranslationService
         var payload = new Dictionary<string, object?>(StringComparer.Ordinal);
         if (window.Part > 1)
             payload["part"] = window.Part;
+        if (!string.IsNullOrWhiteSpace(window.SceneId))
+        {
+            var scene = new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["id"] = window.SceneId
+            };
+            if (!string.IsNullOrWhiteSpace(window.SceneType))
+                scene["type"] = window.SceneType;
+            payload["scene"] = scene;
+        }
         payload["lines"] = lines;
 
         return JsonSerializer.Serialize(payload, PromptJsonOptions);

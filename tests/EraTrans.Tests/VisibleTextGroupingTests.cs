@@ -43,6 +43,12 @@ public sealed class VisibleTextGroupingTests
                 new[] { @"文本ERB\talk.00000", @"文本ERB\talk.00001", @"文本ERB\talk.00002" },
                 index.Entries.Select(entry => entry.Key).ToArray());
 
+            Assert.Equal("PRINTL", index.Entries[0].Command);
+            Assert.Equal("print", index.Entries[0].Kind);
+            Assert.Equal("PRINTFORML", index.Entries[1].Command);
+            Assert.Equal("form", index.Entries[1].Kind);
+            Assert.Equal("PRINTL", index.Entries[2].Command);
+
             var lines = document.Entries
                 .Select((entry, position) => new WindowSourceLine(position, entry.Key, entry.Original, true))
                 .ToArray();

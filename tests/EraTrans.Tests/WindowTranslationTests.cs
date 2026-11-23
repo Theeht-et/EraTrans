@@ -7,6 +7,31 @@ namespace EraTrans.Tests;
 public sealed class WindowTranslationTests
 {
     [Fact]
+    public void Payload_SendsSceneAndPerLineCommandAndKind()
+    {
+        TranslationWindow window = new(
+            "EVENTFIRST",
+            1,
+            [
+                new WindowLine(1, "k1", "移動する", "EVENTFIRST", true, false, 0, false, null, "PRINTBUTTON", "button", "EVENTFIRST#0001")
+            ],
+            SceneId: "EVENTFIRST#0001",
+            SceneType: "menu");
+
+        using JsonDocument document = JsonDocument.Parse(AiTranslationService.BuildWindowPayload(window));
+        JsonElement root = document.RootElement;
+
+        JsonElement scene = root.GetProperty("scene");
+        Assert.Equal("EVENTFIRST#0001", scene.GetProperty("id").GetString());
+        Assert.Equal("menu", scene.GetProperty("type").GetString());
+
+        JsonElement line = root.GetProperty("lines").EnumerateArray().Single();
+        Assert.Equal("PRINTBUTTON", line.GetProperty("cmd").GetString());
+        Assert.Equal("button", line.GetProperty("kind").GetString());
+        Assert.Equal("EVENTFIRST#0001", line.GetProperty("sid").GetString());
+    }
+
+    [Fact]
     public void Payload_SendsLineOrderWithTranslateAndSignalFlags()
     {
         TranslationWindow window = new(

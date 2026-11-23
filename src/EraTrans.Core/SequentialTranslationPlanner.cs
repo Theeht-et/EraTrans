@@ -13,13 +13,19 @@ public sealed record WindowLine(
     bool Reference,
     int Join,
     bool InlineCondition,
-    string? AltGroup);
+    string? AltGroup,
+    string? Command = null,
+    string? Kind = null,
+    string? SceneId = null,
+    bool Menu = false);
 
 /// <summary>A consecutive run of source lines translated in one request.</summary>
 public sealed record TranslationWindow(
     string FunctionId,
     int Part,
-    IReadOnlyList<WindowLine> Lines)
+    IReadOnlyList<WindowLine> Lines,
+    string? SceneId = null,
+    string? SceneType = null)
 {
     public int CharacterCount => Lines.Sum(line => line.Text.Length + 24);
 
@@ -77,6 +83,18 @@ public sealed class SequentialTranslationPlanner
             .GroupBy(entry => entry.Key, StringComparer.Ordinal)
             .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
 
+        var groupTypeByKey = new Dictionary<string, string>(StringComparer.Ordinal);
+        var menuKeys = new HashSet<string>(StringComparer.Ordinal);
+        foreach (ErbTranslationGroup group in index.Groups)
+        {
+            foreach (string entryKey in group.EntryKeys)
+            {
+                groupTypeByKey[entryKey] = group.Type;
+                if (string.Equals(group.Type, "menu", StringComparison.Ordinal))
+                    menuKeys.Add(entryKey);
+            }
+        }
+
         var sources = new List<SourceItem>();
         foreach (WindowSourceLine line in lines)
         {
@@ -108,18 +126,27 @@ public sealed class SequentialTranslationPlanner
             {
                 List<SourceItem> chunk = chunks[chunkIndex];
                 var windowLines = chunk
-                    .Select(item => CreateLine(item, joinByKey, altByKey))
+                    .Select(item => CreateLine(item, joinByKey, altByKey, menuKeys))
                     .ToList();
+                string? sceneId = SharedScope(chunk);
+                string? sceneType = sceneId is not null &&
+                                    groupTypeByKey.TryGetValue(chunk[0].Line.Key, out string? type)
+                    ? type
+                    : null;
                 units.Add(new Unit(
                     run[0].Link.FunctionId,
                     chunkIndex + 1,
                     windowLines,
-                    IsSplitPart: chunks.Count > 1));
+                    IsSplitPart: chunks.Count > 1,
+                    SceneId: sceneId,
+                    SceneType: sceneType));
             }
         }
 
         // 2. Pack whole functions into windows; split parts always own their window.
-        var specs = new List<(string FunctionId, int Part, List<WindowLine> Lines)>();
+        var specs = new List<(string FunctionId, int Part, List<WindowLine> Lines, string? SceneId, string? SceneType)>();
+        string? currentSceneId = null;
+        string? currentSceneType = null;
         var currentLines = new List<WindowLine>();
         string currentFunctionId = "";
         int currentPart = 1;
@@ -129,11 +156,13 @@ public sealed class SequentialTranslationPlanner
         {
             if (currentLines.Count == 0)
                 return;
-            specs.Add((currentFunctionId, currentPart, currentLines.ToArray().ToList()));
+            specs.Add((currentFunctionId, currentPart, currentLines.ToArray().ToList(), currentSceneId, currentSceneType));
             currentLines.Clear();
             currentCharacters = 0;
             currentFunctionId = "";
             currentPart = 1;
+            currentSceneId = null;
+            currentSceneType = null;
         }
 
         foreach (Unit unit in units)
@@ -145,6 +174,18 @@ public sealed class SequentialTranslationPlanner
 
             if (!fits)
                 Flush();
+
+            // A window keeps the scene label only while it holds a single packed unit.
+            if (currentLines.Count == 0)
+            {
+                currentSceneId = unit.SceneId;
+                currentSceneType = unit.SceneType;
+            }
+            else
+            {
+                currentSceneId = null;
+                currentSceneType = null;
+            }
 
             currentLines.AddRange(unit.Lines);
             currentCharacters += unitCharacters;
@@ -164,12 +205,12 @@ public sealed class SequentialTranslationPlanner
         var windows = new List<TranslationWindow>();
         for (int index2 = 0; index2 < specs.Count; index2++)
         {
-            (string functionId, int part, List<WindowLine> linesOfWindow) = specs[index2];
+            (string functionId, int part, List<WindowLine> linesOfWindow, string? sceneId, string? sceneType) = specs[index2];
             var finalLines = new List<WindowLine>(linesOfWindow);
 
             if (index2 > 0 && overlapLines > 0 && part > 1)
             {
-                (string previousFunction, _, List<WindowLine> previousLines) = specs[index2 - 1];
+                (string previousFunction, _, List<WindowLine> previousLines, _, _) = specs[index2 - 1];
                 if (string.Equals(previousFunction, functionId, StringComparison.Ordinal))
                 {
                     WindowLine[] tail = previousLines.TakeLast(overlapLines).ToArray();
@@ -185,7 +226,7 @@ public sealed class SequentialTranslationPlanner
                 }
             }
 
-            windows.Add(new TranslationWindow(functionId, part, finalLines));
+            windows.Add(new TranslationWindow(functionId, part, finalLines, sceneId, sceneType));
         }
 
         WindowLine[] allLines = windows.SelectMany(window => window.Lines).ToArray();
@@ -235,6 +276,25 @@ public sealed class SequentialTranslationPlanner
     /// ideographic-space indent, an unclosed quote, or a previous line with no
     /// sentence-final punctuation.
     /// </summary>
+    private static bool IsNoNewlineCommand(string? command) =>
+        !string.IsNullOrWhiteSpace(command) && NoNewlineCommands.Contains(command);
+
+    private static string? SharedScope(List<SourceItem> chunk)
+    {
+        string? scope = null;
+        foreach (SourceItem item in chunk)
+        {
+            if (string.IsNullOrWhiteSpace(item.Link.ControlScopeId))
+                return null;
+            if (scope is null)
+                scope = item.Link.ControlScopeId;
+            else if (!string.Equals(scope, item.Link.ControlScopeId, StringComparison.Ordinal))
+                return null;
+        }
+
+        return scope;
+    }
+
     private static Dictionary<string, int> BuildJoinSignals(List<SourceItem> sources)
     {
         var result = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -250,7 +310,8 @@ public sealed class SequentialTranslationPlanner
             if (!string.Equals(previous.Link.FunctionId, current.Link.FunctionId, StringComparison.Ordinal))
                 continue;
 
-            if (NoNewlineCommands.Contains(previous.Link.OutputType))
+            if (IsNoNewlineCommand(previous.Link.Command) ||
+                IsNoNewlineCommand(previous.Link.OutputType))
             {
                 result[current.Line.Key] = 1;
                 continue;
@@ -361,7 +422,8 @@ public sealed class SequentialTranslationPlanner
     private static WindowLine CreateLine(
         SourceItem item,
         IReadOnlyDictionary<string, int> joinByKey,
-        IReadOnlyDictionary<string, string> altByKey) =>
+        IReadOnlyDictionary<string, string> altByKey,
+        IReadOnlySet<string> menuKeys) =>
         new(
             item.Line.Id,
             item.Line.Key,
@@ -371,7 +433,11 @@ public sealed class SequentialTranslationPlanner
             Reference: false,
             joinByKey.TryGetValue(item.Line.Key, out int join) ? join : 0,
             item.Line.Original.Contains("\\@", StringComparison.Ordinal),
-            altByKey.TryGetValue(item.Line.Key, out string? alt) ? alt : null);
+            altByKey.TryGetValue(item.Line.Key, out string? alt) ? alt : null,
+            item.Link.Command,
+            item.Link.Kind,
+            string.IsNullOrWhiteSpace(item.Link.ControlScopeId) ? null : item.Link.ControlScopeId,
+            menuKeys.Contains(item.Line.Key));
 
     private static bool HasUnclosedQuote(string text)
     {
@@ -403,5 +469,11 @@ public sealed class SequentialTranslationPlanner
 
     private sealed record SourceItem(WindowSourceLine Line, ErbTranslationGroupEntry Link);
 
-    private sealed record Unit(string FunctionId, int Part, List<WindowLine> Lines, bool IsSplitPart);
+    private sealed record Unit(
+        string FunctionId,
+        int Part,
+        List<WindowLine> Lines,
+        bool IsSplitPart,
+        string? SceneId,
+        string? SceneType);
 }

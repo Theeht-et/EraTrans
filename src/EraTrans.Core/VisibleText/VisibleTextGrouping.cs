@@ -60,7 +60,9 @@ public static class VisibleTextGrouping
                 BranchPath: position.BranchPath,
                 ControlScopeId: position.ScreenId,
                 BranchLabel: position.BranchLabel,
-                CallTarget: null));
+                CallTarget: null,
+                Command: entry.Command,
+                Kind: entry.Kind));
         }
 
         IReadOnlyList<ErbTranslationControlMarker> markers = BuildControlMarkers(layout, sourceText);

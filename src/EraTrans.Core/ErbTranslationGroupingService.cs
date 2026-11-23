@@ -29,7 +29,9 @@ public sealed record ErbTranslationSourceEntry(
     string BranchPath,
     string ControlScopeId,
     string BranchLabel,
-    string? CallTarget);
+    string? CallTarget,
+    string? Command = null,
+    string? Kind = null);
 
 public sealed record ErbTranslationControlMarker(
     int ParsedLine,
@@ -49,7 +51,9 @@ public sealed record ErbTranslationGroupEntry(
     string BranchLabel,
     string GroupId,
     string GroupType,
-    string? ParentGroupId);
+    string? ParentGroupId,
+    string? Command = null,
+    string? Kind = null);
 
 public sealed record ErbTranslationGroup(
     string Id,
@@ -186,7 +190,9 @@ public sealed class ErbTranslationGroupingService
                 entry.BranchLabel,
                 group.Id,
                 group.Type,
-                null));
+                null,
+                entry.Command,
+                entry.Kind));
         }
 
         string dictionaryRoot = Path.GetFullPath(dictionaryDirectory);

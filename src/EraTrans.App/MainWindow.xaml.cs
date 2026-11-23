@@ -1,11 +1,11 @@
 using EraTrans.Core;
+using EraTrans.Core.WriteBack;
 using Microsoft.Win32;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
-using EraTrans.Core.WriteBack;
 
 namespace EraTrans.App;
 
@@ -142,7 +142,7 @@ public partial class MainWindow : Window
         _settings.LastGameDirectory = layout.GameDirectory;
         _settings.LastOutputRootDirectory = layout.OutputRoot;
         SaveWorkspacePreferences();
-        StatusText.Text = $"当前工作区：{layout.GameDirectoryName} \u00b7 字典目录：{layout.DictionaryDirectory}";
+        StatusText.Text = $"当前工作区：{layout.GameDirectoryName} · 字典目录：{layout.DictionaryDirectory}";
         return true;
     }
 
@@ -232,7 +232,7 @@ public partial class MainWindow : Window
         string? selectedRelativePath = _editor.CurrentFileRelativePath ??
                                        _settings.LastDictionaryFileRelativePath;
         SetBusy(true);
-        StatusText.Text = "正在提取字典；原游戏目录保持只读…";
+        StatusText.Text = "正在提取字典；原游戏目录保持只读……";
 
         try
         {
@@ -246,16 +246,16 @@ public partial class MainWindow : Window
                     dictionaryDirectory,
                     options: options));
             }
-            catch (GameFileEncodingPreflightException ex)
+            catch (InvalidDataException ex) when (GameFileEncodingPreflightException.TryExtract(ex, out GameFileEncodingPreflightException? preflight))
             {
-                var dialog = new EncodingIssuesWindow(ex.Issues, "提取字典") { Owner = this };
+                var dialog = new EncodingIssuesWindow(preflight!.Issues, "提取字典") { Owner = this };
                 if (dialog.ShowDialog() != true || !dialog.IgnoreAndContinue)
                 {
                     StatusText.Text = "字典提取已取消；请先在外部文本编辑器中确认并转换问题文件编码。";
                     return;
                 }
 
-                StatusText.Text = $"正在忽略 {ex.Issues.Count} 个编码异常文件并继续提取字典…";
+                StatusText.Text = $"正在忽略 {preflight.Issues.Count} 个编码异常文件并继续提取字典……";
                 result = await Task.Run(() => extractor.Extract(
                     gameDirectory,
                     dictionaryDirectory,
@@ -315,7 +315,7 @@ public partial class MainWindow : Window
         }
 
         SetBusy(true);
-        StatusText.Text = "正在完整复制原游戏到“游戏副本”并应用已保存译文；原游戏目录不会被修改…";
+        StatusText.Text = "正在完整复制原游戏到“游戏副本”并应用已保存译文；原游戏目录不会被修改……";
 
         try
         {
@@ -330,16 +330,16 @@ public partial class MainWindow : Window
                     workingCopyDirectory,
                     options));
             }
-            catch (GameFileEncodingPreflightException ex)
+            catch (InvalidDataException ex) when (GameFileEncodingPreflightException.TryExtract(ex, out GameFileEncodingPreflightException? preflight))
             {
-                var dialog = new EncodingIssuesWindow(ex.Issues, "生成游戏副本并应用译文") { Owner = this };
+                var dialog = new EncodingIssuesWindow(preflight!.Issues, "生成游戏副本并应用译文") { Owner = this };
                 if (dialog.ShowDialog() != true || !dialog.IgnoreAndContinue)
                 {
                     StatusText.Text = "副本处理已取消；原游戏目录保持不变。";
                     return;
                 }
 
-                StatusText.Text = $"正在忽略 {ex.Issues.Count} 个编码异常文件（将原样复制）并继续生成游戏副本…";
+                StatusText.Text = $"正在忽略 {preflight.Issues.Count} 个编码异常文件（将原样复制）并继续生成游戏副本……";
                 result = await Task.Run(() => applier.Apply(
                     gameDirectory,
                     dictionaryDirectory,

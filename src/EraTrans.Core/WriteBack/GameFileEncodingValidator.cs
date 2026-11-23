@@ -21,7 +21,7 @@ public sealed record GameFileEncodingIssue(
     };
 }
 
-public sealed class GameFileEncodingPreflightException : InvalidDataException
+public sealed class GameFileEncodingPreflightException : Exception
 {
     public GameFileEncodingPreflightException(
         string message,
@@ -32,6 +32,24 @@ public sealed class GameFileEncodingPreflightException : InvalidDataException
     }
 
     public IReadOnlyList<GameFileEncodingIssue> Issues { get; }
+
+    public static bool TryExtract(Exception exception, out GameFileEncodingPreflightException? preflight)
+    {
+        if (exception is GameFileEncodingPreflightException direct)
+        {
+            preflight = direct;
+            return true;
+        }
+
+        if (exception.InnerException is GameFileEncodingPreflightException inner)
+        {
+            preflight = inner;
+            return true;
+        }
+
+        preflight = null;
+        return false;
+    }
 }
 
 /// <summary>
@@ -170,7 +188,7 @@ internal static class GameFileEncodingValidator
             throw CreatePreflightException(issues);
     }
 
-    internal static GameFileEncodingPreflightException CreatePreflightException(
+    internal static InvalidDataException CreatePreflightException(
         IReadOnlyList<GameFileEncodingIssue> issues)
     {
         string details = string.Join(
@@ -182,7 +200,7 @@ internal static class GameFileEncodingValidator
         string message =
             $"文本编码预检失败，已停止处理，未生成游戏副本或提取输出。以下文件无法安全确定编码：{Environment.NewLine}{details}{Environment.NewLine}请在外部文本编辑器中确认这些文件的编码，并将有歧义或无法解码的文件转换为 UTF-8 BOM 后重试。";
 
-        return new GameFileEncodingPreflightException(message, issues);
+        return new InvalidDataException(message, new GameFileEncodingPreflightException(message, issues));
     }
 
     private static string ExtractReason(InvalidDataException ex)

@@ -58,7 +58,6 @@ public sealed class FullGameWorkspaceCopyTests
     }
 
 
-
     [Fact]
     public void CopyDirectoryForModification_TranscodesConfiguredEncodingAndCustomTargetsToUtf8Bom()
     {
@@ -149,12 +148,13 @@ public sealed class FullGameWorkspaceCopyTests
         string output = Path.Combine(outputParent.Path, "游戏副本");
         var options = new EraParserOptions { FileEncoding = gbk };
 
-        GameFileEncodingPreflightException preflightError = Assert.Throws<GameFileEncodingPreflightException>(() =>
+        InvalidDataException error = Assert.Throws<InvalidDataException>(() =>
             GameFileWorkspace.CopyDirectoryForModification(game.Path, output, options));
-        Assert.Equal(2, preflightError.Issues.Count);
-        Assert.Contains(preflightError.Issues, issue =>
+        Assert.True(GameFileEncodingPreflightException.TryExtract(error, out GameFileEncodingPreflightException? preflight));
+        Assert.Equal(2, preflight!.Issues.Count);
+        Assert.Contains(preflight.Issues, issue =>
             issue.RelativePath == "ERB/ambiguous.erb" && issue.Kind == GameFileEncodingIssueKind.Ambiguous);
-        Assert.Contains(preflightError.Issues, issue =>
+        Assert.Contains(preflight.Issues, issue =>
             issue.RelativePath == "ERB/invalid.erb" && issue.Kind == GameFileEncodingIssueKind.DecodeFailed);
         Assert.False(Directory.Exists(output));
 

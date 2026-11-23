@@ -514,9 +514,10 @@ public sealed class DictionaryExtractorTests
         var options = new EraParserOptions { FileEncoding = gbk };
         var extractor = new DictionaryExtractor();
 
-        GameFileEncodingPreflightException error = Assert.Throws<GameFileEncodingPreflightException>(() =>
+        InvalidDataException error = Assert.Throws<InvalidDataException>(() =>
             extractor.Extract(game, output, options: options));
-        Assert.Equal(2, error.Issues.Count);
+        Assert.True(GameFileEncodingPreflightException.TryExtract(error, out GameFileEncodingPreflightException? preflight));
+        Assert.Equal(2, preflight!.Issues.Count);
         Assert.False(Directory.Exists(output));
 
         DictionaryExtractionResult result = extractor.Extract(

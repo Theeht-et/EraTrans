@@ -42,7 +42,7 @@ public sealed class GameFileText
         {
             Encoding? declaredEncoding = GetXmlDeclaredEncoding(path, bytes);
             DetectedEncoding detected = DetectEncoding(bytes, fallbackEncoding, declaredEncoding);
-            string text = detected.Encoding.GetString(bytes, detected.BodyOffset, bytes.Length - detected.BodyOffset);
+            string text = DecodeWithCp932Aliases(bytes.AsSpan(detected.BodyOffset), detected.Encoding);
             byte[] body = bytes.AsSpan(detected.BodyOffset).ToArray();
             return new GameFileText(text, detected.Encoding, detected.Preamble, body);
         }
@@ -122,8 +122,8 @@ public sealed class GameFileText
 
         if (declaredEncoding is not null)
         {
-            Encoding xmlDeclared = CreateLegacyEncoding(declaredEncoding);
-            if (!TryDecodeWithoutReplacement(bytes, xmlDeclared, out _))
+            Encoding xmlDeclared = CreateStrictEncoding(declaredEncoding);
+            if (!TryDecodeWithCp932Aliases(bytes, xmlDeclared, out _))
                 throw new InvalidDataException($"XML 文件声明的编码 {declaredEncoding.WebName} 无法无损解码文件内容。");
             return new DetectedEncoding(xmlDeclared, [], 0);
         }
@@ -135,11 +135,11 @@ public sealed class GameFileText
         {
             Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
             Encoding configured = fallbackEncoding ?? Encoding.GetEncoding(932);
-            Encoding legacyEncoding = CreateLegacyEncoding(configured);
+            Encoding legacyEncoding = CreateStrictEncoding(configured);
             if (configured.CodePage == StrictUtf8.CodePage)
                 return new DetectedEncoding(StrictUtf8, [], 0);
 
-            if (TryDecodeWithoutReplacement(bytes, legacyEncoding, out string legacyText) &&
+            if (TryDecodeWithCp932Aliases(bytes, legacyEncoding, out string legacyText) &&
                 !string.Equals(utf8Text, legacyText, StringComparison.Ordinal))
             {
                 throw new InvalidDataException(
@@ -149,8 +149,8 @@ public sealed class GameFileText
         }
 
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
-        Encoding selectedFallback = CreateLegacyEncoding(fallbackEncoding ?? Encoding.GetEncoding(932));
-        if (TryDecodeWithoutReplacement(bytes, selectedFallback, out _))
+        Encoding selectedFallback = CreateStrictEncoding(fallbackEncoding ?? Encoding.GetEncoding(932));
+        if (TryDecodeWithCp932Aliases(bytes, selectedFallback, out _))
             return new DetectedEncoding(selectedFallback, [], 0);
 
         throw new InvalidDataException(
@@ -176,7 +176,7 @@ public sealed class GameFileText
         try
         {
             Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
-            return Encoding.GetEncoding(encodingName);
+            return Encoding.GetEncoding(encodingName, EncoderFallback.ExceptionFallback, DecoderFallback.ExceptionFallback);
         }
         catch (ArgumentException ex)
         {
@@ -184,18 +184,43 @@ public sealed class GameFileText
         }
     }
 
-    // Code-page decoders include valid Windows-932 extension mappings that strict decoder
-    // fallback can reject (for example decoder-only duplicate Shift-JIS byte sequences).
-    // Keep the encoder strict, replace invalid decoder input with U+FFFD, then reject any
-    // resulting replacement character in TryDecodeWithoutReplacement.
-    private static Encoding CreateLegacyEncoding(Encoding encoding) =>
-        Encoding.GetEncoding(encoding.CodePage, EncoderFallback.ExceptionFallback, DecoderFallback.ReplacementFallback);
+    private static Encoding CreateStrictEncoding(Encoding encoding) =>
+        Encoding.GetEncoding(encoding.CodePage, EncoderFallback.ExceptionFallback, DecoderFallback.ExceptionFallback);
 
-    private static bool TryDecodeWithoutReplacement(ReadOnlySpan<byte> bytes, Encoding encoding, out string text)
+    // Windows-932 has a decoder-only duplicate for "≒": 0x8790 decodes to the same
+    // character as 0x81E0, while the encoder emits the canonical 0x81E0 form. Normalize
+    // this one known alias only when strict decoding the original bytes fails; all other
+    // invalid CP932 byte sequences remain errors.
+    private static bool TryDecodeWithCp932Aliases(ReadOnlySpan<byte> bytes, Encoding encoding, out string text)
     {
-        if (!TryDecode(bytes, encoding, out text))
+        if (TryDecode(bytes, encoding, out text))
+            return true;
+        if (encoding.CodePage != 932)
             return false;
-        return !text.Contains('\uFFFD');
+
+        byte[] normalized = bytes.ToArray();
+        bool changed = false;
+        for (int i = 0; i + 1 < normalized.Length; i++)
+        {
+            if (normalized[i] == 0x87 && normalized[i + 1] == 0x90)
+            {
+                normalized[i] = 0x81;
+                normalized[i + 1] = 0xE0;
+                changed = true;
+                i++;
+            }
+        }
+
+        return changed && TryDecode(normalized, encoding, out text);
+    }
+
+    private static string DecodeWithCp932Aliases(ReadOnlySpan<byte> bytes, Encoding encoding)
+    {
+        if (TryDecode(bytes, encoding, out string text))
+            return text;
+        if (TryDecodeWithCp932Aliases(bytes, encoding, out text))
+            return text;
+        throw new DecoderFallbackException($"无法按代码页 {encoding.CodePage} 无损解码文本。");
     }
 
     private static bool TryDecode(ReadOnlySpan<byte> bytes, Encoding encoding, out string text)

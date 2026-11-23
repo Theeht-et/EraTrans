@@ -64,9 +64,6 @@
                 <DataGridTextColumn Header="文件路径"
                                     Binding="{Binding RelativePath}"
                                     Width="260" />
-                <DataGridTextColumn Header="问题类型"
-                                    Binding="{Binding KindLabel}"
-                                    Width="105" />
                 <DataGridTextColumn Header="原因说明"
                                     Binding="{Binding Reason}"
                                     Width="*">

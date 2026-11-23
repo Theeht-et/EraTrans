@@ -139,12 +139,12 @@ public sealed class FullGameWorkspaceCopyTests
         using var outputParent = new TemporaryDirectory();
 
         string normal = Path.Combine(game.Path, "ERB", "normal.erb");
-        string ambiguous = Path.Combine(game.Path, "ERB", "ambiguous.erb");
+        string gbkText = Path.Combine(game.Path, "ERB", "gbk-text.erb");
         string invalid = Path.Combine(game.Path, "ERB", "invalid.erb");
         Directory.CreateDirectory(Path.GetDirectoryName(normal)!);
 
         File.WriteAllBytes(normal, gbk.GetBytes("PRINTL 你好，世界\r\n"));
-        File.WriteAllBytes(ambiguous, gbk.GetBytes("PRINTL 学习\r\n"));
+        File.WriteAllBytes(gbkText, gbk.GetBytes("PRINTL 学习\r\n"));
         byte[] invalidBytes = [0xFF, 0xFE, 0x00];
         File.WriteAllBytes(invalid, invalidBytes);
 
@@ -160,9 +160,9 @@ public sealed class FullGameWorkspaceCopyTests
 
         Assert.Single(skipped);
         Assert.Equal("ERB/invalid.erb", skipped[0].RelativePath);
-        Assert.Equal(GameFileEncodingIssueKind.DecodeFailed, skipped[0].Kind);
+        Assert.Contains("无损解码", skipped[0].Reason);
         AssertUtf8BomText(Path.Combine(output, "ERB", "normal.erb"), "PRINTL 你好，世界\r\n");
-        AssertUtf8BomText(Path.Combine(output, "ERB", "ambiguous.erb"), "PRINTL 学习\r\n");
+        AssertUtf8BomText(Path.Combine(output, "ERB", "gbk-text.erb"), "PRINTL 学习\r\n");
         Assert.Equal(invalidBytes, File.ReadAllBytes(Path.Combine(output, "ERB", "invalid.erb")));
     }
 

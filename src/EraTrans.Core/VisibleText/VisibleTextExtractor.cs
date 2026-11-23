@@ -108,7 +108,7 @@ public sealed class VisibleTextExtractor
                 string macroNote = Path.GetExtension(issue.FullPath).Equals(".erh", StringComparison.OrdinalIgnoreCase)
                     ? "；该文件为宏定义文件，可能影响依赖它的条件编译"
                     : string.Empty;
-                warnings.Add($"已忽略编码异常文件（未提取）：{issue.RelativePath}（{issue.KindLabel}）{macroNote}");
+                warnings.Add($"已忽略编码异常文件（未提取）：{issue.RelativePath}{macroNote}");
             }
 
             warnings.Add($"文本编码：共 {encodingIssues.Count} 个文件无法可靠解码，已跳过（原文件未改动）。");

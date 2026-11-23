@@ -2,24 +2,10 @@ using System.Text;
 
 namespace EraTrans.Core.WriteBack;
 
-public enum GameFileEncodingIssueKind
-{
-    Ambiguous,
-    DecodeFailed
-}
-
 public sealed record GameFileEncodingIssue(
     string FullPath,
     string RelativePath,
-    GameFileEncodingIssueKind Kind,
-    string Reason)
-{
-    public string KindLabel => Kind switch
-    {
-        GameFileEncodingIssueKind.Ambiguous => "编码歧义",
-        _ => "无法无损解码"
-    };
-}
+    string Reason);
 
 public sealed class GameFileEncodingPreflightException : Exception
 {
@@ -152,11 +138,7 @@ internal static class GameFileEncodingValidator
             }
             catch (InvalidDataException ex)
             {
-                string reason = ExtractReason(ex);
-                GameFileEncodingIssueKind kind = reason.Contains("编码歧义", StringComparison.Ordinal)
-                    ? GameFileEncodingIssueKind.Ambiguous
-                    : GameFileEncodingIssueKind.DecodeFailed;
-                issues.Add(new GameFileEncodingIssue(fullPath, displayPath, kind, reason));
+                issues.Add(new GameFileEncodingIssue(fullPath, displayPath, ExtractReason(ex)));
             }
         }
 
@@ -193,7 +175,7 @@ internal static class GameFileEncodingValidator
             details += $"{Environment.NewLine} - 另有 {issues.Count - 20} 个文件存在编码问题。";
 
         string message =
-            $"文本编码预检失败，已停止处理，未生成游戏副本或提取输出。以下文件无法安全确定编码：{Environment.NewLine}{details}{Environment.NewLine}请在外部文本编辑器中确认这些文件的编码，并将有歧义或无法解码的文件转换为 UTF-8 BOM 后重试。";
+            $"文本编码预检失败，已停止处理，未生成游戏副本或提取输出。以下文件无法安全确定编码：{Environment.NewLine}{details}{Environment.NewLine}请在外部文本编辑器中确认这些文件的编码，并将它们转换为 UTF-8 BOM 后重试。";
 
         return new InvalidDataException(message, new GameFileEncodingPreflightException(message, issues));
     }

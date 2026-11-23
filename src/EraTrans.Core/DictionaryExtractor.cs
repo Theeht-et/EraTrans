@@ -80,7 +80,7 @@ public sealed class DictionaryExtractor
             string macroNote = Path.GetExtension(issue.FullPath).Equals(".erh", StringComparison.OrdinalIgnoreCase)
                 ? "；该文件为宏定义文件，可能影响依赖它的条件编译"
                 : string.Empty;
-            warnings.Add($"已忽略编码异常文件（未提取）：{issue.RelativePath}（{issue.KindLabel}）{macroNote}");
+            warnings.Add($"已忽略编码异常文件（未提取）：{issue.RelativePath}{macroNote}");
         }
 
         if (encodingIssues.Count > 0)

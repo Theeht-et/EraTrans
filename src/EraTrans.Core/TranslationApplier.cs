@@ -89,7 +89,7 @@ public sealed class TranslationApplier
         foreach (GameFileEncodingIssue issue in skippedEncodingIssues)
         {
             warnings.Add(
-                $"已忽略编码异常文件（已原样复制到游戏副本，未转码且未应用译文）：{issue.RelativePath}（{issue.KindLabel}）");
+                $"已忽略编码异常文件（已原样复制到游戏副本，未转码且未应用译文）：{issue.RelativePath}");
         }
         var spanCatalogResolved = spanCatalog ?? SpanCatalog.LoadFromSidecar(dictionaryRoot, warnings.Add);
         var copiedBySource = new ConcurrentDictionary<string, string>(StringComparer.OrdinalIgnoreCase);

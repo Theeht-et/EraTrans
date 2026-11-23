@@ -189,8 +189,8 @@ public sealed class GameFileText
 
     // Windows-932 has a decoder-only duplicate for "≒": 0x8790 decodes to the same
     // character as 0x81E0, while the encoder emits the canonical 0x81E0 form. Normalize
-    // this one known alias only when strict decoding the original bytes fails; all other
-    // invalid CP932 byte sequences remain errors.
+    // this one known alias only at CP932 lead-byte boundaries when strict decoding of the
+    // original bytes fails; all other invalid CP932 byte sequences remain errors.
     private static bool TryDecodeWithCp932Aliases(ReadOnlySpan<byte> bytes, Encoding encoding, out string text)
     {
         if (TryDecode(bytes, encoding, out text))
@@ -200,19 +200,35 @@ public sealed class GameFileText
 
         byte[] normalized = bytes.ToArray();
         bool changed = false;
-        for (int i = 0; i + 1 < normalized.Length; i++)
+        int i = 0;
+        while (i < normalized.Length)
         {
-            if (normalized[i] == 0x87 && normalized[i + 1] == 0x90)
+            byte lead = normalized[i];
+            if (IsCp932LeadByte(lead))
             {
-                normalized[i] = 0x81;
-                normalized[i + 1] = 0xE0;
-                changed = true;
+                if (i + 1 >= normalized.Length)
+                    break;
+
+                if (lead == 0x87 && normalized[i + 1] == 0x90)
+                {
+                    normalized[i] = 0x81;
+                    normalized[i + 1] = 0xE0;
+                    changed = true;
+                }
+
+                i += 2;
+            }
+            else
+            {
                 i++;
             }
         }
 
         return changed && TryDecode(normalized, encoding, out text);
     }
+
+    private static bool IsCp932LeadByte(byte value) =>
+        (value >= 0x81 && value <= 0x9F) || (value >= 0xE0 && value <= 0xFC);
 
     private static string DecodeWithCp932Aliases(ReadOnlySpan<byte> bytes, Encoding encoding)
     {

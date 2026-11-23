@@ -3,6 +3,7 @@ using System.Text.Json;
 using EraTrans.Core;
 using EraTrans.Core.VisibleText;
 using Xunit;
+using EraTrans.Core.WriteBack;
 
 namespace EraTrans.Tests;
 
@@ -297,7 +298,7 @@ public sealed class VisibleTextExtractorTests
 
             // The same file is rewritten without translatable text: last round's dictionary (and
             // its span sidecar) would otherwise keep showing entries that no longer exist.
-            File.WriteAllText(source, "@HELLO\n; 表示するものがなくなった\n", new UTF8Encoding(true));
+            File.WriteAllText(source, "@HELLO\n; 显示するものがなくなった\n", new UTF8Encoding(true));
             extractor.Extract(gameDirectory, dictionaryRoot, "ERB", new EraParserOptions());
 
             Assert.False(File.Exists(dictionaryPath));
@@ -340,6 +341,53 @@ public sealed class VisibleTextExtractorTests
         }
     }
 
+
+
+    [Fact]
+    public void Extract_CanIgnoreAmbiguousAndInvalidFiles_AndContinueExtractingValidErb()
+    {
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        Encoding gbk = Encoding.GetEncoding(936);
+
+        string root = CreateTempRoot();
+        try
+        {
+            string gameDirectory = Path.Combine(root, "game");
+            string dictionaryRoot = Path.Combine(root, "out", "字典");
+            Directory.CreateDirectory(Path.Combine(gameDirectory, "ERB"));
+
+            File.WriteAllText(
+                Path.Combine(gameDirectory, "ERB", "valid.erb"),
+                "@HELLO\n" + PlainLine + "\n",
+                new UTF8Encoding(true));
+            File.WriteAllBytes(
+                Path.Combine(gameDirectory, "ERB", "ambiguous.erb"),
+                gbk.GetBytes("学习"));
+            File.WriteAllBytes(
+                Path.Combine(gameDirectory, "ERB", "invalid.erb"),
+                [0xFF, 0xFE, 0x00]);
+
+            var options = new EraParserOptions { FileEncoding = gbk };
+            var extractor = new VisibleTextExtractor();
+
+            VisibleTextExtractionResult result = extractor.Extract(
+                gameDirectory,
+                dictionaryRoot,
+                "ERB",
+                options,
+                ignoreEncodingIssueFiles: true);
+
+            Assert.True(File.Exists(Path.Combine(dictionaryRoot, "ERB", "valid.json")));
+            Assert.False(File.Exists(Path.Combine(dictionaryRoot, "ERB", "ambiguous.json")));
+            Assert.False(File.Exists(Path.Combine(dictionaryRoot, "ERB", "invalid.json")));
+            Assert.Contains(result.Warnings, warning => warning.Contains("ERB/ambiguous.erb", StringComparison.Ordinal));
+            Assert.Contains(result.Warnings, warning => warning.Contains("ERB/invalid.erb", StringComparison.Ordinal));
+        }
+        finally
+        {
+            TryDelete(root);
+        }
+    }
 
     [Fact]
     public void Extract_RemovesDictionaryWhoseSourceFileIsGone()

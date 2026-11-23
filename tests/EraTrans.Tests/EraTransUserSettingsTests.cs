@@ -25,7 +25,7 @@ public sealed class EraTransUserSettingsTests
     {
         EraTransUserSettings settings = EraTransUserSettings.CreateDefault();
 
-        Assert.Equal("utf8-bom", settings.FileEncodingId);
+        Assert.Equal("932", settings.FileEncodingId);
         Assert.True(settings.AutoOpenFolder);
         Assert.True(settings.EnableVariableAutoCorrection);
         Assert.True(settings.HideEnglishText);

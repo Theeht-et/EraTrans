@@ -73,7 +73,7 @@ public static class GameFileWorkspace
         var relativeFiles = new List<string>();
         try
         {
-            CopyDirectoryContents(gameRoot, stagingDirectory, stagingDirectory, relativeFiles, fallbackEncoding, fileEncodingOverrides);
+            CopyDirectoryContents(gameRoot, stagingDirectory, gameRoot, stagingDirectory, relativeFiles, fallbackEncoding, fileEncodingOverrides);
             Directory.Move(stagingDirectory, outputRoot);
 
             return relativeFiles
@@ -150,6 +150,7 @@ public static class GameFileWorkspace
     private static void CopyDirectoryContents(
         string sourceDirectory,
         string destinationDirectory,
+        string sourceRoot,
         string workspaceRoot,
         List<string> copiedFiles,
         Encoding? fallbackEncoding,
@@ -176,7 +177,7 @@ public static class GameFileWorkspace
             if ((attributes & FileAttributes.Directory) != 0)
             {
                 Directory.CreateDirectory(destinationPath);
-                CopyDirectoryContents(sourcePath, destinationPath, workspaceRoot, copiedFiles, fallbackEncoding, fileEncodingOverrides);
+                CopyDirectoryContents(sourcePath, destinationPath, sourceRoot, workspaceRoot, copiedFiles, fallbackEncoding, fileEncodingOverrides);
                 Directory.SetLastWriteTimeUtc(
                     destinationPath,
                     Directory.GetLastWriteTimeUtc(sourcePath));
@@ -192,7 +193,7 @@ public static class GameFileWorkspace
             {
                 if (fallbackEncoding is not null && IsGameTextFile(sourcePath))
                 {
-                    string relativePath = Path.GetRelativePath(workspaceRoot, sourcePath).Replace('\\', '/');
+                    string relativePath = Path.GetRelativePath(sourceRoot, sourcePath).Replace('\\', '/');
                     Encoding? fileOverride = ResolveFileEncodingOverride(relativePath, fileEncodingOverrides);
                     string text = GameFileText.Read(sourcePath, fallbackEncoding, fileOverride).Text;
                     if (text.Contains('\uFFFD'))

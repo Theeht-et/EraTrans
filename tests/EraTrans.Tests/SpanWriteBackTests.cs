@@ -35,7 +35,7 @@ public sealed class SpanWriteBackTests
     }
 
     [Fact]
-    public void Apply_PreservesShiftJisBytesAndLineEndings_WhenSpansUsed()
+    public void Apply_NormalizesShiftJisToUtf8BomAndPreservesLineEndings_WhenSpansUsed()
     {
         string root = CreateTempDirectory();
         string game = Path.Combine(root, "Game");
@@ -58,17 +58,14 @@ public sealed class SpanWriteBackTests
         var result = new TranslationApplier().Apply(game, dictionaries, output);
 
         byte[] written = File.ReadAllBytes(Path.Combine(output, "ERB", "script.erb"));
-        string decoded = shiftJis.GetString(written);
-        Assert.Equal("PRINTL こんばんは\r\nPRINTL そのまま\r\n", decoded);
-        Assert.DoesNotContain((byte)0xEF, written.Take(3));
-        Assert.Equal(shiftJis.GetBytes("PRINTL "), written.Take(7).ToArray());
-        Assert.Equal(shiftJis.GetBytes("そのまま"), written.Skip(26).Take(shiftJis.GetBytes("そのまま").Length).ToArray());
+        AssertUtf8BomText(written, "PRINTL こんばんは\r\nPRINTL そのまま\r\n");
+        Assert.Equal(originalBytes, File.ReadAllBytes(Path.Combine(game, "ERB", "script.erb")));
         Assert.Equal(1, result.SpanReplacedCount);
         Assert.Empty(result.Warnings);
     }
 
     [Fact]
-    public void Apply_SkipsTranslationThatShiftJisCannotRepresent()
+    public void Apply_WritesTextNotRepresentableInShiftJisAfterUtf8Normalization()
     {
         string root = CreateTempDirectory();
         string game = Path.Combine(root, "Game");
@@ -90,13 +87,10 @@ public sealed class SpanWriteBackTests
         var result = new TranslationApplier().Apply(game, dictionaries, output);
 
         byte[] written = File.ReadAllBytes(Path.Combine(output, "ERB", "script.erb"));
-        Assert.Equal(originalBytes, written);
-        Assert.Equal(0, result.SpanReplacedCount);
-        Assert.Equal(1, result.SkippedByEncodingCount);
-        Assert.Contains(
-            result.Warnings,
-            warning => warning.Contains("无法表示的字符", StringComparison.Ordinal)
-                && warning.Contains("文本ERB\\script.00000", StringComparison.Ordinal));
+        AssertUtf8BomText(written, "PRINTL 你好\r\n");
+        Assert.Equal(originalBytes, File.ReadAllBytes(Path.Combine(game, "ERB", "script.erb")));
+        Assert.Equal(1, result.SpanReplacedCount);
+        Assert.Equal(0, result.SkippedByEncodingCount);
     }
 
     [Fact]
@@ -142,7 +136,9 @@ public sealed class SpanWriteBackTests
 
         var result = new TranslationApplier().Apply(game, dictionaries, output);
 
-        Assert.Equal(originalBytes, File.ReadAllBytes(Path.Combine(output, "ERB", "script.erb")));
+        byte[] expectedWorkspaceBytes = [0xEF, 0xBB, 0xBF, .. Encoding.UTF8.GetBytes("PRINTFORM 原文\r\n")];
+        Assert.Equal(expectedWorkspaceBytes, File.ReadAllBytes(Path.Combine(output, "ERB", "script.erb")));
+        Assert.Equal(originalBytes, File.ReadAllBytes(Path.Combine(game, "ERB", "script.erb")));
         Assert.Empty(result.ModifiedFiles);
     }
 
@@ -234,7 +230,7 @@ public sealed class SpanWriteBackTests
     }
 
     [Fact]
-    public void Apply_KeepsUntouchedShiftJisBytes_WithDuplicateMappings()
+    public void Apply_PreservesUntouchedText_WhenSourceShiftJisHasDuplicateMappings()
     {
         string root = CreateTempDirectory();
         string game = Path.Combine(root, "Game");
@@ -262,12 +258,10 @@ public sealed class SpanWriteBackTests
         var result = new TranslationApplier().Apply(game, dictionaries, output);
 
         byte[] written = File.ReadAllBytes(Path.Combine(output, "ERB", "script.erb"));
-        Assert.Equal(new byte[] { 0x87, 0x90 }, written.Skip(7).Take(2).ToArray());
+        AssertUtf8BomText(written, "PRINTL ≒\r\nPRINTL こんばんは\r\n");
+        Assert.Equal(body, File.ReadAllBytes(Path.Combine(game, "ERB", "script.erb")));
         Assert.Equal(1, result.SpanReplacedCount);
         Assert.Empty(result.Warnings);
-        Assert.Equal(
-            "PRINTL ≒\r\nPRINTL こんばんは\r\n",
-            shiftJis.GetString(written));
     }
 
     [Fact]
@@ -293,6 +287,14 @@ public sealed class SpanWriteBackTests
         Assert.Equal(0, result.SpanReplacedCount);
         Assert.Equal(0, result.FallbackReplacedCount);
         Assert.Contains(result.Warnings, warning => warning.Contains("缺少定位信息", StringComparison.Ordinal));
+    }
+
+    private static void AssertUtf8BomText(byte[] bytes, string expected)
+    {
+        Assert.True(bytes.Length >= 3);
+        Assert.Equal(new byte[] { 0xEF, 0xBB, 0xBF }, bytes[..3]);
+        string decoded = new UTF8Encoding(false, true).GetString(bytes, 3, bytes.Length - 3);
+        Assert.Equal(expected, decoded);
     }
 
     private static JObject Entry(string key, string original, string translation, int stage)

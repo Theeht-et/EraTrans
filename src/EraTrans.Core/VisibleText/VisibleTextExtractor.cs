@@ -10,9 +10,9 @@ namespace EraTrans.Core.VisibleText;
 /// Extracts every visible literal of an entire ERB tree into per-file dictionaries plus the
 /// position sidecars used for write-back.
 /// <para>
-/// Dictionaries go to <c><dictionaryRoot>/<relative path>.json</c> and sidecars to
-/// <c><output root>/AI上下文/<relative path>.spans.json</c>, matching
-/// <see cref="SpanCatalog"/>. <c><output root></c> is the parent of a
+/// Dictionaries go to <c>&lt;dictionaryRoot&gt;/&lt;relative path&gt;.json</c> and sidecars to
+/// <c>&lt;output root&gt;/AI上下文/&lt;relative path&gt;.spans.json</c>, matching
+/// <see cref="SpanCatalog"/>. <c>&lt;output root&gt;</c> is the parent of a
 /// <c>dictionaryRoot</c> whose last segment is <c>字典</c>, otherwise <c>dictionaryRoot</c> itself.
 /// </para>
 /// </summary>
@@ -421,9 +421,7 @@ public sealed class VisibleTextExtractor
         return info;
     }
 
-    /// <summary>
-    /// Context shown next to a dictionary entry in the translation UI.
-    /// </summary>
+    /// <summary>Context shown next to a dictionary entry in the translation UI.</summary>
     private static string BuildContext(VisibleTextEntry entry, List<LineInfo> lineInfo)
     {
         if (entry.Line < 1 || entry.Line > lineInfo.Count)

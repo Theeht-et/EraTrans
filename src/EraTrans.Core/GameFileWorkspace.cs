@@ -262,7 +262,7 @@ public static class GameFileWorkspace
 
     private static string NormalizeXmlEncodingDeclaration(string text) =>
         Regex.Replace(text,
-            "(<\\?xml\\b[^>]*\\bencoding\\s*=\\s*)(['\"])[^'\"]+(['\"])",
+            "\\A(\\s*<\\?xml\\b[^>]*\\bencoding\\s*=\\s*)(['\"])[^'\"]+(['\"])",
             match => match.Groups[1].Value + match.Groups[2].Value + "utf-8" + match.Groups[3].Value,
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 

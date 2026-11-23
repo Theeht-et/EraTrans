@@ -1,4 +1,5 @@
 using EraTrans.Core.WriteBack;
+using System.Runtime.InteropServices;
 using System.Windows;
 
 namespace EraTrans.App;
@@ -35,8 +36,15 @@ public partial class EncodingIssuesWindow : Window
         string text = string.Join(
             Environment.NewLine,
             _issues.Select(issue => $"{issue.RelativePath}\t[{issue.KindLabel}]\t{issue.Reason}"));
-        Clipboard.SetText(text);
-        CopiedHintTextBlock.Text = "已复制问题文件清单";
+        try
+        {
+            Clipboard.SetText(text);
+            CopiedHintTextBlock.Text = "已复制问题文件清单";
+        }
+        catch (ExternalException)
+        {
+            CopiedHintTextBlock.Text = "剪贴板正被其他程序占用，请重试";
+        }
     }
 
     private void IgnoreAndContinue_Click(object sender, RoutedEventArgs e)

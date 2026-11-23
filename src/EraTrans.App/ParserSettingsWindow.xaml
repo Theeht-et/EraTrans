@@ -97,7 +97,7 @@
                         </ComboBox>
 
                         <StackPanel Grid.Row="4" Grid.Column="1" Margin="0,0,0,12">
-                            <TextBlock Text="先识别 BOM、XML 编码声明和无 BOM UTF-16；其他无 BOM 文件会比较严格 UTF-8 与所选游戏编码。只有唯一无损解码，或两种解码结果完全相同，才继续；存在歧义或无效字节时会停止并报告文件。默认 CP932（日文），简体中文可选 GBK，繁体中文可选 Big5。自定义目标扩展名也会按文本检查并转成 UTF-8 BOM。"
+                            <TextBlock Text="先识别 BOM、XML 编码声明和无 BOM UTF-16；其他无 BOM 文件会比较严格 UTF-8 与所选游戏编码。只有唯一无损解码，或两种解码结果完全相同，才继续；存在歧义或无效字节时会弹窗列出问题文件，供核对转码或选择忽略后继续。默认 CP932（日文），简体中文可选 GBK，繁体中文可选 Big5。自定义目标扩展名也会按文本检查并转成 UTF-8 BOM。"
                                        TextWrapping="Wrap" FontSize="11" Foreground="#68717D" />
                         </StackPanel>
 

@@ -20,15 +20,29 @@ public static class GameFileWorkspace
         CopyDirectoryForModification(gameDirectory, outputDirectory, null, null);
 
     public static IReadOnlyList<string> CopyDirectoryForModification(
-        string gameDirectory, string outputDirectory, EraParserOptions options)
+        string gameDirectory,
+        string outputDirectory,
+        EraParserOptions options,
+        bool ignoreEncodingIssueFiles = false,
+        ICollection<GameFileEncodingIssue>? skippedEncodingIssues = null)
     {
         ArgumentNullException.ThrowIfNull(options);
-        return CopyDirectoryForModification(gameDirectory, outputDirectory, options.FileEncoding, options.TargetFileExtensions);
+        return CopyDirectoryForModification(
+            gameDirectory,
+            outputDirectory,
+            options.FileEncoding,
+            options.TargetFileExtensions,
+            ignoreEncodingIssueFiles,
+            skippedEncodingIssues);
     }
 
     public static IReadOnlyList<string> CopyDirectoryForModification(
-        string gameDirectory, string outputDirectory, Encoding? fallbackEncoding,
-        IReadOnlyList<string>? targetFileExtensions)
+        string gameDirectory,
+        string outputDirectory,
+        Encoding? fallbackEncoding,
+        IReadOnlyList<string>? targetFileExtensions,
+        bool ignoreEncodingIssueFiles = false,
+        ICollection<GameFileEncodingIssue>? skippedEncodingIssues = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(gameDirectory);
         ArgumentException.ThrowIfNullOrWhiteSpace(outputDirectory);
@@ -65,8 +79,25 @@ public static class GameFileWorkspace
         }
 
         HashSet<string> textExtensions = GameFileEncodingValidator.CreateTextExtensions(targetFileExtensions);
+        var ignoredTextPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (fallbackEncoding is not null)
-            GameFileEncodingValidator.ValidateDirectory(gameRoot, fallbackEncoding, textExtensions);
+        {
+            IReadOnlyList<GameFileEncodingIssue> encodingIssues =
+                GameFileEncodingValidator.FindDirectoryIssues(gameRoot, fallbackEncoding, textExtensions);
+            if (encodingIssues.Count > 0)
+            {
+                if (!ignoreEncodingIssueFiles)
+                {
+                    throw GameFileEncodingValidator.CreatePreflightException(encodingIssues);
+                }
+
+                foreach (GameFileEncodingIssue issue in encodingIssues)
+                {
+                    ignoredTextPaths.Add(Path.GetFullPath(issue.FullPath));
+                    skippedEncodingIssues?.Add(issue);
+                }
+            }
+        }
 
         Directory.CreateDirectory(parentDirectory);
         string stagingDirectory = Path.Combine(
@@ -77,7 +108,7 @@ public static class GameFileWorkspace
         var relativeFiles = new List<string>();
         try
         {
-            CopyDirectoryContents(gameRoot, stagingDirectory, gameRoot, stagingDirectory, relativeFiles, fallbackEncoding, textExtensions);
+            CopyDirectoryContents(gameRoot, stagingDirectory, gameRoot, stagingDirectory, relativeFiles, fallbackEncoding, textExtensions, ignoredTextPaths);
             Directory.Move(stagingDirectory, outputRoot);
 
             return relativeFiles
@@ -158,7 +189,8 @@ public static class GameFileWorkspace
         string workspaceRoot,
         List<string> copiedFiles,
         Encoding? fallbackEncoding,
-        IReadOnlySet<string> textExtensions)
+        IReadOnlySet<string> textExtensions,
+        IReadOnlySet<string> ignoredTextPaths)
     {
         var enumerationOptions = new EnumerationOptions
         {
@@ -181,7 +213,7 @@ public static class GameFileWorkspace
             if ((attributes & FileAttributes.Directory) != 0)
             {
                 Directory.CreateDirectory(destinationPath);
-                CopyDirectoryContents(sourcePath, destinationPath, sourceRoot, workspaceRoot, copiedFiles, fallbackEncoding, textExtensions);
+                CopyDirectoryContents(sourcePath, destinationPath, sourceRoot, workspaceRoot, copiedFiles, fallbackEncoding, textExtensions, ignoredTextPaths);
                 Directory.SetLastWriteTimeUtc(
                     destinationPath,
                     Directory.GetLastWriteTimeUtc(sourcePath));
@@ -195,7 +227,9 @@ public static class GameFileWorkspace
             }
             else
             {
-                if (fallbackEncoding is not null && IsGameTextFile(sourcePath, textExtensions))
+                if (fallbackEncoding is not null &&
+                    IsGameTextFile(sourcePath, textExtensions) &&
+                    !ignoredTextPaths.Contains(Path.GetFullPath(sourcePath)))
                 {
                     string relativePath = Path.GetRelativePath(sourceRoot, sourcePath).Replace('\\', '/');
                     string text = GameFileText.Read(sourcePath, fallbackEncoding).Text;

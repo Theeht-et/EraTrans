@@ -99,7 +99,7 @@ public sealed class GameFileTextTests : IDisposable
     [Fact]
     public void DetectEncoding_ReturnsUtf8_WhenBytesAreValidUtf8()
     {
-        DetectedEncoding detected = GameFileText.DetectEncoding(Encoding.UTF8.GetBytes("こんにちは"));
+        DetectedEncoding detected = GameFileText.DetectEncoding(Encoding.UTF8.GetBytes("さようなら"));
 
         Assert.Equal(new UTF8Encoding(false).CodePage, detected.Encoding.CodePage);
         Assert.Empty(detected.Preamble);
@@ -144,11 +144,57 @@ public sealed class GameFileTextTests : IDisposable
         Assert.Equal(Encoding.BigEndianUnicode.CodePage, detected.Encoding.CodePage);
     }
 
+
+    [Fact]
+    public void DetectEncoding_PrefersLegacyCodePageWhenUtf8DecodeLooksLikeMojibake()
+    {
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        Encoding gbk = Encoding.GetEncoding(936);
+        byte[] bytes = gbk.GetBytes("学习");
+
+        Assert.Equal("学习", gbk.GetString(bytes));
+        Assert.Equal("ѧϰ", new UTF8Encoding(false, true).GetString(bytes));
+
+        DetectedEncoding detected = GameFileText.DetectEncoding(bytes, gbk);
+
+        Assert.Equal(936, detected.Encoding.CodePage);
+        Assert.Equal("学习", detected.Encoding.GetString(bytes));
+    }
+
+    [Fact]
+    public void Read_UsesXmlEncodingDeclarationBeforeConfiguredFallback()
+    {
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        byte[] bytes = Encoding.GetEncoding(936).GetBytes(
+            "<?xml version=\"1.0\" encoding=\"gbk\"?>\r\n<root>你好</root>");
+        string path = WriteRaw("declared-gbk.xml", bytes);
+
+        GameFileText file = GameFileText.Read(path, Encoding.GetEncoding(932));
+
+        Assert.Equal(936, file.Encoding.CodePage);
+        Assert.Contains("<root>你好</root>", file.Text);
+    }
+
     private string WriteRaw(string name, byte[] bytes)
     {
         string path = Path.Combine(_directory, name);
         File.WriteAllBytes(path, bytes);
         return path;
+    }
+
+    [Fact]
+    public void Read_Cp932AliasNormalization_RespectsDoubleByteCharacterBoundaries()
+    {
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        // 0x82 0x87 = full-width 'ｇ', 0x90 0x6C = '人', 0x87 0x90 = CP932 alias for '≒'.
+        // Bytes [1..2] are 0x87 0x90 across a character boundary and must not be rewritten.
+        byte[] bytes = [0x82, 0x87, 0x90, 0x6C, 0x87, 0x90];
+        string path = WriteRaw("cp932-boundary.erb", bytes);
+
+        GameFileText decoded = GameFileText.Read(path, Encoding.GetEncoding(932));
+
+        Assert.Equal(932, decoded.Encoding.CodePage);
+        Assert.Equal("ｇ人≒", decoded.Text);
     }
 
     [Fact]

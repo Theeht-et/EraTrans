@@ -3,6 +3,7 @@ using System.Text.Json;
 using EraTrans.Core;
 using EraTrans.Core.VisibleText;
 using Xunit;
+using EraTrans.Core.WriteBack;
 
 namespace EraTrans.Tests;
 
@@ -23,7 +24,7 @@ public sealed class VisibleTextExtractorTests
             File.WriteAllText(
                 Path.Combine(gameDirectory, "ERB", "mixed.erb"),
                 "@HELLO\nPRINTFORML こんにちは\nPRINTFORML OK\nPRINTFORML EXP+5\n",
-                new UTF8Encoding(false));
+                new UTF8Encoding(true));
 
             var extractor = new VisibleTextExtractor();
             VisibleTextExtractionResult defaults = extractor.Extract(
@@ -54,7 +55,7 @@ public sealed class VisibleTextExtractorTests
             File.WriteAllText(
                 Path.Combine(gameDirectory, "ERB", "html.erb"),
                 "@HELLO\nHTML_PRINT \"<button value='1' title='戻る'>次へ</button>\"\n",
-                new UTF8Encoding(false));
+                new UTF8Encoding(true));
 
             var extractor = new VisibleTextExtractor();
             VisibleTextExtractionResult withTitle = extractor.Extract(
@@ -85,7 +86,7 @@ public sealed class VisibleTextExtractorTests
             File.WriteAllText(
                 Path.Combine(gameDirectory, "ERB", "data.erb"),
                 "@HELLO\nPRINTDATA\nDATA こんにちは\nDATA さようなら\nENDDATA\n",
-                new UTF8Encoding(false));
+                new UTF8Encoding(true));
 
             var extractor = new VisibleTextExtractor();
             VisibleTextExtractionResult withData = extractor.Extract(
@@ -119,7 +120,7 @@ public sealed class VisibleTextExtractorTests
             File.WriteAllText(
                 source,
                 "; comment\r\n@HELLO\r\n" + FormLine + "\r\n" + PlainLine + "\r\n",
-                new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+                new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
 
             var extractor = new VisibleTextExtractor();
             VisibleTextExtractionResult result = extractor.Extract(
@@ -211,7 +212,7 @@ public sealed class VisibleTextExtractorTests
             string gameDirectory = Path.Combine(root, "game");
             Directory.CreateDirectory(Path.Combine(gameDirectory, "ERB"));
             string source = Path.Combine(gameDirectory, "ERB", "spans.erb");
-            File.WriteAllText(source, "@F\r\n" + FormLine + "\r\n", new UTF8Encoding(false));
+            File.WriteAllText(source, "@F\r\n" + FormLine + "\r\n", new UTF8Encoding(true));
 
             VisibleTextFileResult file = ErbVisibleTextLexer.ExtractFile(
                 "ERB/spans.erb",
@@ -247,7 +248,7 @@ public sealed class VisibleTextExtractorTests
             File.WriteAllText(
                 source,
                 "@UI\r\nLOCALS = 体力(%CALLNAME:MASTER%)\r\nPRINTBUTTON \"[自宅位置]\", 120\r\nPRINTFORM %LOCALS%\r\n",
-                new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+                new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
 
             var extractor = new VisibleTextExtractor();
             extractor.Extract(gameDirectory, dictionaryRoot, "ERB", new EraParserOptions { WriteContext = true });
@@ -287,7 +288,7 @@ public sealed class VisibleTextExtractorTests
             string dictionaryRoot = Path.Combine(root, "out", "字典");
             Directory.CreateDirectory(Path.Combine(gameDirectory, "ERB"));
             string source = Path.Combine(gameDirectory, "ERB", "hello.erb");
-            File.WriteAllText(source, "@HELLO\n" + PlainLine + "\n", new UTF8Encoding(false));
+            File.WriteAllText(source, "@HELLO\n" + PlainLine + "\n", new UTF8Encoding(true));
 
             var extractor = new VisibleTextExtractor();
             extractor.Extract(gameDirectory, dictionaryRoot, "ERB", new EraParserOptions());
@@ -297,7 +298,7 @@ public sealed class VisibleTextExtractorTests
 
             // The same file is rewritten without translatable text: last round's dictionary (and
             // its span sidecar) would otherwise keep showing entries that no longer exist.
-            File.WriteAllText(source, "@HELLO\n; 表示するものがなくなった\n", new UTF8Encoding(false));
+            File.WriteAllText(source, "@HELLO\n; 表示するものがなくなった\n", new UTF8Encoding(true));
             extractor.Extract(gameDirectory, dictionaryRoot, "ERB", new EraParserOptions());
 
             Assert.False(File.Exists(dictionaryPath));
@@ -305,6 +306,83 @@ public sealed class VisibleTextExtractorTests
         finally
         {
             Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Extract_RejectsUndecodableFileBeforeCreatingVisibleTextDictionaries()
+    {
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        string root = CreateTempRoot();
+        try
+        {
+            string gameDirectory = Path.Combine(root, "game");
+            string source = Path.Combine(gameDirectory, "ERB", "invalid.erb");
+            string dictionaryRoot = Path.Combine(root, "out", "字典");
+            Directory.CreateDirectory(Path.GetDirectoryName(source)!);
+            byte[] invalidBytes = [0xFF, 0xFE, 0x00];
+            File.WriteAllBytes(source, invalidBytes);
+
+            InvalidDataException error = Assert.Throws<InvalidDataException>(() =>
+                new VisibleTextExtractor().Extract(
+                    gameDirectory,
+                    dictionaryRoot,
+                    "ERB",
+                    new EraParserOptions { FileEncoding = Encoding.GetEncoding(936) },
+                    ignoreEncodingIssueFiles: false));
+
+            Assert.Contains("ERB/invalid.erb", error.Message);
+            Assert.Contains("无损解码", error.Message);
+            Assert.False(Directory.Exists(dictionaryRoot));
+            Assert.Equal(invalidBytes, File.ReadAllBytes(source));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+
+    [Fact]
+    public void Extract_SkipsUndecodableFilesByDefaultAndKeepsDecodableOnes()
+    {
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        Encoding gbk = Encoding.GetEncoding(936);
+
+        string root = CreateTempRoot();
+        try
+        {
+            string gameDirectory = Path.Combine(root, "game");
+            string dictionaryRoot = Path.Combine(root, "out", "字典");
+            Directory.CreateDirectory(Path.Combine(gameDirectory, "ERB"));
+
+            File.WriteAllText(
+                Path.Combine(gameDirectory, "ERB", "valid.erb"),
+                "@HELLO\n" + PlainLine + "\n",
+                new UTF8Encoding(true));
+            File.WriteAllBytes(
+                Path.Combine(gameDirectory, "ERB", "ambiguous.erb"),
+                gbk.GetBytes("@MAIN\n" + PlainLine.Replace("こんにちは", "学习") + "\n"));
+            File.WriteAllBytes(
+                Path.Combine(gameDirectory, "ERB", "invalid.erb"),
+                [0xFF, 0xFE, 0x00]);
+
+            var options = new EraParserOptions { FileEncoding = gbk };
+            VisibleTextExtractionResult result = new VisibleTextExtractor().Extract(
+                gameDirectory,
+                dictionaryRoot,
+                "ERB",
+                options);
+
+            Assert.True(File.Exists(Path.Combine(dictionaryRoot, "ERB", "valid.json")));
+            Assert.True(File.Exists(Path.Combine(dictionaryRoot, "ERB", "ambiguous.json")));
+            Assert.False(File.Exists(Path.Combine(dictionaryRoot, "ERB", "invalid.json")));
+            Assert.Contains(result.Warnings, warning => warning.Contains("ERB/invalid.erb", StringComparison.Ordinal));
+            Assert.Contains(result.Warnings, warning => warning.Contains("1 个文件无法可靠解码", StringComparison.Ordinal));
+        }
+        finally
+        {
+            TryDelete(root);
         }
     }
 
@@ -318,7 +396,7 @@ public sealed class VisibleTextExtractorTests
             string dictionaryRoot = Path.Combine(root, "out", "字典");
             Directory.CreateDirectory(Path.Combine(gameDirectory, "ERB"));
             string source = Path.Combine(gameDirectory, "ERB", "hello.erb");
-            File.WriteAllText(source, "@HELLO\n" + PlainLine + "\n", new UTF8Encoding(false));
+            File.WriteAllText(source, "@HELLO\n" + PlainLine + "\n", new UTF8Encoding(true));
 
             var extractor = new VisibleTextExtractor();
             extractor.Extract(gameDirectory, dictionaryRoot, "ERB", new EraParserOptions());

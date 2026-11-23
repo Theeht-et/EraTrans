@@ -146,10 +146,10 @@ public sealed class SpanCatalog
 
     public bool TryGetSpans(string relativeGamePath, out IReadOnlyDictionary<string, TextSpan> spans)
     {
-        if (TryGetFile(relativeGamePath, out Dictionary<string, SpanInfo>? found))
+        if (TryGetFile(relativeGamePath, out Dictionary<string, SpanInfo>? found) && found is { } entries)
         {
-            var map = new Dictionary<string, TextSpan>(found.Count, StringComparer.Ordinal);
-            foreach ((string key, SpanInfo info) in found)
+            var map = new Dictionary<string, TextSpan>(entries.Count, StringComparer.Ordinal);
+            foreach ((string key, SpanInfo info) in entries)
             {
                 map[key] = info.Span;
             }

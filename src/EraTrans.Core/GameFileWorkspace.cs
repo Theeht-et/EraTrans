@@ -1,3 +1,7 @@
+using System.Text;
+using System.Text.RegularExpressions;
+using EraTrans.Core.WriteBack;
+
 namespace EraTrans.Core;
 
 /// <summary>
@@ -12,9 +16,33 @@ public static class GameFileWorkspace
     /// Files are first copied to a sibling staging directory and then moved into place.
     /// </summary>
     /// <returns>Absolute paths of every file copied into the game workspace.</returns>
+    public static IReadOnlyList<string> CopyDirectoryForModification(string gameDirectory, string outputDirectory) =>
+        CopyDirectoryForModification(gameDirectory, outputDirectory, null, null);
+
     public static IReadOnlyList<string> CopyDirectoryForModification(
         string gameDirectory,
-        string outputDirectory)
+        string outputDirectory,
+        EraParserOptions options,
+        bool ignoreEncodingIssueFiles = true,
+        ICollection<GameFileEncodingIssue>? skippedEncodingIssues = null)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        return CopyDirectoryForModification(
+            gameDirectory,
+            outputDirectory,
+            options.FileEncoding,
+            options.TargetFileExtensions,
+            ignoreEncodingIssueFiles,
+            skippedEncodingIssues);
+    }
+
+    public static IReadOnlyList<string> CopyDirectoryForModification(
+        string gameDirectory,
+        string outputDirectory,
+        Encoding? fallbackEncoding,
+        IReadOnlyList<string>? targetFileExtensions,
+        bool ignoreEncodingIssueFiles = true,
+        ICollection<GameFileEncodingIssue>? skippedEncodingIssues = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(gameDirectory);
         ArgumentException.ThrowIfNullOrWhiteSpace(outputDirectory);
@@ -50,6 +78,27 @@ public static class GameFileWorkspace
             throw new ArgumentException("The game-copy destination must be a named directory.", nameof(outputDirectory));
         }
 
+        HashSet<string> textExtensions = GameFileEncodingValidator.CreateTextExtensions(targetFileExtensions);
+        var ignoredTextPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (fallbackEncoding is not null)
+        {
+            IReadOnlyList<GameFileEncodingIssue> encodingIssues =
+                GameFileEncodingValidator.FindDirectoryIssues(gameRoot, fallbackEncoding, textExtensions);
+            if (encodingIssues.Count > 0)
+            {
+                if (!ignoreEncodingIssueFiles)
+                {
+                    throw GameFileEncodingValidator.CreatePreflightException(encodingIssues);
+                }
+
+                foreach (GameFileEncodingIssue issue in encodingIssues)
+                {
+                    ignoredTextPaths.Add(Path.GetFullPath(issue.FullPath));
+                    skippedEncodingIssues?.Add(issue);
+                }
+            }
+        }
+
         Directory.CreateDirectory(parentDirectory);
         string stagingDirectory = Path.Combine(
             parentDirectory,
@@ -59,7 +108,7 @@ public static class GameFileWorkspace
         var relativeFiles = new List<string>();
         try
         {
-            CopyDirectoryContents(gameRoot, stagingDirectory, stagingDirectory, relativeFiles);
+            CopyDirectoryContents(gameRoot, stagingDirectory, gameRoot, stagingDirectory, relativeFiles, fallbackEncoding, textExtensions, ignoredTextPaths);
             Directory.Move(stagingDirectory, outputRoot);
 
             return relativeFiles
@@ -136,8 +185,12 @@ public static class GameFileWorkspace
     private static void CopyDirectoryContents(
         string sourceDirectory,
         string destinationDirectory,
+        string sourceRoot,
         string workspaceRoot,
-        List<string> copiedFiles)
+        List<string> copiedFiles,
+        Encoding? fallbackEncoding,
+        IReadOnlySet<string> textExtensions,
+        IReadOnlySet<string> ignoredTextPaths)
     {
         var enumerationOptions = new EnumerationOptions
         {
@@ -146,12 +199,7 @@ public static class GameFileWorkspace
             RecurseSubdirectories = false
         };
 
-        foreach (string sourcePath in Directory.EnumerateFileSystemEntries(
-                     sourceDirectory,
-                     "*",
-                     enumerationOptions)
-                     .OrderBy(path => Path.GetFileName(path), StringComparer.OrdinalIgnoreCase)
-                     .ThenBy(path => Path.GetFileName(path), StringComparer.Ordinal))
+        foreach (string sourcePath in Directory.EnumerateFileSystemEntries(sourceDirectory, "*", enumerationOptions))
         {
             FileAttributes attributes = File.GetAttributes(sourcePath);
             if ((attributes & FileAttributes.ReparsePoint) != 0)
@@ -165,7 +213,7 @@ public static class GameFileWorkspace
             if ((attributes & FileAttributes.Directory) != 0)
             {
                 Directory.CreateDirectory(destinationPath);
-                CopyDirectoryContents(sourcePath, destinationPath, workspaceRoot, copiedFiles);
+                CopyDirectoryContents(sourcePath, destinationPath, sourceRoot, workspaceRoot, copiedFiles, fallbackEncoding, textExtensions, ignoredTextPaths);
                 Directory.SetLastWriteTimeUtc(
                     destinationPath,
                     Directory.GetLastWriteTimeUtc(sourcePath));
@@ -179,7 +227,31 @@ public static class GameFileWorkspace
             }
             else
             {
-                File.Copy(sourcePath, destinationPath, overwrite: false);
+                if (fallbackEncoding is not null &&
+                    IsGameTextFile(sourcePath, textExtensions) &&
+                    !ignoredTextPaths.Contains(Path.GetFullPath(sourcePath)))
+                {
+                    string relativePath = Path.GetRelativePath(sourceRoot, sourcePath).Replace('\\', '/');
+                    string text = GameFileText.Read(sourcePath, fallbackEncoding).Text;
+                    // Decoding uses strict fallbacks, so a successful read never substitutes
+                    // characters; a literal U+FFFD here is author content and is kept as is.
+                    if (Path.GetExtension(sourcePath).Equals(".xml", StringComparison.OrdinalIgnoreCase))
+                        text = NormalizeXmlEncodingDeclaration(text);
+                    try
+                    {
+                        File.WriteAllText(destinationPath, text, Utf8WithBomAndStrictEncoder);
+                    }
+                    catch (EncoderFallbackException)
+                    {
+                        // Unpaired surrogates cannot be represented as UTF-8; keep the
+                        // original bytes rather than writing a lossy copy.
+                        File.Copy(sourcePath, destinationPath, overwrite: false);
+                    }
+                }
+                else
+                {
+                    File.Copy(sourcePath, destinationPath, overwrite: false);
+                }
                 FileAttributes writableAttributes = attributes & ~FileAttributes.ReadOnly;
                 File.SetAttributes(destinationPath, writableAttributes);
                 File.SetLastWriteTimeUtc(
@@ -189,6 +261,18 @@ public static class GameFileWorkspace
             }
         }
     }
+
+    private static readonly UTF8Encoding Utf8WithBomAndStrictEncoder =
+        new(encoderShouldEmitUTF8Identifier: true, throwOnInvalidBytes: true);
+
+    private static bool IsGameTextFile(string path, IReadOnlySet<string> textExtensions) =>
+        textExtensions.Contains(Path.GetExtension(path));
+
+    private static string NormalizeXmlEncodingDeclaration(string text) =>
+        Regex.Replace(text,
+            "\\A(\\s*<\\?xml\\b[^>]*\\bencoding\\s*=\\s*)(['\"])[^'\"]+(['\"])",
+            match => match.Groups[1].Value + match.Groups[2].Value + "utf-8" + match.Groups[3].Value,
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     private static void EnsureDirectoriesAreDisjoint(string first, string second, string message)
     {

@@ -20,7 +20,7 @@ public sealed class EraTransUserSettings
     public const int MaximumTranslationConcurrency = 50;
     public const int DefaultTranslationConcurrency = 1;
 
-    public string FileEncodingId { get; set; } = "utf8-bom";
+    public string FileEncodingId { get; set; } = "932";
     public bool AutoOpenFolder { get; set; } = true;
     public bool EnableVariableAutoCorrection { get; set; } = true;
     public bool HideEnglishText { get; set; } = true;
@@ -138,10 +138,13 @@ public sealed class EraTransUserSettings
 
     public void Validate()
     {
-        if (FileEncodingId is not ("utf8-bom" or "utf8" or "932" or "936" or "950"))
-        {
-            throw new InvalidDataException($"不支持的文件编码设置：{FileEncodingId}");
-        }
+        // UTF-8 is detected automatically from BOM / strict UTF-8. Older settings stored
+        // utf8-bom as the default; migrate those values to the Japanese CP932 fallback.
+        if (FileEncodingId is "utf8-bom" or "utf8")
+            FileEncodingId = "932";
+
+        if (FileEncodingId is not ("932" or "936" or "950"))
+            throw new InvalidDataException($"不支持的默认回退编码设置：{FileEncodingId}");
 
         ErbExtractionMode = ErbExtractionMode?.Trim().ToLowerInvariant() switch
         {

@@ -40,7 +40,8 @@ public sealed class TranslationApplier
         string dictionaryDirectory,
         string outputDirectory,
         EraParserOptions? options = null,
-        SpanCatalog? spanCatalog = null)
+        SpanCatalog? spanCatalog = null,
+        bool ignoreEncodingIssueFiles = true)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(gameDirectory);
         ArgumentException.ThrowIfNullOrWhiteSpace(dictionaryDirectory);
@@ -72,10 +73,24 @@ public sealed class TranslationApplier
         // Create a complete game workspace before applying any edits. The workspace
         // creator refuses an existing destination so repeated runs cannot overwrite user
         // changes or apply translations on top of an earlier translated copy.
+        var skippedEncodingIssues = new List<GameFileEncodingIssue>();
         IReadOnlyList<string> copiedDestinationFiles =
-            GameFileWorkspace.CopyDirectoryForModification(gameRoot, outputRoot);
+            GameFileWorkspace.CopyDirectoryForModification(
+                gameRoot,
+                outputRoot,
+                parserOptions,
+                ignoreEncodingIssueFiles,
+                skippedEncodingIssues);
 
         var warnings = new ConcurrentBag<string>();
+        var ignoredSourcePaths = new HashSet<string>(
+            skippedEncodingIssues.Select(issue => Path.GetFullPath(issue.FullPath)),
+            StringComparer.OrdinalIgnoreCase);
+        foreach (GameFileEncodingIssue issue in skippedEncodingIssues)
+        {
+            warnings.Add(
+                $"已忽略编码异常文件（已原样复制到游戏副本，未转码且未应用译文）：{issue.RelativePath}");
+        }
         var spanCatalogResolved = spanCatalog ?? SpanCatalog.LoadFromSidecar(dictionaryRoot, warnings.Add);
         var copiedBySource = new ConcurrentDictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (string destinationPath in copiedDestinationFiles)
@@ -94,6 +109,11 @@ public sealed class TranslationApplier
 
         Parallel.ForEach(operations, operation =>
         {
+            if (ignoredSourcePaths.Contains(Path.GetFullPath(operation.SourcePath)))
+            {
+                return;
+            }
+
             try
             {
                 if (!copiedBySource.ContainsKey(operation.SourcePath) ||
@@ -117,8 +137,8 @@ public sealed class TranslationApplier
                         StringComparison.Ordinal))
                 {
                     warnings.Add(
-                        $"按位置写回：{operation.RelativePath} - 源文件在提取之后被修改，定位信息已失效，本次改用原文匹配。");
-                    seeds = null;
+                        $"按位置写回：{operation.RelativePath} - 源文件在提取之后被修改，定位信息已失效，本次跳过该文件的译文写回。请重新提取字典。");
+                    return;
                 }
 
                 if (seeds is not null)
@@ -230,7 +250,8 @@ public sealed class TranslationApplier
                 parserOptions,
                 copiedBySource,
                 modifiedFiles,
-                warnings);
+                warnings,
+                ignoredSourcePaths);
         }
 
         var renamedPathMap = renamedFiles.ToDictionary(
@@ -629,7 +650,8 @@ public sealed class TranslationApplier
         EraParserOptions options,
         ConcurrentDictionary<string, string> copiedBySource,
         ConcurrentBag<string> modifiedFiles,
-        ConcurrentBag<string> warnings)
+        ConcurrentBag<string> warnings,
+        IReadOnlySet<string> ignoredSourcePaths)
     {
         string csvDictionaryRoot = Path.Combine(dictionaryRoot, "CSV");
         if (!Directory.Exists(csvDictionaryRoot))
@@ -701,6 +723,11 @@ public sealed class TranslationApplier
 
         Parallel.ForEach(scriptFiles, sourcePath =>
         {
+            if (ignoredSourcePaths.Contains(Path.GetFullPath(sourcePath)))
+            {
+                return;
+            }
+
             string relativePath = Path.GetRelativePath(gameRoot, sourcePath);
             string destinationPath;
 

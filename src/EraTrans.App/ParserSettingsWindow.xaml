@@ -82,7 +82,7 @@
                                    Margin="0,0,0,14" />
 
                         <TextBlock Grid.Row="3"
-                                   Text="读取游戏文件编码"
+                                   Text="游戏原始编码（无 BOM 文件）"
                                    VerticalAlignment="Center"
                                    Foreground="#39414A" />
                         <ComboBox x:Name="EncodingComboBox"
@@ -91,20 +91,15 @@
                                   Height="34"
                                   Margin="0,0,0,6"
                                   VerticalContentAlignment="Center">
-                            <ComboBoxItem Content="UTF-8（含 BOM）" Tag="utf8-bom" />
-                            <ComboBoxItem Content="UTF-8" Tag="utf8" />
                             <ComboBoxItem Content="Shift-JIS（日文）" Tag="932" />
                             <ComboBoxItem Content="GBK（简体中文）" Tag="936" />
                             <ComboBoxItem Content="Big5（繁体中文）" Tag="950" />
                         </ComboBox>
 
-                        <TextBlock Grid.Row="4"
-                                   Grid.Column="1"
-                                   Text="旧版用它读取 CSV / ERB / RES；新版会逐文件自动探测（BOM、UTF-8、UTF-16、Shift-JIS），这里选的 GBK / Big5 只在文件既不是 UTF-8 也不是 Shift-JIS 时作为回退。混编游戏（同一目录里 UTF-8 与 Shift-JIS 混用）请让旧版改用能覆盖多数文件的值。"
-                                   TextWrapping="Wrap"
-                                   FontSize="11"
-                                   Foreground="#68717D"
-                                   Margin="0,0,0,14" />
+                        <StackPanel Grid.Row="4" Grid.Column="1" Margin="0,0,0,12">
+                            <TextBlock Text="先识别 BOM、XML 编码声明和无 BOM UTF-16；其他无 BOM 文件会比较严格 UTF-8 与所选游戏编码。只有唯一无损解码，或两种解码结果完全相同，才继续；存在歧义或无效字节时会弹窗列出问题文件，供核对转码或选择忽略后继续。默认 CP932（日文），简体中文可选 GBK，繁体中文可选 Big5。自定义目标扩展名也会按文本检查并转成 UTF-8 BOM。"
+                                       TextWrapping="Wrap" FontSize="11" Foreground="#68717D" />
+                        </StackPanel>
 
                         <CheckBox x:Name="WriteContextCheckBox"
                                   Grid.Row="5"

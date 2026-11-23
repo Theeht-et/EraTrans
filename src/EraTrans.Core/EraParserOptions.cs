@@ -30,7 +30,15 @@ public sealed class EraParserOptions
     /// </summary>
     public bool SkipNonJapaneseEntries { get; init; } = true;
 
-    public Encoding FileEncoding { get; init; } = new UTF8Encoding(encoderShouldEmitUTF8Identifier: true);
+    private static Encoding CreateDefaultFileEncoding()
+    {
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        return Encoding.GetEncoding(932);
+    }
+
+    /// <summary>Fallback for BOM-less legacy files; CP932 is the default for Japanese ERA games.</summary>
+    public Encoding FileEncoding { get; init; } = CreateDefaultFileEncoding();
+
     public bool HideEnglishText { get; init; } = true;
     public bool MergeDuplicateEntries { get; init; } = false;
     public bool HideVariableEntries { get; init; } = true;

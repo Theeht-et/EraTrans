@@ -65,7 +65,7 @@ public static class ErbVisibleTextLexer
     public static VisibleTextFileResult ExtractFile(
         string relativePath,
         string text,
-        IReadOnlyCollection<string> macros,
+        IReadOnlyCollection<string>? macros,
         bool extractHtmlTitle = true,
         bool extractPrintDataEntries = true)
     {

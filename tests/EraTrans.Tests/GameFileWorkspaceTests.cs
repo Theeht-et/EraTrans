@@ -1,5 +1,7 @@
+using System.Text;
 using EraTrans.Core;
 using Xunit;
+using EraTrans.Core.WriteBack;
 
 namespace EraTrans.Tests;
 
@@ -53,6 +55,123 @@ public sealed class FullGameWorkspaceCopyTests
         Assert.True((File.GetAttributes(textFile) & FileAttributes.ReadOnly) != 0);
         Assert.Equal("original script", File.ReadAllText(textFile));
         Assert.Equal("binary resource", File.ReadAllText(binaryFile));
+    }
+
+
+    [Fact]
+    public void CopyDirectoryForModification_TranscodesConfiguredEncodingAndCustomTargetsToUtf8Bom()
+    {
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        using var game = new TemporaryDirectory();
+        using var outputParent = new TemporaryDirectory();
+
+        Encoding big5 = Encoding.GetEncoding(950);
+        string erbText = "PRINTFORM 繁體中文\r\n";
+        string csvText = "名稱,繁體中文\r\n";
+        string xmlText = "<?xml version=\"1.0\" encoding=\"big5\"?>\r\n<root>繁體</root>";
+        string customText = "繁體中文自訂副檔名";
+        string erb = game.CreateFile("ERB/main.erb", string.Empty);
+        string csv = game.CreateFile("CSV/table.csv", string.Empty);
+        string xml = game.CreateFile("XML/ui.xml", string.Empty);
+        string custom = game.CreateFile("Data/custom.txt", string.Empty);
+        string binary = game.CreateFile("Graphics/asset.bin", "binary");
+        File.WriteAllBytes(erb, big5.GetBytes(erbText));
+        File.WriteAllBytes(csv, big5.GetBytes(csvText));
+        File.WriteAllBytes(xml, big5.GetBytes(xmlText));
+        File.WriteAllBytes(custom, big5.GetBytes(customText));
+
+        var options = new EraParserOptions
+        {
+            FileEncoding = big5,
+            TargetFileExtensions = [".csv", ".erb", ".erh", ".erd", ".txt"]
+        };
+        string output = Path.Combine(outputParent.Path, "Output", "游戏副本");
+        GameFileWorkspace.CopyDirectoryForModification(game.Path, output, options);
+
+        AssertUtf8BomText(Path.Combine(output, "ERB", "main.erb"), erbText);
+        AssertUtf8BomText(Path.Combine(output, "CSV", "table.csv"), csvText);
+        AssertUtf8BomText(Path.Combine(output, "XML", "ui.xml"),
+            "<?xml version=\"1.0\" encoding=\"utf-8\"?>\r\n<root>繁體</root>");
+        AssertUtf8BomText(Path.Combine(output, "Data", "custom.txt"), customText);
+        Assert.Equal("binary", File.ReadAllText(Path.Combine(output, "Graphics", "asset.bin")));
+
+        Assert.Equal(big5.GetBytes(erbText), File.ReadAllBytes(erb));
+        Assert.Equal(big5.GetBytes(csvText), File.ReadAllBytes(csv));
+        Assert.Equal(big5.GetBytes(xmlText), File.ReadAllBytes(xml));
+        Assert.Equal(big5.GetBytes(customText), File.ReadAllBytes(custom));
+        Assert.Equal("binary", File.ReadAllText(binary));
+    }
+
+    [Fact]
+    public void CopyDirectoryForModification_RejectsUndecodableTextBeforeCreatingWorkspace()
+    {
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        using var game = new TemporaryDirectory();
+        using var outputParent = new TemporaryDirectory();
+
+        byte[] invalidBytes = [0xFF, 0xFE, 0x00];
+        string invalid = game.CreateFile("ERB/invalid.erb", string.Empty);
+        File.WriteAllBytes(invalid, invalidBytes);
+
+        var options = new EraParserOptions { FileEncoding = Encoding.GetEncoding(936) };
+        string output = Path.Combine(outputParent.Path, "Output", "游戏副本");
+        InvalidDataException error = Assert.Throws<InvalidDataException>(
+            () => GameFileWorkspace.CopyDirectoryForModification(
+                game.Path,
+                output,
+                options,
+                ignoreEncodingIssueFiles: false));
+
+        Assert.Contains("ERB/invalid.erb", error.Message);
+        Assert.Contains("无损解码", error.Message);
+        Assert.Contains("未生成游戏副本", error.Message);
+        Assert.False(Directory.Exists(output));
+        Assert.Equal(invalidBytes, File.ReadAllBytes(invalid));
+    }
+
+    [Fact]
+    public void CopyDirectoryForModification_SkipsUndecodableFilesByDefaultAndCopiesThemByteForByte()
+    {
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        Encoding gbk = Encoding.GetEncoding(936);
+
+        using var game = new TemporaryDirectory();
+        using var outputParent = new TemporaryDirectory();
+
+        string normal = Path.Combine(game.Path, "ERB", "normal.erb");
+        string gbkText = Path.Combine(game.Path, "ERB", "gbk-text.erb");
+        string invalid = Path.Combine(game.Path, "ERB", "invalid.erb");
+        Directory.CreateDirectory(Path.GetDirectoryName(normal)!);
+
+        File.WriteAllBytes(normal, gbk.GetBytes("PRINTL 你好，世界\r\n"));
+        File.WriteAllBytes(gbkText, gbk.GetBytes("PRINTL 学习\r\n"));
+        byte[] invalidBytes = [0xFF, 0xFE, 0x00];
+        File.WriteAllBytes(invalid, invalidBytes);
+
+        string output = Path.Combine(outputParent.Path, "游戏副本");
+        var options = new EraParserOptions { FileEncoding = gbk };
+
+        var skipped = new List<GameFileEncodingIssue>();
+        GameFileWorkspace.CopyDirectoryForModification(
+            game.Path,
+            output,
+            options,
+            skippedEncodingIssues: skipped);
+
+        Assert.Single(skipped);
+        Assert.Equal("ERB/invalid.erb", skipped[0].RelativePath);
+        Assert.Contains("无损解码", skipped[0].Reason);
+        AssertUtf8BomText(Path.Combine(output, "ERB", "normal.erb"), "PRINTL 你好，世界\r\n");
+        AssertUtf8BomText(Path.Combine(output, "ERB", "gbk-text.erb"), "PRINTL 学习\r\n");
+        Assert.Equal(invalidBytes, File.ReadAllBytes(Path.Combine(output, "ERB", "invalid.erb")));
+    }
+
+    private static void AssertUtf8BomText(string path, string expected)
+    {
+        byte[] bytes = File.ReadAllBytes(path);
+        Assert.True(bytes.Length >= 3);
+        Assert.Equal(new byte[] { 0xEF, 0xBB, 0xBF }, bytes[..3]);
+        Assert.Equal(expected, new UTF8Encoding(false, true).GetString(bytes, 3, bytes.Length - 3));
     }
 
     [Fact]

@@ -116,8 +116,10 @@ public sealed class GameFileText
     }
 
     /// <summary>
-    /// Detects the encoding of a game file: BOM first, then strict UTF-8, then Shift-JIS (CP932).
-    /// Strict UTF-8 keeps Shift-JIS files from being mis-decoded into replacement characters.
+    /// Detects encoding in this order: BOM, explicit per-file override, BOM-less UTF-16,
+    /// strict UTF-8, then the configured legacy fallback (CP932 by default for Japanese ERA games).
+    /// CP932 / GBK / Big5 byte ranges overlap, so localized mixed-encoding games should use
+    /// a configured game-level fallback and explicit per-file overrides.
     /// </summary>
     public static DetectedEncoding DetectEncoding(ReadOnlySpan<byte> bytes, Encoding? fallbackEncoding = null, Encoding? fileOverrideEncoding = null)
     {
@@ -280,11 +282,6 @@ public sealed class GameFileText
         }
     }
 
-    private static Encoding GetShiftJis()
-    {
-        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
-        return Encoding.GetEncoding(932);
-    }
 }
 
 public readonly record struct DetectedEncoding(Encoding Encoding, byte[] Preamble, int BodyOffset);

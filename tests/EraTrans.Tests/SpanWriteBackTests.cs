@@ -206,7 +206,7 @@ public sealed class SpanWriteBackTests
     }
 
     [Fact]
-    public void Apply_FallsBackToOriginalMatch_WhenSidecarHashDoesNotMatch()
+    public void Apply_SkipsWholeFileFallback_WhenSidecarHashDoesNotMatch()
     {
         string root = CreateTempDirectory();
         string game = Path.Combine(root, "Game");
@@ -223,10 +223,10 @@ public sealed class SpanWriteBackTests
 
         var result = new TranslationApplier().Apply(game, dictionaries, output);
 
-        Assert.Equal("PRINTL こんばんは\n", File.ReadAllText(Path.Combine(output, "ERB", "script.erb")));
+        Assert.Equal("PRINTL こんにちは\n", File.ReadAllText(Path.Combine(output, "ERB", "script.erb")));
         Assert.Equal(0, result.SpanReplacedCount);
-        Assert.Equal(1, result.FallbackReplacedCount);
-        Assert.Contains(result.Warnings, warning => warning.Contains("定位信息已失效", StringComparison.Ordinal));
+        Assert.Equal(0, result.FallbackReplacedCount);
+        Assert.Contains(result.Warnings, warning => warning.Contains("跳过该文件", StringComparison.Ordinal));
     }
 
     [Fact]

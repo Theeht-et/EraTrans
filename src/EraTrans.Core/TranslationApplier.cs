@@ -117,8 +117,8 @@ public sealed class TranslationApplier
                         StringComparison.Ordinal))
                 {
                     warnings.Add(
-                        $"按位置写回：{operation.RelativePath} - 源文件在提取之后被修改，定位信息已失效，本次改用原文匹配。");
-                    seeds = null;
+                        $"按位置写回：{operation.RelativePath} - 源文件在提取之后被修改，定位信息已失效，本次跳过该文件的译文写回。请重新提取字典。");
+                    return;
                 }
 
                 if (seeds is not null)

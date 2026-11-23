@@ -127,7 +127,7 @@ public sealed class SpanWriteBackTests
         string dictionaries = Path.Combine(root, "Dictionaries");
         string output = Path.Combine(root, "WorkingCopy");
 
-        byte[] originalBytes = Encoding.UTF8.GetBytes("PRINTFORM 原文\r\n");
+        byte[] originalBytes = [0xEF, 0xBB, 0xBF, .. Encoding.UTF8.GetBytes("PRINTFORM 原文\r\n")];
         WriteBytes(game, "ERB/script.erb", originalBytes);
         WriteJson(dictionaries, "ERB/script.json",
         [
@@ -360,7 +360,7 @@ public sealed class SpanWriteBackTests
     {
         string path = Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllText(path, contents);
+        File.WriteAllText(path, contents, new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
     }
 
     private static void WriteBytes(string root, string relativePath, byte[] contents)

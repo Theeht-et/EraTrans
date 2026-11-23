@@ -19,7 +19,7 @@ public sealed class VisibleTextGroupingTests
             File.WriteAllText(
                 Path.Combine(gameDirectory, "ERB", "talk.erb"),
                 "@FIRST\r\nPRINTL こんにちは\r\nPRINTFORML おはよう\r\n@SECOND\r\nPRINTL さようなら\r\n",
-                new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+                new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
 
             new VisibleTextExtractor().Extract(
                 gameDirectory,
@@ -68,7 +68,7 @@ public sealed class VisibleTextGroupingTests
             File.WriteAllText(
                 Path.Combine(gameDirectory, "ERB", "screen.erb"),
                 "@TALK\r\nPRINTL おはよう\r\nPRINTL いい天気だ\r\nWAIT\r\nPRINTL さようなら\r\n",
-                new UTF8Encoding(false));
+                new UTF8Encoding(true));
 
             new VisibleTextExtractor().Extract(
                 gameDirectory,
@@ -110,7 +110,7 @@ public sealed class VisibleTextGroupingTests
             string gameDirectory = Path.Combine(root, "game");
             Directory.CreateDirectory(Path.Combine(gameDirectory, "ERB"));
             string source = Path.Combine(gameDirectory, "ERB", "x.erb");
-            File.WriteAllText(source, "@X\r\nPRINTL テスト\r\n", new UTF8Encoding(false));
+            File.WriteAllText(source, "@X\r\nPRINTL テスト\r\n", new UTF8Encoding(true));
 
             string? path = VisibleTextGrouping.TryWrite(
                 Path.Combine(root, "out", "字典"),

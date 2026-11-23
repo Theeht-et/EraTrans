@@ -64,7 +64,7 @@ public sealed class VisibleTextDiagnosticsTests
         {
             string erb = Path.Combine(root, "game", "ERB");
             Directory.CreateDirectory(erb);
-            File.WriteAllText(Path.Combine(erb, "a.erb"), "@MAIN\nFOO 日本語\nPRINTFORMW こんにちは\n");
+            File.WriteAllText(Path.Combine(erb, "a.erb"), "@MAIN\nFOO 日本語\nPRINTFORMW こんにちは\n", new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
 
             string dictionary = Path.Combine(root, "字典");
             VisibleTextExtractionResult result =

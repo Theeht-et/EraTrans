@@ -24,7 +24,8 @@ public sealed class DictionaryExtractor
         string gameDirectory,
         string outputDirectory,
         string? referenceGameDirectory = null,
-        EraParserOptions? options = null)
+        EraParserOptions? options = null,
+        bool ignoreEncodingIssueFiles = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(gameDirectory);
         ArgumentException.ThrowIfNullOrWhiteSpace(outputDirectory);
@@ -51,15 +52,36 @@ public sealed class DictionaryExtractor
 
         EraParserOptions effectiveOptions = options ?? new EraParserOptions();
         HashSet<string> textExtensions = GameFileEncodingValidator.CreateTextExtensions(effectiveOptions.TargetFileExtensions);
-        GameFileEncodingValidator.ValidateDirectory(gameRoot, effectiveOptions.FileEncoding, textExtensions);
+        var encodingIssues = new List<GameFileEncodingIssue>(
+            GameFileEncodingValidator.FindDirectoryIssues(gameRoot, effectiveOptions.FileEncoding, textExtensions));
         if (referenceRoot is not null && !IsPathContained(gameRoot, referenceRoot))
-            GameFileEncodingValidator.ValidateDirectory(referenceRoot, effectiveOptions.FileEncoding, textExtensions);
+        {
+            encodingIssues.AddRange(
+                GameFileEncodingValidator.FindDirectoryIssues(referenceRoot, effectiveOptions.FileEncoding, textExtensions));
+        }
+
+        if (encodingIssues.Count > 0 && !ignoreEncodingIssueFiles)
+        {
+            throw GameFileEncodingValidator.CreatePreflightException(encodingIssues);
+        }
+
+        var ignoredFilePaths = new HashSet<string>(
+            encodingIssues.Select(issue => Path.GetFullPath(issue.FullPath)),
+            StringComparer.OrdinalIgnoreCase);
 
         Directory.CreateDirectory(outputRoot);
         var warnings = new ConcurrentBag<string>();
         var generatedFiles = new ConcurrentBag<string>();
         var updatedContextFiles = new ConcurrentBag<string>();
         var updatedGroupingFiles = new ConcurrentBag<string>();
+
+        foreach (GameFileEncodingIssue issue in encodingIssues)
+        {
+            string macroNote = Path.GetExtension(issue.FullPath).Equals(".erh", StringComparison.OrdinalIgnoreCase)
+                ? "；该文件为宏定义文件，可能影响依赖它的条件编译"
+                : string.Empty;
+            warnings.Add($"已忽略编码异常文件（未提取）：{issue.RelativePath}（{issue.KindLabel}）{macroNote}");
+        }
 
         lock (LegacyParserRuntime.SyncRoot)
         {
@@ -68,13 +90,16 @@ public sealed class DictionaryExtractor
             using IDisposable textReaderScope = Configs.UseFileTextReader(path =>
             {
                 string fullPath = Path.GetFullPath(path);
-                string encodingRoot;
-                if (IsPathContained(gameRoot, fullPath))
-                    encodingRoot = gameRoot;
-                else if (referenceRoot is not null && IsPathContained(referenceRoot, fullPath))
-                    encodingRoot = referenceRoot;
-                else
+                if (!IsPathContained(gameRoot, fullPath) &&
+                    !(referenceRoot is not null && IsPathContained(referenceRoot, fullPath)))
+                {
                     throw new InvalidOperationException($"解析器请求了游戏目录之外的文件：{fullPath}");
+                }
+
+                if (ignoredFilePaths.Contains(fullPath))
+                {
+                    return string.Empty;
+                }
 
                 return GameFileText.Read(fullPath, effectiveOptions.FileEncoding).Text;
             });
@@ -83,6 +108,13 @@ public sealed class DictionaryExtractor
             if (!Directory.Exists(Path.Combine(gameRoot, "XML")))
             {
                 scannedFiles = scannedFiles.Where(file => file.Kind != GameFileKind.Xml).ToArray();
+            }
+
+            if (ignoredFilePaths.Count > 0)
+            {
+                scannedFiles = scannedFiles
+                    .Where(file => !ignoredFilePaths.Contains(Path.GetFullPath(file.FullPath)))
+                    .ToArray();
             }
 
             WriteExtractorMarker(outputRoot, effectiveOptions.ExtractionMode, warnings);
@@ -95,7 +127,8 @@ public sealed class DictionaryExtractor
                     effectiveOptions,
                     scannedFiles,
                     generatedFiles,
-                    warnings);
+                    warnings,
+                    ignoredFilePaths);
             }
 
             var erdFiles = scannedFiles
@@ -168,7 +201,9 @@ public sealed class DictionaryExtractor
                             ? null
                             : ResolveOutputPath(referenceRoot, file.RelativePath);
 
-                        bool hasReference = referenceFile is not null && File.Exists(referenceFile);
+                        bool hasReference = referenceFile is not null &&
+                                            File.Exists(referenceFile) &&
+                                            !ignoredFilePaths.Contains(Path.GetFullPath(referenceFile));
                         if (referenceRoot is not null && !hasReference)
                         {
                             warnings.Add($"未找到参考文件：{referenceFile}");
@@ -236,7 +271,7 @@ public sealed class DictionaryExtractor
                                     }
                                     catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                                     {
-                                        warnings.Add($"解析完成后无法再次校验 ERB 源文件，跳过其 AI 分组文件：{file.RelativePath} - {ex.Message}");
+                                        warnings.Add($"解析完成后无法再次校验 ERB 源文件，跳过 AI 分组文件：{file.RelativePath} - {ex.Message}");
                                     }
 
                                     if (sourceFingerprintAfterParse is not null &&
@@ -553,7 +588,8 @@ public sealed class DictionaryExtractor
         EraParserOptions options,
         IReadOnlyList<GameFile> scannedFiles,
         ConcurrentBag<string> generatedFiles,
-        ConcurrentBag<string> warnings)
+        ConcurrentBag<string> warnings,
+        IReadOnlySet<string>? ignoredFilePaths = null)
     {
         GameFile[] erbFiles = scannedFiles.Where(file => file.Kind == GameFileKind.Erb).ToArray();
         if (erbFiles.Length == 0)
@@ -570,7 +606,7 @@ public sealed class DictionaryExtractor
         string erbRootName = firstRelative.Contains('/') ? firstRelative[..firstRelative.IndexOf('/')] : "ERB";
 
         VisibleTextExtractionResult result = new VisibleTextExtractor()
-            .Extract(gameRoot, outputRoot, erbRootName, options);
+            .Extract(gameRoot, outputRoot, erbRootName, options, ignoredFilePaths);
 
         foreach (string file in result.GeneratedFiles)
         {

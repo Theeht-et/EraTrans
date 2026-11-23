@@ -130,7 +130,7 @@ public sealed class EraTransUserSettingsTests
     public void ToParserOptions_MapsParserBehaviorAndAdvancedLists()
     {
         EraTransUserSettings settings = EraTransUserSettings.CreateDefault();
-        settings.FileEncodingId = "utf8";
+        settings.FileEncodingId = "936";
         settings.HideEnglishText = false;
         settings.MergeDuplicateEntries = true;
         settings.HideVariableEntries = true;
@@ -144,7 +144,7 @@ public sealed class EraTransUserSettingsTests
 
         EraParserOptions options = settings.ToParserOptions();
 
-        Assert.Equal(Encoding.UTF8.CodePage, options.FileEncoding.CodePage);
+        Assert.Equal(936, options.FileEncoding.CodePage);
         Assert.False(options.HideEnglishText);
         Assert.True(options.MergeDuplicateEntries);
         Assert.True(options.HideVariableEntries);
@@ -158,6 +158,21 @@ public sealed class EraTransUserSettingsTests
         Assert.Equal(new[] { "Base" }, options.AutoReplaceReferenceFiles);
         Assert.Equal(new[] { "※" }, options.VariableNameCharacters);
         Assert.Equal(new[] { "(", ")", "==" }, options.Operators);
+    }
+
+
+    [Theory]
+    [InlineData("utf8-bom")]
+    [InlineData("utf8")]
+    public void Validate_MigratesLegacyUtf8FallbackSettingsToJapaneseCp932(string legacyEncodingId)
+    {
+        EraTransUserSettings settings = EraTransUserSettings.CreateDefault();
+        settings.FileEncodingId = legacyEncodingId;
+
+        EraParserOptions options = settings.ToParserOptions();
+
+        Assert.Equal("932", settings.FileEncodingId);
+        Assert.Equal(932, options.FileEncoding.CodePage);
     }
 
     [Fact]

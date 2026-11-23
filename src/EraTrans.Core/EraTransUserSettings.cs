@@ -141,8 +141,13 @@ public sealed class EraTransUserSettings
 
     public void Validate()
     {
-        if (FileEncodingId is not ("utf8-bom" or "utf8" or "932" or "936" or "950"))
-            throw new InvalidDataException($"不支持的文件编码设置：{FileEncodingId}");
+        // UTF-8 is detected automatically from BOM / strict UTF-8. Older settings stored
+        // utf8-bom as the default; migrate those values to the Japanese CP932 fallback.
+        if (FileEncodingId is "utf8-bom" or "utf8")
+            FileEncodingId = "932";
+
+        if (FileEncodingId is not ("932" or "936" or "950"))
+            throw new InvalidDataException($"不支持的默认回退编码设置：{FileEncodingId}");
 
         if (FileEncodingOverrides is null) throw new InvalidDataException("单文件编码覆盖设置无效。");
         var normalizedOverrides = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);

@@ -2,6 +2,38 @@ using System.Text;
 
 namespace EraTrans.Core.WriteBack;
 
+public enum GameFileEncodingIssueKind
+{
+    Ambiguous,
+    DecodeFailed
+}
+
+public sealed record GameFileEncodingIssue(
+    string FullPath,
+    string RelativePath,
+    GameFileEncodingIssueKind Kind,
+    string Reason)
+{
+    public string KindLabel => Kind switch
+    {
+        GameFileEncodingIssueKind.Ambiguous => "编码歧义",
+        _ => "无法无损解码"
+    };
+}
+
+public sealed class GameFileEncodingPreflightException : InvalidDataException
+{
+    public GameFileEncodingPreflightException(
+        string message,
+        IReadOnlyList<GameFileEncodingIssue> issues)
+        : base(message)
+    {
+        Issues = issues;
+    }
+
+    public IReadOnlyList<GameFileEncodingIssue> Issues { get; }
+}
+
 /// <summary>
 /// Performs a full input validation pass before extractors or workspace builders write output.
 /// This is important for legacy parsers that catch per-file read exceptions and continue.
@@ -27,7 +59,7 @@ internal static class GameFileEncodingValidator
         return extensions;
     }
 
-    internal static void ValidateDirectory(
+    internal static IReadOnlyList<GameFileEncodingIssue> FindDirectoryIssues(
         string directory,
         Encoding fallbackEncoding,
         IReadOnlySet<string> textExtensions)
@@ -71,10 +103,10 @@ internal static class GameFileEncodingValidator
             }
         }
 
-        ValidateFiles(files, fallbackEncoding, root);
+        return FindFileIssues(files, fallbackEncoding, root);
     }
 
-    internal static void ValidateFiles(
+    internal static IReadOnlyList<GameFileEncodingIssue> FindFileIssues(
         IEnumerable<string> filePaths,
         Encoding fallbackEncoding,
         string? relativeTo = null)
@@ -82,38 +114,86 @@ internal static class GameFileEncodingValidator
         ArgumentNullException.ThrowIfNull(filePaths);
         ArgumentNullException.ThrowIfNull(fallbackEncoding);
 
-        var errors = new List<string>();
+        var issues = new List<GameFileEncodingIssue>();
         foreach (string path in filePaths
                      .Distinct(StringComparer.OrdinalIgnoreCase)
                      .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
                      .ThenBy(value => value, StringComparer.Ordinal))
         {
+            string fullPath = Path.GetFullPath(path);
             string displayPath = string.IsNullOrWhiteSpace(relativeTo)
-                ? path
-                : Path.GetRelativePath(relativeTo, path).Replace('\\', '/');
+                ? fullPath
+                : Path.GetRelativePath(relativeTo, fullPath).Replace('\\', '/');
 
             try
             {
-                string text = GameFileText.Read(path, fallbackEncoding).Text;
+                string text = GameFileText.Read(fullPath, fallbackEncoding).Text;
                 if (text.Contains('\uFFFD'))
-                    throw new InvalidDataException("解码结果包含替换字符。");
+                {
+                    issues.Add(new GameFileEncodingIssue(
+                        fullPath,
+                        displayPath,
+                        GameFileEncodingIssueKind.DecodeFailed,
+                        "解码结果包含替换字符。"));
+                }
             }
             catch (InvalidDataException ex)
             {
-                errors.Add($"{displayPath}：{ex.Message}");
+                string reason = ExtractReason(ex);
+                GameFileEncodingIssueKind kind = reason.Contains("编码歧义", StringComparison.Ordinal)
+                    ? GameFileEncodingIssueKind.Ambiguous
+                    : GameFileEncodingIssueKind.DecodeFailed;
+                issues.Add(new GameFileEncodingIssue(fullPath, displayPath, kind, reason));
             }
         }
 
-        if (errors.Count == 0)
-            return;
+        return issues;
+    }
 
+    internal static void ValidateDirectory(
+        string directory,
+        Encoding fallbackEncoding,
+        IReadOnlySet<string> textExtensions)
+    {
+        IReadOnlyList<GameFileEncodingIssue> issues = FindDirectoryIssues(directory, fallbackEncoding, textExtensions);
+        if (issues.Count > 0)
+            throw CreatePreflightException(issues);
+    }
+
+    internal static void ValidateFiles(
+        IEnumerable<string> filePaths,
+        Encoding fallbackEncoding,
+        string? relativeTo = null)
+    {
+        IReadOnlyList<GameFileEncodingIssue> issues = FindFileIssues(filePaths, fallbackEncoding, relativeTo);
+        if (issues.Count > 0)
+            throw CreatePreflightException(issues);
+    }
+
+    internal static GameFileEncodingPreflightException CreatePreflightException(
+        IReadOnlyList<GameFileEncodingIssue> issues)
+    {
         string details = string.Join(
             Environment.NewLine,
-            errors.Take(20).Select(value => " - " + value));
-        if (errors.Count > 20)
-            details += $"{Environment.NewLine} - 另有 {errors.Count - 20} 个文件存在编码问题。";
+            issues.Take(20).Select(issue => $" - {issue.RelativePath}：{issue.Reason}"));
+        if (issues.Count > 20)
+            details += $"{Environment.NewLine} - 另有 {issues.Count - 20} 个文件存在编码问题。";
 
-        throw new InvalidDataException(
-            $"文本编码预检失败，已停止处理，未生成游戏副本或提取输出。以下文件无法安全确定编码：{Environment.NewLine}{details}{Environment.NewLine}请在外部文本编辑器中确认这些文件的编码，并将有歧义或无法解码的文件转换为 UTF-8 BOM 后重试。");
+        string message =
+            $"文本编码预检失败，已停止处理，未生成游戏副本或提取输出。以下文件无法安全确定编码：{Environment.NewLine}{details}{Environment.NewLine}请在外部文本编辑器中确认这些文件的编码，并将有歧义或无法解码的文件转换为 UTF-8 BOM 后重试。";
+
+        return new GameFileEncodingPreflightException(message, issues);
+    }
+
+    private static string ExtractReason(InvalidDataException ex)
+    {
+        if (ex.InnerException is InvalidDataException inner && !string.IsNullOrWhiteSpace(inner.Message))
+            return inner.Message;
+
+        int newlineIndex = ex.Message.IndexOf('\n');
+        if (newlineIndex >= 0 && newlineIndex + 1 < ex.Message.Length)
+            return ex.Message[(newlineIndex + 1)..].Trim();
+
+        return ex.Message;
     }
 }

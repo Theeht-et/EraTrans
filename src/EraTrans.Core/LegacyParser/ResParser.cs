@@ -17,7 +17,7 @@ public class RESParser
     private readonly Dictionary<string, string> contextByValue = new(StringComparer.Ordinal);
     public void ParseFile(string filePath)
     {
-        var lines = File.ReadAllLines(filePath, Configs.fileEncoding);
+        var lines = Configs.ReadAllLines(filePath);
         foreach (var line in lines)
         {
             string? value = Tools.GetResValue(line);

@@ -34,18 +34,18 @@ public sealed class GameFileText
 
     public bool HasBom => Preamble.Length > 0;
 
-    public static GameFileText Read(string path) => Read(path, null);
+    public static GameFileText Read(string path) => Read(path, null, null);
+    public static GameFileText Read(string path, Encoding? fallbackEncoding) => Read(path, fallbackEncoding, null);
 
     /// <summary>
-    /// Reads a game file. <paramref name="fallbackEncoding"/> is only consulted for files that are
-    /// neither UTF-8 (with or without BOM) nor Shift-JIS, i.e. localized games in GBK / Big5: the
-    /// caller's configured encoding wins when it decodes with fewer replacement characters.
+    /// BOMs are authoritative. A per-file override resolves ambiguous legacy encodings; otherwise
+    /// BOM-less UTF-16 and strict UTF-8 are detected before the configured legacy fallback.
     /// </summary>
-    public static GameFileText Read(string path, Encoding? fallbackEncoding)
+    public static GameFileText Read(string path, Encoding? fallbackEncoding, Encoding? fileOverrideEncoding)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         byte[] bytes = File.ReadAllBytes(path);
-        var detected = DetectEncoding(bytes, fallbackEncoding);
+        var detected = DetectEncoding(bytes, fallbackEncoding, fileOverrideEncoding);
         string text = detected.Encoding.GetString(bytes, detected.BodyOffset, bytes.Length - detected.BodyOffset);
         byte[] body = bytes.AsSpan(detected.BodyOffset).ToArray();
         return new GameFileText(text, detected.Encoding, detected.Preamble, body);
@@ -119,7 +119,7 @@ public sealed class GameFileText
     /// Detects the encoding of a game file: BOM first, then strict UTF-8, then Shift-JIS (CP932).
     /// Strict UTF-8 keeps Shift-JIS files from being mis-decoded into replacement characters.
     /// </summary>
-    public static DetectedEncoding DetectEncoding(ReadOnlySpan<byte> bytes, Encoding? fallbackEncoding = null)
+    public static DetectedEncoding DetectEncoding(ReadOnlySpan<byte> bytes, Encoding? fallbackEncoding = null, Encoding? fileOverrideEncoding = null)
     {
         if (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)
         {
@@ -135,6 +135,11 @@ public sealed class GameFileText
         {
             return new DetectedEncoding(Encoding.BigEndianUnicode, [0xFE, 0xFF], 2);
         }
+
+        // Explicit per-file overrides resolve ambiguous legacy code pages and can force a legacy
+        // decoder when its byte sequence happens to be valid UTF-8. BOMs above remain authoritative.
+        if (fileOverrideEncoding is not null)
+            return new DetectedEncoding(fileOverrideEncoding, [], 0);
 
         // UTF-16 without a BOM: every ASCII character leaves a 0x00 byte in the high position,
         // which strict UTF-8 happily accepts, so this check has to run before the UTF-8 probe.
@@ -160,41 +165,16 @@ public sealed class GameFileText
     }
 
     /// <summary>
-    /// Neither UTF-8 nor a BOM: pick between Shift-JIS and the user's configured encoding by
-    /// counting replacement characters. Games localized to Chinese are usually GBK, where a
-    /// Shift-JIS decode produces a lot of U+FFFD.
+    /// Selects the configured fallback for byte streams that are neither BOM-marked Unicode nor
+    /// valid strict UTF-8. CP932 is the Japanese ERA default; localized Chinese games select CP936
+    /// or CP950. These legacy code pages overlap, so replacement-count guessing is unreliable.
     /// </summary>
     private static DetectedEncoding ChooseSingleByteFallback(ReadOnlySpan<byte> bytes, Encoding? fallbackEncoding)
     {
-        Encoding shiftJis = GetShiftJis();
-        if (fallbackEncoding is null ||
-            fallbackEncoding.CodePage is 932 or 65001 or 1200 or 1201)
-        {
-            return new DetectedEncoding(shiftJis, [], 0);
-        }
-
-        int shiftJisBad = CountReplacementCharacters(shiftJis.GetString(bytes));
-        int fallbackBad = CountReplacementCharacters(fallbackEncoding.GetString(bytes));
-
-        // The caller picked this encoding on purpose (a GBK / Big5 localized game), so ties go to
-        // it: Shift-JIS decodes almost any byte pair into something, so replacement counts alone
-        // cannot tell the two apart. Shift-JIS remains the default when the user kept the
-        // Japanese encoding, because that value short-circuits above.
-        return new DetectedEncoding(fallbackBad <= shiftJisBad ? fallbackEncoding : shiftJis, [], 0);
-    }
-
-    private static int CountReplacementCharacters(string text)
-    {
-        int count = 0;
-        foreach (char c in text)
-        {
-            if (c == '\uFFFD')
-            {
-                count++;
-            }
-        }
-
-        return count;
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        Encoding selected = fallbackEncoding ?? Encoding.GetEncoding(932);
+        if (selected.CodePage is 65001 or 1200 or 1201) selected = Encoding.GetEncoding(932);
+        return new DetectedEncoding(selected, [], 0);
     }
 
     /// <summary>

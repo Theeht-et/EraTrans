@@ -32,6 +32,11 @@ public partial class ParserSettingsWindow : Window
                 settings.FileEncodingId,
                 StringComparison.Ordinal));
 
+        EncodingOverridesTextBox.Text = string.Join(
+            Environment.NewLine,
+            settings.FileEncodingOverrides.OrderBy(item => item.Key, StringComparer.OrdinalIgnoreCase)
+                .Select(item => $"{item.Key}={item.Value}"));
+
         ExtractionModeComboBox.SelectedItem = ExtractionModeComboBox.Items
             .OfType<ComboBoxItem>()
             .FirstOrDefault(item => string.Equals(
@@ -96,6 +101,23 @@ public partial class ParserSettingsWindow : Window
             .Where(value => value.Length > 0)
             .ToList();
 
+    private static Dictionary<string, string> ReadEncodingOverrides(string text)
+    {
+        var overrides = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (string line in text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries))
+        {
+            string entry = line.Trim();
+            int separator = entry.LastIndexOf('=');
+            if (separator <= 0 || separator == entry.Length - 1)
+                throw new InvalidDataException($"单文件编码覆盖格式错误：{entry}。每行应为“相对路径=编码代码”。");
+            string path = entry[..separator].Trim();
+            string encodingId = entry[(separator + 1)..].Trim();
+            if (!overrides.TryAdd(path, encodingId))
+                throw new InvalidDataException($"单文件编码覆盖路径重复：{path}");
+        }
+        return overrides;
+    }
+
     private static int ReadLimit(
         TextBox textBox,
         int minimum,
@@ -140,6 +162,7 @@ public partial class ParserSettingsWindow : Window
             var settings = new EraTransUserSettings
             {
                 FileEncodingId = encodingId,
+                FileEncodingOverrides = ReadEncodingOverrides(EncodingOverridesTextBox.Text),
                 ErbExtractionMode = extractionMode,
                 ExtractHtmlTitle = ExtractHtmlTitleCheckBox.IsChecked == true,
                 ExtractPrintDataEntries = ExtractPrintDataEntriesCheckBox.IsChecked == true,

@@ -1,3 +1,4 @@
+using System.Text;
 using EraTrans.Core;
 using Xunit;
 
@@ -53,6 +54,50 @@ public sealed class FullGameWorkspaceCopyTests
         Assert.True((File.GetAttributes(textFile) & FileAttributes.ReadOnly) != 0);
         Assert.Equal("original script", File.ReadAllText(textFile));
         Assert.Equal("binary resource", File.ReadAllText(binaryFile));
+    }
+
+
+    [Fact]
+    public void CopyDirectoryForModification_TranscodesJapaneseGbkAndBig5TextToUtf8Bom()
+    {
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        using var game = new TemporaryDirectory();
+        using var outputParent = new TemporaryDirectory();
+        string japanese = game.CreateFile("ERB/japanese.erb", string.Empty);
+        string gbk = game.CreateFile("CSV/simplified.csv", string.Empty);
+        string big5 = game.CreateFile("CSV/traditional.csv", string.Empty);
+        string xml = game.CreateFile("XML/ui.xml", string.Empty);
+        File.WriteAllBytes(japanese, Encoding.GetEncoding(932).GetBytes("PRINTFORM こんにちは\r\n"));
+        File.WriteAllBytes(gbk, Encoding.GetEncoding(936).GetBytes("名称,你好，世界\r\n"));
+        File.WriteAllBytes(big5, Encoding.GetEncoding(950).GetBytes("名稱,繁體中文\r\n"));
+        File.WriteAllBytes(xml, Encoding.GetEncoding(950).GetBytes("<?xml version=\"1.0\" encoding=\"big5\"?>\r\n<root>繁體</root>"));
+
+        var options = new EraParserOptions
+        {
+            FileEncoding = Encoding.GetEncoding(932),
+            FileEncodingOverrides = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["CSV/simplified.csv"] = "936", ["CSV/traditional.csv"] = "950", ["XML/ui.xml"] = "950"
+            }
+        };
+        string output = Path.Combine(outputParent.Path, "Output", "游戏副本");
+        GameFileWorkspace.CopyDirectoryForModification(game.Path, output, options);
+        AssertUtf8BomText(Path.Combine(output, "ERB", "japanese.erb"), "PRINTFORM こんにちは\r\n");
+        AssertUtf8BomText(Path.Combine(output, "CSV", "simplified.csv"), "名称,你好，世界\r\n");
+        AssertUtf8BomText(Path.Combine(output, "CSV", "traditional.csv"), "名稱,繁體中文\r\n");
+        AssertUtf8BomText(Path.Combine(output, "XML", "ui.xml"),
+            "<?xml version=\"1.0\" encoding=\"utf-8\"?>\r\n<root>繁體</root>");
+        Assert.Equal("PRINTFORM こんにちは\r\n", Encoding.GetEncoding(932).GetString(File.ReadAllBytes(japanese)));
+        Assert.Equal("名称,你好，世界\r\n", Encoding.GetEncoding(936).GetString(File.ReadAllBytes(gbk)));
+        Assert.Equal("名稱,繁體中文\r\n", Encoding.GetEncoding(950).GetString(File.ReadAllBytes(big5)));
+    }
+
+    private static void AssertUtf8BomText(string path, string expected)
+    {
+        byte[] bytes = File.ReadAllBytes(path);
+        Assert.True(bytes.Length >= 3);
+        Assert.Equal(new byte[] { 0xEF, 0xBB, 0xBF }, bytes[..3]);
+        Assert.Equal(expected, new UTF8Encoding(false, true).GetString(bytes, 3, bytes.Length - 3));
     }
 
     [Fact]

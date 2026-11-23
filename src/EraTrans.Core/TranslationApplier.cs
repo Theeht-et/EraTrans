@@ -73,7 +73,7 @@ public sealed class TranslationApplier
         // creator refuses an existing destination so repeated runs cannot overwrite user
         // changes or apply translations on top of an earlier translated copy.
         IReadOnlyList<string> copiedDestinationFiles =
-            GameFileWorkspace.CopyDirectoryForModification(gameRoot, outputRoot);
+            GameFileWorkspace.CopyDirectoryForModification(gameRoot, outputRoot, parserOptions);
 
         var warnings = new ConcurrentBag<string>();
         var spanCatalogResolved = spanCatalog ?? SpanCatalog.LoadFromSidecar(dictionaryRoot, warnings.Add);

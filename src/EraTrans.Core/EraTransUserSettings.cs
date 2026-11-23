@@ -20,7 +20,8 @@ public sealed class EraTransUserSettings
     public const int MaximumTranslationConcurrency = 50;
     public const int DefaultTranslationConcurrency = 1;
 
-    public string FileEncodingId { get; set; } = "utf8-bom";
+    public string FileEncodingId { get; set; } = "932";
+    public Dictionary<string, string> FileEncodingOverrides { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public bool AutoOpenFolder { get; set; } = true;
     public bool EnableVariableAutoCorrection { get; set; } = true;
     public bool HideEnglishText { get; set; } = true;
@@ -120,6 +121,8 @@ public sealed class EraTransUserSettings
         {
             ExtractionMode = ParseExtractionMode(ErbExtractionMode),
             FileEncoding = CreateFileEncoding(),
+            FileEncodingOverrides = new Dictionary<string, string>(
+                FileEncodingOverrides ?? new Dictionary<string, string>(), StringComparer.OrdinalIgnoreCase),
             ExtractHtmlTitle = ExtractHtmlTitle,
             ExtractPrintDataEntries = ExtractPrintDataEntries,
             SkipNonJapaneseEntries = SkipNonJapaneseEntries,
@@ -139,9 +142,23 @@ public sealed class EraTransUserSettings
     public void Validate()
     {
         if (FileEncodingId is not ("utf8-bom" or "utf8" or "932" or "936" or "950"))
-        {
             throw new InvalidDataException($"不支持的文件编码设置：{FileEncodingId}");
+
+        if (FileEncodingOverrides is null) throw new InvalidDataException("单文件编码覆盖设置无效。");
+        var normalizedOverrides = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach ((string rawPath, string rawEncodingId) in FileEncodingOverrides)
+        {
+            string path = rawPath?.Trim().Replace('\\', '/') ?? string.Empty;
+            string encodingId = rawEncodingId?.Trim() ?? string.Empty;
+            bool unsafePath = string.IsNullOrWhiteSpace(path) || Path.IsPathRooted(path) ||
+                path.Split('/').Any(segment => segment is "" or "." or "..") || path.Contains(':');
+            if (unsafePath) throw new InvalidDataException($"单文件编码覆盖路径不是安全的游戏相对路径：{rawPath}");
+            if (encodingId is not ("utf8-bom" or "utf8" or "932" or "936" or "950"))
+                throw new InvalidDataException($"单文件编码覆盖使用了不支持的编码：{rawPath} = {encodingId}");
+            if (!normalizedOverrides.TryAdd(path, encodingId))
+                throw new InvalidDataException($"单文件编码覆盖包含重复路径：{path}");
         }
+        FileEncodingOverrides = normalizedOverrides;
 
         ErbExtractionMode = ErbExtractionMode?.Trim().ToLowerInvariant() switch
         {

@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
 using EraTrans.Core.VisibleText;
+using EraTrans.Core.WriteBack;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -58,6 +59,22 @@ public sealed class DictionaryExtractor
         {
             EraParserOptions effectiveOptions = options ?? new EraParserOptions();
             LegacyParserRuntime.Initialize(effectiveOptions);
+
+            using IDisposable textReaderScope = Configs.UseFileTextReader(path =>
+            {
+                string fullPath = Path.GetFullPath(path);
+                string encodingRoot;
+                if (IsPathContained(gameRoot, fullPath))
+                    encodingRoot = gameRoot;
+                else if (referenceRoot is not null && IsPathContained(referenceRoot, fullPath))
+                    encodingRoot = referenceRoot;
+                else
+                    throw new InvalidOperationException($"解析器请求了游戏目录之外的文件：{fullPath}");
+
+                string relativePath = Path.GetRelativePath(encodingRoot, fullPath).Replace('\\', '/');
+                return GameFileText.Read(fullPath, effectiveOptions.FileEncoding,
+                    effectiveOptions.GetFileEncodingOverride(relativePath)).Text;
+            });
 
             var scannedFiles = GameDirectoryScanner.Scan(gameRoot);
             if (!Directory.Exists(Path.Combine(gameRoot, "XML")))
@@ -500,6 +517,14 @@ public sealed class DictionaryExtractor
             throw new InvalidOperationException($"Relative path escapes output directory: {relativePath}");
         }
         return fullPath;
+    }
+
+    private static bool IsPathContained(string root, string path)
+    {
+        string relative = Path.GetRelativePath(Path.GetFullPath(root), Path.GetFullPath(path));
+        return !Path.IsPathRooted(relative) && !relative.Equals("..", StringComparison.Ordinal) &&
+               !relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal) &&
+               !relative.StartsWith(".." + Path.AltDirectorySeparatorChar, StringComparison.Ordinal);
     }
 
     private static void EnsureOutputIsOutsideDirectory(string gameRoot, string outputRoot)

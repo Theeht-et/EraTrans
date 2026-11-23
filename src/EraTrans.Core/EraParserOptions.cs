@@ -30,7 +30,38 @@ public sealed class EraParserOptions
     /// </summary>
     public bool SkipNonJapaneseEntries { get; init; } = true;
 
-    public Encoding FileEncoding { get; init; } = new UTF8Encoding(encoderShouldEmitUTF8Identifier: true);
+    private static Encoding CreateDefaultFileEncoding()
+    {
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        return Encoding.GetEncoding(932);
+    }
+
+    /// <summary>Fallback for BOM-less legacy files; CP932 is the default for Japanese ERA games.</summary>
+    public Encoding FileEncoding { get; init; } = CreateDefaultFileEncoding();
+
+    /// <summary>Per-file encoding overrides keyed by game-relative path.</summary>
+    public IReadOnlyDictionary<string, string> FileEncodingOverrides { get; init; } =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+    public Encoding? GetFileEncodingOverride(string relativePath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(relativePath);
+        string normalized = relativePath.Replace('\\', '/');
+        foreach ((string path, string encodingId) in FileEncodingOverrides)
+        {
+            if (!string.Equals(path.Replace('\\', '/'), normalized, StringComparison.OrdinalIgnoreCase)) continue;
+            Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+            return encodingId switch
+            {
+                "932" => Encoding.GetEncoding(932),
+                "936" => Encoding.GetEncoding(936),
+                "950" => Encoding.GetEncoding(950),
+                "utf8" or "utf8-bom" => new UTF8Encoding(false),
+                _ => throw new InvalidDataException($"不支持的单文件编码设置：{encodingId}")
+            };
+        }
+        return null;
+    }
     public bool HideEnglishText { get; init; } = true;
     public bool MergeDuplicateEntries { get; init; } = false;
     public bool HideVariableEntries { get; init; } = true;

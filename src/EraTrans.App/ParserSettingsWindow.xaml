@@ -82,7 +82,7 @@
                                    Margin="0,0,0,14" />
 
                         <TextBlock Grid.Row="3"
-                                   Text="读取游戏文件编码"
+                                   Text="自动识别失败时的默认编码"
                                    VerticalAlignment="Center"
                                    Foreground="#39414A" />
                         <ComboBox x:Name="EncodingComboBox"
@@ -98,13 +98,13 @@
                             <ComboBoxItem Content="Big5（繁体中文）" Tag="950" />
                         </ComboBox>
 
-                        <TextBlock Grid.Row="4"
-                                   Grid.Column="1"
-                                   Text="旧版用它读取 CSV / ERB / RES；新版会逐文件自动探测（BOM、UTF-8、UTF-16、Shift-JIS），这里选的 GBK / Big5 只在文件既不是 UTF-8 也不是 Shift-JIS 时作为回退。混编游戏（同一目录里 UTF-8 与 Shift-JIS 混用）请让旧版改用能覆盖多数文件的值。"
-                                   TextWrapping="Wrap"
-                                   FontSize="11"
-                                   Foreground="#68717D"
-                                   Margin="0,0,0,14" />
+                        <StackPanel Grid.Row="4" Grid.Column="1" Margin="0,0,0,12">
+                            <TextBlock Text="自动检测优先识别 BOM、无 BOM UTF-16 和严格 UTF-8；其他日文原版文件默认按 CP932 解码。简体中文游戏可选 GBK，繁体中文游戏可选 Big5。混合编码时可按相对路径覆盖，格式为“路径=编码代码”，例如 ERB/文本.erb=950。"
+                                       TextWrapping="Wrap" FontSize="11" Foreground="#68717D" />
+                            <TextBox x:Name="EncodingOverridesTextBox" Height="76" Margin="0,6,0,0" Padding="6"
+                                     AcceptsReturn="True" TextWrapping="NoWrap" VerticalScrollBarVisibility="Auto"
+                                     ToolTip="每行一个覆盖项，例如：ERB/繁体脚本.erb=950；ERB/日文脚本.erb=932" />
+                        </StackPanel>
 
                         <CheckBox x:Name="WriteContextCheckBox"
                                   Grid.Row="5"

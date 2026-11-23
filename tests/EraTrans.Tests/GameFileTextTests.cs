@@ -108,7 +108,7 @@ public sealed class GameFileTextTests : IDisposable
     [Fact]
     public void Read_Utf16LeWithBom_DecodesAndRoundTripsBytes()
     {
-        string content = "PRINTL こんにちは\r\n@MENU\r\nPRINTBUTTON \"[\" + LOCALS + \"] 突击\", 100\r\n";
+        string content = "PRINTL こんにちは\r\n@MENU\r\nPRINTBUTTON \"[\" + LOCALS + \"] 突撃\", 100\r\n";
         byte[] original = [0xFF, 0xFE, .. Encoding.Unicode.GetBytes(content)];
         string path = WriteRaw("utf16.ERB", original);
 
@@ -143,7 +143,6 @@ public sealed class GameFileTextTests : IDisposable
 
         Assert.Equal(Encoding.BigEndianUnicode.CodePage, detected.Encoding.CodePage);
     }
-
 
 
     [Fact]
@@ -184,6 +183,21 @@ public sealed class GameFileTextTests : IDisposable
     }
 
     [Fact]
+    public void Read_Cp932AliasNormalization_RespectsDoubleByteCharacterBoundaries()
+    {
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        // 0x82 0x87 = full-width 'ｇ', 0x90 0x6C = '人', 0x87 0x90 = CP932 alias for '≒'.
+        // Bytes [1..2] are 0x87 0x90 across a character boundary and must not be rewritten.
+        byte[] bytes = [0x82, 0x87, 0x90, 0x6C, 0x87, 0x90];
+        string path = WriteRaw("cp932-boundary.erb", bytes);
+
+        GameFileText decoded = GameFileText.Read(path, Encoding.GetEncoding(932));
+
+        Assert.Equal(932, decoded.Encoding.CodePage);
+        Assert.Equal("ｇ人≒", decoded.Text);
+    }
+
+    [Fact]
     public void Read_UsesConfiguredEncodingAsFallbackForChineseLocalizedGames()
     {
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
@@ -201,20 +215,5 @@ public sealed class GameFileTextTests : IDisposable
         {
             File.Delete(path);
         }
-    }
-
-    [Fact]
-    public void Read_Cp932AliasNormalization_RespectsDoubleByteCharacterBoundaries()
-    {
-        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
-        // 0x82 0x87 = full-width 'ｇ', 0x90 0x6C = '人', 0x87 0x90 = CP932 alias for '≒'.
-        // Bytes [1..2] are 0x87 0x90 across a character boundary and must not be rewritten.
-        byte[] bytes = [0x82, 0x87, 0x90, 0x6C, 0x87, 0x90];
-        string path = WriteRaw("cp932-boundary.erb", bytes);
-
-        GameFileText decoded = GameFileText.Read(path, Encoding.GetEncoding(932));
-
-        Assert.Equal(932, decoded.Encoding.CodePage);
-        Assert.Equal("ｇ人≒", decoded.Text);
     }
 }

@@ -410,7 +410,6 @@ public sealed class DictionaryExtractorTests
     }
 
 
-
     [Fact]
     public void Extract_ErbNullableBoundariesPreserveDeclarationAndCompoundAssignmentEntries()
     {
@@ -420,7 +419,7 @@ public sealed class DictionaryExtractorTests
         Write(game, "ERB/nullable-boundaries.erb", string.Join(Environment.NewLine,
         [
             "@関数名,引数名=定義パラメータ",
-            "#DIM 变量名 = 10",
+            "#DIM 変数名 = 10",
             "RESULTS:0 += \"追加テキスト\""
         ]));
 
@@ -442,7 +441,7 @@ public sealed class DictionaryExtractorTests
 
         Assert.Contains("関数名", originals);
         Assert.Contains("引数名", originals);
-        Assert.Contains("变量名", originals);
+        Assert.Contains("変数名", originals);
         Assert.Contains(originals, original =>
             original.Contains("定義パラメータ", StringComparison.Ordinal));
         Assert.Contains(originals, original =>

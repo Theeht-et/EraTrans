@@ -82,7 +82,11 @@ public sealed record ErbTranslationGroupingIndex(
 /// </summary>
 public sealed class ErbTranslationGroupingService
 {
-    private const int SchemaVersion = 1;
+    /// <summary>Written to every new sidecar. Version 2 adds <c>packing</c> and the per-entry command/kind fields.</summary>
+    private const int SchemaVersion = 2;
+
+    /// <summary>Version 1 sidecars (function packing, no command/kind) stay readable so existing dictionaries keep working.</summary>
+    private const int MinimumSupportedSchemaVersion = 1;
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -260,7 +264,7 @@ public sealed class ErbTranslationGroupingService
                 JsonSerializer.Deserialize<ErbTranslationGroupingIndex>(json, JsonOptions)
                 ?? throw new InvalidDataException("分组文件为空。");
 
-            if (loaded.SchemaVersion != SchemaVersion)
+            if (loaded.SchemaVersion < MinimumSupportedSchemaVersion || loaded.SchemaVersion > SchemaVersion)
             {
                 reason = $"分组文件版本不受支持（{loaded.SchemaVersion}）。请重新提取字典。";
                 return false;

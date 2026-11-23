@@ -348,6 +348,111 @@ public sealed class ErbTranslationGroupingServiceTests
             Assert.Single(index.Groups).EntryKeys);
     }
 
+    [Fact]
+    public void TryWriteOrUpdate_WritesSchemaVersionTwo()
+    {
+        using var temporary = new TemporaryDirectory();
+        string dictionaryDirectory = Path.Combine(temporary.Path, "字典");
+        string dictionaryPath = Path.Combine(dictionaryDirectory, "ERB", "sample.json");
+        string candidatePath = Path.Combine(temporary.Path, "candidate.json");
+        string gameDirectory = Path.Combine(temporary.Path, "Game");
+        string sourcePath = WriteSource(gameDirectory, "ERB/sample.erb", "@SAMPLE\\nPRINTFORML 文本");
+        var sourceEntries = new[]
+        {
+            Source("文本ERB\\sample00000", "文本", 0, 1, "SAMPLE", "", "", "", null)
+        };
+        WriteDictionary(dictionaryPath, sourceEntries);
+        WriteDictionary(candidatePath, sourceEntries);
+
+        var service = new ErbTranslationGroupingService();
+        Assert.True(service.TryWriteOrUpdate(
+            dictionaryDirectory, dictionaryPath, candidatePath, sourcePath,
+            ErbTranslationGroupingService.ComputeSourceFingerprint(sourcePath), "ERB/sample.erb",
+            sourceEntries, [], out string sidecarPath, out string? warning, packing: "screen"), warning);
+
+        JObject sidecar = JObject.Parse(File.ReadAllText(sidecarPath));
+        Assert.Equal(2, sidecar["schemaVersion"]!.Value<int>());
+        Assert.Equal("screen", sidecar["packing"]!.Value<string>());
+    }
+
+    [Fact]
+    public void TryLoad_AcceptsVersionOneSidecarWithoutCommandKindOrPacking()
+    {
+        using var temporary = new TemporaryDirectory();
+        string dictionaryDirectory = Path.Combine(temporary.Path, "字典");
+        string dictionaryPath = Path.Combine(dictionaryDirectory, "ERB", "sample.json");
+        string candidatePath = Path.Combine(temporary.Path, "candidate.json");
+        string gameDirectory = Path.Combine(temporary.Path, "Game");
+        string sourcePath = WriteSource(gameDirectory, "ERB/sample.erb", "@SAMPLE\\nPRINTFORML 文本");
+        var sourceEntries = new[]
+        {
+            Source("文本ERB\\sample00000", "文本", 0, 1, "SAMPLE", "", "", "", null)
+        };
+        WriteDictionary(dictionaryPath, sourceEntries);
+        WriteDictionary(candidatePath, sourceEntries);
+
+        var service = new ErbTranslationGroupingService();
+        Assert.True(service.TryWriteOrUpdate(
+            dictionaryDirectory, dictionaryPath, candidatePath, sourcePath,
+            ErbTranslationGroupingService.ComputeSourceFingerprint(sourcePath), "ERB/sample.erb",
+            sourceEntries, [], out string sidecarPath, out string? warning, packing: "screen"), warning);
+
+        // 模拟旧版（v1）sidecar：没有 packing，词条也没有 command/kind。
+        JObject sidecar = JObject.Parse(File.ReadAllText(sidecarPath));
+        sidecar["schemaVersion"] = 1;
+        sidecar.Remove("packing");
+        if (sidecar["entries"] is JArray entries)
+        {
+            foreach (JObject entry in entries.OfType<JObject>())
+            {
+                entry.Remove("command");
+                entry.Remove("kind");
+            }
+        }
+        File.WriteAllText(sidecarPath, sidecar.ToString(Formatting.Indented));
+
+        DictionaryEditorDocument document = new DictionaryEditorService().Load(dictionaryPath);
+        Assert.True(service.TryLoad(
+            dictionaryDirectory, dictionaryPath, document.Entries.ToArray(), gameDirectory,
+            out ErbTranslationGroupingIndex? index, out string? reason), reason);
+        Assert.Equal(1, index!.SchemaVersion);
+        Assert.Null(index.Packing);
+        Assert.Single(index.Entries);
+    }
+
+    [Fact]
+    public void TryLoad_RejectsUnsupportedSchemaVersion()
+    {
+        using var temporary = new TemporaryDirectory();
+        string dictionaryDirectory = Path.Combine(temporary.Path, "字典");
+        string dictionaryPath = Path.Combine(dictionaryDirectory, "ERB", "sample.json");
+        string candidatePath = Path.Combine(temporary.Path, "candidate.json");
+        string gameDirectory = Path.Combine(temporary.Path, "Game");
+        string sourcePath = WriteSource(gameDirectory, "ERB/sample.erb", "@SAMPLE\\nPRINTFORML 文本");
+        var sourceEntries = new[]
+        {
+            Source("文本ERB\\sample00000", "文本", 0, 1, "SAMPLE", "", "", "", null)
+        };
+        WriteDictionary(dictionaryPath, sourceEntries);
+        WriteDictionary(candidatePath, sourceEntries);
+
+        var service = new ErbTranslationGroupingService();
+        Assert.True(service.TryWriteOrUpdate(
+            dictionaryDirectory, dictionaryPath, candidatePath, sourcePath,
+            ErbTranslationGroupingService.ComputeSourceFingerprint(sourcePath), "ERB/sample.erb",
+            sourceEntries, [], out string sidecarPath, out string? warning), warning);
+
+        JObject sidecar = JObject.Parse(File.ReadAllText(sidecarPath));
+        sidecar["schemaVersion"] = 99;
+        File.WriteAllText(sidecarPath, sidecar.ToString(Formatting.Indented));
+
+        DictionaryEditorDocument document = new DictionaryEditorService().Load(dictionaryPath);
+        Assert.False(service.TryLoad(
+            dictionaryDirectory, dictionaryPath, document.Entries.ToArray(), gameDirectory,
+            out _, out string? reason));
+        Assert.Contains("版本不受支持", reason ?? string.Empty, StringComparison.Ordinal);
+    }
+
     private static string WriteSource(string gameDirectory, string relativePath, string content)
     {
         string fullPath = Path.Combine(

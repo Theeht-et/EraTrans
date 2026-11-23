@@ -122,10 +122,10 @@ public sealed class GameFileText
 
         if (declaredEncoding is not null)
         {
-            Encoding strictDeclared = CreateStrictEncoding(declaredEncoding);
-            if (!TryDecode(bytes, strictDeclared, out _))
+            Encoding xmlDeclared = CreateLegacyEncoding(declaredEncoding);
+            if (!TryDecodeWithoutReplacement(bytes, xmlDeclared, out _))
                 throw new InvalidDataException($"XML 文件声明的编码 {declaredEncoding.WebName} 无法无损解码文件内容。");
-            return new DetectedEncoding(strictDeclared, [], 0);
+            return new DetectedEncoding(xmlDeclared, [], 0);
         }
 
         if (TryDetectBomlessUtf16(bytes, out DetectedEncoding utf16))
@@ -135,22 +135,22 @@ public sealed class GameFileText
         {
             Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
             Encoding configured = fallbackEncoding ?? Encoding.GetEncoding(932);
-            Encoding strictConfigured = CreateStrictEncoding(configured);
+            Encoding legacyEncoding = CreateLegacyEncoding(configured);
             if (configured.CodePage == StrictUtf8.CodePage)
                 return new DetectedEncoding(StrictUtf8, [], 0);
 
-            if (TryDecode(bytes, strictConfigured, out string legacyText) &&
+            if (TryDecodeWithoutReplacement(bytes, legacyEncoding, out string legacyText) &&
                 !string.Equals(utf8Text, legacyText, StringComparison.Ordinal))
             {
                 throw new InvalidDataException(
-                    $"无 BOM 文件同时符合严格 UTF-8 和 CP{configured.CodePage}，但解码结果不同，无法可靠判断原始编码。为避免静默乱码，请先用文本编辑器确认编码，并将该文件转换为 UTF-8 BOM 后重试。");
+                    $"编码歧义：无 BOM 文件同时符合严格 UTF-8 和 CP{configured.CodePage}，但解码结果不同，无法可靠判断原始编码。为避免静默乱码，请先用文本编辑器确认编码，并将该文件转换为 UTF-8 BOM 后重试。");
             }
             return new DetectedEncoding(StrictUtf8, [], 0);
         }
 
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
-        Encoding selectedFallback = CreateStrictEncoding(fallbackEncoding ?? Encoding.GetEncoding(932));
-        if (TryDecode(bytes, selectedFallback, out _))
+        Encoding selectedFallback = CreateLegacyEncoding(fallbackEncoding ?? Encoding.GetEncoding(932));
+        if (TryDecodeWithoutReplacement(bytes, selectedFallback, out _))
             return new DetectedEncoding(selectedFallback, [], 0);
 
         throw new InvalidDataException(
@@ -176,7 +176,7 @@ public sealed class GameFileText
         try
         {
             Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
-            return Encoding.GetEncoding(encodingName, EncoderFallback.ExceptionFallback, DecoderFallback.ExceptionFallback);
+            return Encoding.GetEncoding(encodingName);
         }
         catch (ArgumentException ex)
         {
@@ -184,8 +184,19 @@ public sealed class GameFileText
         }
     }
 
-    private static Encoding CreateStrictEncoding(Encoding encoding) =>
-        Encoding.GetEncoding(encoding.CodePage, EncoderFallback.ExceptionFallback, DecoderFallback.ExceptionFallback);
+    // Code-page decoders include valid Windows-932 extension mappings that strict decoder
+    // fallback can reject (for example decoder-only duplicate Shift-JIS byte sequences).
+    // Keep the encoder strict, replace invalid decoder input with U+FFFD, then reject any
+    // resulting replacement character in TryDecodeWithoutReplacement.
+    private static Encoding CreateLegacyEncoding(Encoding encoding) =>
+        Encoding.GetEncoding(encoding.CodePage, EncoderFallback.ExceptionFallback, DecoderFallback.ReplacementFallback);
+
+    private static bool TryDecodeWithoutReplacement(ReadOnlySpan<byte> bytes, Encoding encoding, out string text)
+    {
+        if (!TryDecode(bytes, encoding, out text))
+            return false;
+        return !text.Contains('\uFFFD');
+    }
 
     private static bool TryDecode(ReadOnlySpan<byte> bytes, Encoding encoding, out string text)
     {

@@ -118,7 +118,7 @@ public sealed class FullGameWorkspaceCopyTests
             () => GameFileWorkspace.CopyDirectoryForModification(game.Path, output, options));
 
         Assert.Contains("ERB/ambiguous.erb", error.Message);
-        Assert.Contains("歧义", error.Message);
+        Assert.Contains("编码歧义", error.Message);
         Assert.Contains("未生成游戏副本", error.Message);
         Assert.False(Directory.Exists(output));
         Assert.Equal(ambiguousBytes, File.ReadAllBytes(ambiguous));

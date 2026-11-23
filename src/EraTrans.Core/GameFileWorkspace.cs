@@ -23,12 +23,12 @@ public static class GameFileWorkspace
         string gameDirectory, string outputDirectory, EraParserOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
-        return CopyDirectoryForModification(gameDirectory, outputDirectory, options.FileEncoding, options.FileEncodingOverrides);
+        return CopyDirectoryForModification(gameDirectory, outputDirectory, options.FileEncoding, options.TargetFileExtensions);
     }
 
     public static IReadOnlyList<string> CopyDirectoryForModification(
         string gameDirectory, string outputDirectory, Encoding? fallbackEncoding,
-        IReadOnlyDictionary<string, string>? fileEncodingOverrides)
+        IReadOnlyList<string>? targetFileExtensions)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(gameDirectory);
         ArgumentException.ThrowIfNullOrWhiteSpace(outputDirectory);
@@ -64,6 +64,21 @@ public static class GameFileWorkspace
             throw new ArgumentException("The game-copy destination must be a named directory.", nameof(outputDirectory));
         }
 
+        var textExtensions = new HashSet<string>(
+            [".erb", ".erh", ".csv", ".erd", ".res", ".xml"],
+            StringComparer.OrdinalIgnoreCase);
+        if (targetFileExtensions is not null)
+        {
+            foreach (string extension in targetFileExtensions)
+            {
+                if (string.IsNullOrWhiteSpace(extension) || !extension.StartsWith(".", StringComparison.Ordinal))
+                    throw new ArgumentException($"无效的目标文件扩展名：{extension}", nameof(targetFileExtensions));
+                textExtensions.Add(extension);
+            }
+        }
+        if (fallbackEncoding is not null)
+            PreflightTextFiles(gameRoot, fallbackEncoding, textExtensions);
+
         Directory.CreateDirectory(parentDirectory);
         string stagingDirectory = Path.Combine(
             parentDirectory,
@@ -73,7 +88,7 @@ public static class GameFileWorkspace
         var relativeFiles = new List<string>();
         try
         {
-            CopyDirectoryContents(gameRoot, stagingDirectory, gameRoot, stagingDirectory, relativeFiles, fallbackEncoding, fileEncodingOverrides);
+            CopyDirectoryContents(gameRoot, stagingDirectory, gameRoot, stagingDirectory, relativeFiles, fallbackEncoding, textExtensions);
             Directory.Move(stagingDirectory, outputRoot);
 
             return relativeFiles
@@ -154,7 +169,7 @@ public static class GameFileWorkspace
         string workspaceRoot,
         List<string> copiedFiles,
         Encoding? fallbackEncoding,
-        IReadOnlyDictionary<string, string>? fileEncodingOverrides)
+        IReadOnlySet<string> textExtensions)
     {
         var enumerationOptions = new EnumerationOptions
         {
@@ -177,7 +192,7 @@ public static class GameFileWorkspace
             if ((attributes & FileAttributes.Directory) != 0)
             {
                 Directory.CreateDirectory(destinationPath);
-                CopyDirectoryContents(sourcePath, destinationPath, sourceRoot, workspaceRoot, copiedFiles, fallbackEncoding, fileEncodingOverrides);
+                CopyDirectoryContents(sourcePath, destinationPath, sourceRoot, workspaceRoot, copiedFiles, fallbackEncoding, textExtensions);
                 Directory.SetLastWriteTimeUtc(
                     destinationPath,
                     Directory.GetLastWriteTimeUtc(sourcePath));
@@ -191,15 +206,14 @@ public static class GameFileWorkspace
             }
             else
             {
-                if (fallbackEncoding is not null && IsGameTextFile(sourcePath))
+                if (fallbackEncoding is not null && IsGameTextFile(sourcePath, textExtensions))
                 {
                     string relativePath = Path.GetRelativePath(sourceRoot, sourcePath).Replace('\\', '/');
-                    Encoding? fileOverride = ResolveFileEncodingOverride(relativePath, fileEncodingOverrides);
-                    string text = GameFileText.Read(sourcePath, fallbackEncoding, fileOverride).Text;
+                    string text = GameFileText.Read(sourcePath, fallbackEncoding).Text;
                     if (text.Contains('\uFFFD'))
                     {
                         throw new InvalidDataException(
-                            $"文本文件解码产生替换字符，拒绝生成可能乱码的 UTF-8 副本：{relativePath}。请检查默认编码或配置单文件编码覆盖。");
+                            $"文本文件解码产生替换字符，拒绝生成可能乱码的 UTF-8 副本：{relativePath}。请检查游戏原始编码，并将异常文件转换为 UTF-8 BOM。");
                     }
                     if (Path.GetExtension(sourcePath).Equals(".xml", StringComparison.OrdinalIgnoreCase))
                         text = NormalizeXmlEncodingDeclaration(text);
@@ -220,35 +234,63 @@ public static class GameFileWorkspace
         }
     }
 
-    private static bool IsGameTextFile(string path)
+    private static void PreflightTextFiles(string sourceRoot, Encoding fallbackEncoding, IReadOnlySet<string> textExtensions)
     {
-        string extension = Path.GetExtension(path);
-        return extension.Equals(".erb", StringComparison.OrdinalIgnoreCase) ||
-               extension.Equals(".erh", StringComparison.OrdinalIgnoreCase) ||
-               extension.Equals(".csv", StringComparison.OrdinalIgnoreCase) ||
-               extension.Equals(".erd", StringComparison.OrdinalIgnoreCase) ||
-               extension.Equals(".res", StringComparison.OrdinalIgnoreCase) ||
-               extension.Equals(".xml", StringComparison.OrdinalIgnoreCase);
+        var errors = new List<string>();
+        var pendingDirectories = new Stack<string>();
+        pendingDirectories.Push(sourceRoot);
+        var enumerationOptions = new EnumerationOptions
+        {
+            AttributesToSkip = 0,
+            IgnoreInaccessible = false,
+            RecurseSubdirectories = false
+        };
+
+        while (pendingDirectories.TryPop(out string? directory))
+        {
+            foreach (string path in Directory.EnumerateFileSystemEntries(directory, "*", enumerationOptions))
+            {
+                FileAttributes attributes = File.GetAttributes(path);
+                if ((attributes & FileAttributes.ReparsePoint) != 0)
+                    throw new IOException($"游戏目录包含符号链接或其他 Reparse Point，出于安全考虑不能继续编码预检：{path}");
+                if ((attributes & FileAttributes.Directory) != 0)
+                {
+                    pendingDirectories.Push(path);
+                    continue;
+                }
+                if (!IsGameTextFile(path, textExtensions))
+                    continue;
+
+                string relativePath = Path.GetRelativePath(sourceRoot, path).Replace('\\', '/');
+                try
+                {
+                    string text = GameFileText.Read(path, fallbackEncoding).Text;
+                    if (text.Contains('\uFFFD'))
+                        throw new InvalidDataException("解码结果包含替换字符。");
+                }
+                catch (InvalidDataException ex)
+                {
+                    errors.Add($"{relativePath}：{ex.Message}");
+                }
+            }
+        }
+
+        if (errors.Count == 0)
+            return;
+        string details = string.Join(
+            Environment.NewLine,
+            errors.OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(value => value, StringComparer.Ordinal)
+                .Take(20)
+                .Select(value => " - " + value));
+        if (errors.Count > 20)
+            details += $"{Environment.NewLine} - 另有 {errors.Count - 20} 个文件存在编码问题。";
+        throw new InvalidDataException(
+            $"文本编码预检失败，未生成游戏副本。以下文件无法安全确定编码：{Environment.NewLine}{details}{Environment.NewLine}请在外部文本编辑器中确认这些文件的编码，并将有歧义或无法解码的文件转换为 UTF-8 BOM 后重试。");
     }
 
-    private static Encoding? ResolveFileEncodingOverride(string relativePath, IReadOnlyDictionary<string, string>? overrides)
-    {
-        if (overrides is null) return null;
-        foreach ((string path, string encodingId) in overrides)
-        {
-            if (!string.Equals(path.Replace('\\', '/'), relativePath, StringComparison.OrdinalIgnoreCase)) continue;
-            Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
-            return encodingId switch
-            {
-                "932" => Encoding.GetEncoding(932),
-                "936" => Encoding.GetEncoding(936),
-                "950" => Encoding.GetEncoding(950),
-                "utf8" or "utf8-bom" => new UTF8Encoding(false),
-                _ => throw new InvalidDataException($"不支持的单文件编码设置：{encodingId}")
-            };
-        }
-        return null;
-    }
+    private static bool IsGameTextFile(string path, IReadOnlySet<string> textExtensions) =>
+        textExtensions.Contains(Path.GetExtension(path));
 
     private static string NormalizeXmlEncodingDeclaration(string text) =>
         Regex.Replace(text,

@@ -58,38 +58,70 @@ public sealed class FullGameWorkspaceCopyTests
 
 
     [Fact]
-    public void CopyDirectoryForModification_TranscodesJapaneseGbkAndBig5TextToUtf8Bom()
+    public void CopyDirectoryForModification_TranscodesConfiguredEncodingAndCustomTargetsToUtf8Bom()
     {
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
         using var game = new TemporaryDirectory();
         using var outputParent = new TemporaryDirectory();
-        string japanese = game.CreateFile("ERB/japanese.erb", string.Empty);
-        string gbk = game.CreateFile("CSV/simplified.csv", string.Empty);
-        string big5 = game.CreateFile("CSV/traditional.csv", string.Empty);
+
+        Encoding big5 = Encoding.GetEncoding(950);
+        string erbText = "PRINTFORM 繁體中文\r\n";
+        string csvText = "名稱,繁體中文\r\n";
+        string xmlText = "<?xml version=\"1.0\" encoding=\"big5\"?>\r\n<root>繁體</root>";
+        string customText = "繁體中文自訂副檔名";
+        string erb = game.CreateFile("ERB/main.erb", string.Empty);
+        string csv = game.CreateFile("CSV/table.csv", string.Empty);
         string xml = game.CreateFile("XML/ui.xml", string.Empty);
-        File.WriteAllBytes(japanese, Encoding.GetEncoding(932).GetBytes("PRINTFORM こんにちは\r\n"));
-        File.WriteAllBytes(gbk, Encoding.GetEncoding(936).GetBytes("名称,你好，世界\r\n"));
-        File.WriteAllBytes(big5, Encoding.GetEncoding(950).GetBytes("名稱,繁體中文\r\n"));
-        File.WriteAllBytes(xml, Encoding.GetEncoding(950).GetBytes("<?xml version=\"1.0\" encoding=\"big5\"?>\r\n<root>繁體</root>"));
+        string custom = game.CreateFile("Data/custom.txt", string.Empty);
+        string binary = game.CreateFile("Graphics/asset.bin", "binary");
+        File.WriteAllBytes(erb, big5.GetBytes(erbText));
+        File.WriteAllBytes(csv, big5.GetBytes(csvText));
+        File.WriteAllBytes(xml, big5.GetBytes(xmlText));
+        File.WriteAllBytes(custom, big5.GetBytes(customText));
 
         var options = new EraParserOptions
         {
-            FileEncoding = Encoding.GetEncoding(932),
-            FileEncodingOverrides = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-            {
-                ["CSV/simplified.csv"] = "936", ["CSV/traditional.csv"] = "950", ["XML/ui.xml"] = "950"
-            }
+            FileEncoding = big5,
+            TargetFileExtensions = [".csv", ".erb", ".erh", ".erd", ".txt"]
         };
         string output = Path.Combine(outputParent.Path, "Output", "游戏副本");
         GameFileWorkspace.CopyDirectoryForModification(game.Path, output, options);
-        AssertUtf8BomText(Path.Combine(output, "ERB", "japanese.erb"), "PRINTFORM こんにちは\r\n");
-        AssertUtf8BomText(Path.Combine(output, "CSV", "simplified.csv"), "名称,你好，世界\r\n");
-        AssertUtf8BomText(Path.Combine(output, "CSV", "traditional.csv"), "名稱,繁體中文\r\n");
+
+        AssertUtf8BomText(Path.Combine(output, "ERB", "main.erb"), erbText);
+        AssertUtf8BomText(Path.Combine(output, "CSV", "table.csv"), csvText);
         AssertUtf8BomText(Path.Combine(output, "XML", "ui.xml"),
             "<?xml version=\"1.0\" encoding=\"utf-8\"?>\r\n<root>繁體</root>");
-        Assert.Equal("PRINTFORM こんにちは\r\n", Encoding.GetEncoding(932).GetString(File.ReadAllBytes(japanese)));
-        Assert.Equal("名称,你好，世界\r\n", Encoding.GetEncoding(936).GetString(File.ReadAllBytes(gbk)));
-        Assert.Equal("名稱,繁體中文\r\n", Encoding.GetEncoding(950).GetString(File.ReadAllBytes(big5)));
+        AssertUtf8BomText(Path.Combine(output, "Data", "custom.txt"), customText);
+        Assert.Equal("binary", File.ReadAllText(Path.Combine(output, "Graphics", "asset.bin")));
+
+        Assert.Equal(big5.GetBytes(erbText), File.ReadAllBytes(erb));
+        Assert.Equal(big5.GetBytes(csvText), File.ReadAllBytes(csv));
+        Assert.Equal(big5.GetBytes(xmlText), File.ReadAllBytes(xml));
+        Assert.Equal(big5.GetBytes(customText), File.ReadAllBytes(custom));
+        Assert.Equal("binary", File.ReadAllText(binary));
+    }
+
+    [Fact]
+    public void CopyDirectoryForModification_RejectsAmbiguousTextBeforeCreatingWorkspace()
+    {
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        using var game = new TemporaryDirectory();
+        using var outputParent = new TemporaryDirectory();
+
+        byte[] ambiguousBytes = Encoding.GetEncoding(936).GetBytes("学习");
+        string ambiguous = game.CreateFile("ERB/ambiguous.erb", string.Empty);
+        File.WriteAllBytes(ambiguous, ambiguousBytes);
+
+        var options = new EraParserOptions { FileEncoding = Encoding.GetEncoding(936) };
+        string output = Path.Combine(outputParent.Path, "Output", "游戏副本");
+        InvalidDataException error = Assert.Throws<InvalidDataException>(
+            () => GameFileWorkspace.CopyDirectoryForModification(game.Path, output, options));
+
+        Assert.Contains("ERB/ambiguous.erb", error.Message);
+        Assert.Contains("歧义", error.Message);
+        Assert.Contains("未生成游戏副本", error.Message);
+        Assert.False(Directory.Exists(output));
+        Assert.Equal(ambiguousBytes, File.ReadAllBytes(ambiguous));
     }
 
     private static void AssertUtf8BomText(string path, string expected)

@@ -71,9 +71,7 @@ public sealed class DictionaryExtractor
                 else
                     throw new InvalidOperationException($"解析器请求了游戏目录之外的文件：{fullPath}");
 
-                string relativePath = Path.GetRelativePath(encodingRoot, fullPath).Replace('\\', '/');
-                return GameFileText.Read(fullPath, effectiveOptions.FileEncoding,
-                    effectiveOptions.GetFileEncodingOverride(relativePath)).Text;
+                return GameFileText.Read(fullPath, effectiveOptions.FileEncoding).Text;
             });
 
             var scannedFiles = GameDirectoryScanner.Scan(gameRoot);

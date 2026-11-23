@@ -79,7 +79,7 @@ public sealed class VisibleTextExtractor
             string relativePath = Path.GetRelativePath(gameRoot, file).Replace('\\', '/');
             try
             {
-                string text = GameFileText.Read(file, options.FileEncoding, options.GetFileEncodingOverride(relativePath)).Text;
+                string text = GameFileText.Read(file, options.FileEncoding).Text;
                 VisibleTextFileResult lexed = ErbVisibleTextLexer.ExtractFile(
                     relativePath,
                     text,

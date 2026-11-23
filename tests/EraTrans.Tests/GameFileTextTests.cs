@@ -99,7 +99,7 @@ public sealed class GameFileTextTests : IDisposable
     [Fact]
     public void DetectEncoding_ReturnsUtf8_WhenBytesAreValidUtf8()
     {
-        DetectedEncoding detected = GameFileText.DetectEncoding(Encoding.UTF8.GetBytes("こんにちは"));
+        DetectedEncoding detected = GameFileText.DetectEncoding(Encoding.UTF8.GetBytes("さようなら"));
 
         Assert.Equal(new UTF8Encoding(false).CodePage, detected.Encoding.CodePage);
         Assert.Empty(detected.Preamble);
@@ -142,6 +142,37 @@ public sealed class GameFileTextTests : IDisposable
         DetectedEncoding detected = GameFileText.DetectEncoding(bytes);
 
         Assert.Equal(Encoding.BigEndianUnicode.CodePage, detected.Encoding.CodePage);
+    }
+
+
+    [Fact]
+    public void DetectEncoding_RejectsGbkBytesThatAreAlsoValidUtf8WithDifferentText()
+    {
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        Encoding gbk = Encoding.GetEncoding(936);
+        byte[] bytes = gbk.GetBytes("学习");
+
+        Assert.Equal("学习", gbk.GetString(bytes));
+        Assert.Equal("ѧϰ", new UTF8Encoding(false, true).GetString(bytes));
+
+        InvalidDataException error = Assert.Throws<InvalidDataException>(
+            () => GameFileText.DetectEncoding(bytes, gbk));
+
+        Assert.Contains("歧义", error.Message);
+    }
+
+    [Fact]
+    public void Read_UsesXmlEncodingDeclarationBeforeConfiguredFallback()
+    {
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        byte[] bytes = Encoding.GetEncoding(936).GetBytes(
+            "<?xml version=\"1.0\" encoding=\"gbk\"?>\r\n<root>你好</root>");
+        string path = WriteRaw("declared-gbk.xml", bytes);
+
+        GameFileText file = GameFileText.Read(path, Encoding.GetEncoding(932));
+
+        Assert.Equal(936, file.Encoding.CodePage);
+        Assert.Contains("<root>你好</root>", file.Text);
     }
 
     private string WriteRaw(string name, byte[] bytes)

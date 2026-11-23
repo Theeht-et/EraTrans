@@ -1,19 +1,21 @@
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace EraTrans.Core.WriteBack;
 
 /// <summary>
-/// Reads and writes one game source file using that file's own encoding and byte-order mark.
-/// Real Emuera games mix UTF-8 (with or without BOM) and Shift-JIS inside the same directory,
-/// so a single global setting cannot be used when translating back into a game copy.
+/// Reads and writes game text files without silently guessing between overlapping encodings.
+/// BOM and XML declarations are explicit signals; BOM-less text must have a unique lossless
+/// interpretation as strict UTF-8 or the selected game code page.
 /// </summary>
 public sealed class GameFileText
 {
-    private static readonly Encoding StrictUtf8 = new UTF8Encoding(
-        encoderShouldEmitUTF8Identifier: false,
-        throwOnInvalidBytes: true);
-
-    private static readonly Encoding Utf8NoBom = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+    private static readonly Encoding StrictUtf8 = new UTF8Encoding(false, true);
+    private static readonly Encoding StrictUtf16Le = new UnicodeEncoding(false, false, true);
+    private static readonly Encoding StrictUtf16Be = new UnicodeEncoding(true, false, true);
+    private static readonly Regex XmlEncodingDeclaration = new(
+        @"^\s*<\?xml\b[^>]*\bencoding\s*=\s*(['""])(?<name>[^'""]+)\1",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     private readonly byte[] _body;
 
@@ -26,32 +28,34 @@ public sealed class GameFileText
     }
 
     public string Text { get; set; }
-
     public Encoding Encoding { get; }
-
-    /// <summary>Bytes written before the encoded body (empty when the file had no BOM).</summary>
     public byte[] Preamble { get; }
-
     public bool HasBom => Preamble.Length > 0;
 
-    public static GameFileText Read(string path) => Read(path, null, null);
-    public static GameFileText Read(string path, Encoding? fallbackEncoding) => Read(path, fallbackEncoding, null);
+    public static GameFileText Read(string path) => Read(path, null);
 
-    /// <summary>
-    /// BOMs are authoritative. A per-file override resolves ambiguous legacy encodings; otherwise
-    /// BOM-less UTF-16 and strict UTF-8 are detected before the configured legacy fallback.
-    /// </summary>
-    public static GameFileText Read(string path, Encoding? fallbackEncoding, Encoding? fileOverrideEncoding)
+    public static GameFileText Read(string path, Encoding? fallbackEncoding)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         byte[] bytes = File.ReadAllBytes(path);
-        var detected = DetectEncoding(bytes, fallbackEncoding, fileOverrideEncoding);
-        string text = detected.Encoding.GetString(bytes, detected.BodyOffset, bytes.Length - detected.BodyOffset);
-        byte[] body = bytes.AsSpan(detected.BodyOffset).ToArray();
-        return new GameFileText(text, detected.Encoding, detected.Preamble, body);
+        try
+        {
+            Encoding? declaredEncoding = GetXmlDeclaredEncoding(path, bytes);
+            DetectedEncoding detected = DetectEncoding(bytes, fallbackEncoding, declaredEncoding);
+            string text = detected.Encoding.GetString(bytes, detected.BodyOffset, bytes.Length - detected.BodyOffset);
+            byte[] body = bytes.AsSpan(detected.BodyOffset).ToArray();
+            return new GameFileText(text, detected.Encoding, detected.Preamble, body);
+        }
+        catch (InvalidDataException ex)
+        {
+            throw new InvalidDataException($"文本文件编码检测失败：{path}\n{ex.Message}", ex);
+        }
+        catch (DecoderFallbackException ex)
+        {
+            throw new InvalidDataException($"文本文件无法按识别出的编码无损解码：{path}", ex);
+        }
     }
 
-    /// <summary>Writes the text back with the same encoding, preamble and (untouched) line endings.</summary>
     public void Write(string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
@@ -61,21 +65,12 @@ public sealed class GameFileText
             File.WriteAllBytes(path, body);
             return;
         }
-
         byte[] result = new byte[Preamble.Length + body.Length];
         Buffer.BlockCopy(Preamble, 0, result, 0, Preamble.Length);
         Buffer.BlockCopy(body, 0, result, Preamble.Length, body.Length);
         File.WriteAllBytes(path, result);
     }
 
-    /// <summary>
-    /// Writes the file by splicing the encoded replacement text into the original bytes, so every
-    /// byte outside the edited ranges stays exactly as it was on disk. Full re-encoding would
-    /// rewrite untouched characters too: Shift-JIS has duplicate mappings (0x8790 and 0x81E0 are
-    /// the same character) and the encoder always picks one of them.
-    /// Returns false when the byte layout cannot be reproduced (e.g. the file contained invalid
-    /// bytes that decoded to U+FFFD); the caller then falls back to a full re-encode.
-    /// </summary>
     public bool TryWriteSpliced(string path, IReadOnlyList<SpanEdit> edits, out string? warning)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
@@ -93,7 +88,6 @@ public sealed class GameFileText
             int segmentBytes = Encoding.GetByteCount(text.AsSpan(charCursor, segmentChars));
             stream.Write(_body, sourceCursor, segmentBytes);
             sourceCursor += segmentBytes;
-
             stream.Write(Encoding.GetBytes(edit.Replacement));
             sourceCursor += Encoding.GetByteCount(text.AsSpan(edit.Span.Start, edit.Span.Length));
             charCursor = edit.Span.End;
@@ -105,7 +99,6 @@ public sealed class GameFileText
             warning = "源文件字节与解码文本不一致，已改用整文件重编码写回。";
             return false;
         }
-
         stream.Write(_body, sourceCursor, tailBytes);
         byte[] result = new byte[Preamble.Length + stream.Length];
         Buffer.BlockCopy(Preamble, 0, result, 0, Preamble.Length);
@@ -115,173 +108,136 @@ public sealed class GameFileText
         return true;
     }
 
-    /// <summary>
-    /// Detects encoding in this order: BOM, explicit per-file override, BOM-less UTF-16,
-    /// strict UTF-8, then the configured legacy fallback (CP932 by default for Japanese ERA games).
-    /// CP932 / GBK / Big5 byte ranges overlap, so localized mixed-encoding games should use
-    /// a configured game-level fallback and explicit per-file overrides.
-    /// </summary>
-    public static DetectedEncoding DetectEncoding(ReadOnlySpan<byte> bytes, Encoding? fallbackEncoding = null, Encoding? fileOverrideEncoding = null)
+    public static DetectedEncoding DetectEncoding(
+        ReadOnlySpan<byte> bytes,
+        Encoding? fallbackEncoding = null,
+        Encoding? declaredEncoding = null)
     {
         if (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)
-        {
-            return new DetectedEncoding(Utf8NoBom, [0xEF, 0xBB, 0xBF], 3);
-        }
-
+            return new DetectedEncoding(StrictUtf8, [0xEF, 0xBB, 0xBF], 3);
         if (bytes.Length >= 2 && bytes[0] == 0xFF && bytes[1] == 0xFE)
-        {
-            return new DetectedEncoding(Encoding.Unicode, [0xFF, 0xFE], 2);
-        }
-
+            return new DetectedEncoding(StrictUtf16Le, [0xFF, 0xFE], 2);
         if (bytes.Length >= 2 && bytes[0] == 0xFE && bytes[1] == 0xFF)
+            return new DetectedEncoding(StrictUtf16Be, [0xFE, 0xFF], 2);
+
+        if (declaredEncoding is not null)
         {
-            return new DetectedEncoding(Encoding.BigEndianUnicode, [0xFE, 0xFF], 2);
+            Encoding strictDeclared = CreateStrictEncoding(declaredEncoding);
+            if (!TryDecode(bytes, strictDeclared, out _))
+                throw new InvalidDataException($"XML 文件声明的编码 {declaredEncoding.WebName} 无法无损解码文件内容。");
+            return new DetectedEncoding(strictDeclared, [], 0);
         }
 
-        // Explicit per-file overrides resolve ambiguous legacy code pages and can force a legacy
-        // decoder when its byte sequence happens to be valid UTF-8. BOMs above remain authoritative.
-        if (fileOverrideEncoding is not null)
-            return new DetectedEncoding(fileOverrideEncoding, [], 0);
-
-        // UTF-16 without a BOM: every ASCII character leaves a 0x00 byte in the high position,
-        // which strict UTF-8 happily accepts, so this check has to run before the UTF-8 probe.
         if (TryDetectBomlessUtf16(bytes, out DetectedEncoding utf16))
-        {
             return utf16;
+
+        if (TryDecode(bytes, StrictUtf8, out string utf8Text))
+        {
+            Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+            Encoding configured = fallbackEncoding ?? Encoding.GetEncoding(932);
+            Encoding strictConfigured = CreateStrictEncoding(configured);
+            if (configured.CodePage == StrictUtf8.CodePage)
+                return new DetectedEncoding(StrictUtf8, [], 0);
+
+            if (TryDecode(bytes, strictConfigured, out string legacyText) &&
+                !string.Equals(utf8Text, legacyText, StringComparison.Ordinal))
+            {
+                throw new InvalidDataException(
+                    $"无 BOM 文件同时符合严格 UTF-8 和 CP{configured.CodePage}，但解码结果不同，无法可靠判断原始编码。为避免静默乱码，请先用文本编辑器确认编码，并将该文件转换为 UTF-8 BOM 后重试。");
+            }
+            return new DetectedEncoding(StrictUtf8, [], 0);
         }
 
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        Encoding selectedFallback = CreateStrictEncoding(fallbackEncoding ?? Encoding.GetEncoding(932));
+        if (TryDecode(bytes, selectedFallback, out _))
+            return new DetectedEncoding(selectedFallback, [], 0);
+
+        throw new InvalidDataException(
+            $"文件既不是有效的严格 UTF-8，也无法按所选游戏编码 CP{selectedFallback.CodePage} 无损解码。请在文本编辑器中确认编码，并转换为 UTF-8 BOM 后重试。");
+    }
+
+    private static Encoding? GetXmlDeclaredEncoding(string path, ReadOnlySpan<byte> bytes)
+    {
+        if (!Path.GetExtension(path).Equals(".xml", StringComparison.OrdinalIgnoreCase))
+            return null;
+        if ((bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF) ||
+            (bytes.Length >= 2 && bytes[0] == 0xFF && bytes[1] == 0xFE) ||
+            (bytes.Length >= 2 && bytes[0] == 0xFE && bytes[1] == 0xFF))
+            return null;
+
+        int headerLength = Math.Min(bytes.Length, 1024);
+        string header = System.Text.Encoding.ASCII.GetString(bytes[..headerLength]);
+        Match match = XmlEncodingDeclaration.Match(header);
+        if (!match.Success)
+            return null;
+
+        string encodingName = match.Groups["name"].Value.Trim();
         try
         {
-            string utf8Text = StrictUtf8.GetString(bytes);
-            if (utf8Text.IndexOf('\0') >= 0 && TryDetectUtf16ByContent(bytes, out DetectedEncoding byContent))
-            {
-                return byContent;
-            }
+            Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+            return Encoding.GetEncoding(encodingName, EncoderFallback.ExceptionFallback, DecoderFallback.ExceptionFallback);
+        }
+        catch (ArgumentException ex)
+        {
+            throw new InvalidDataException($"XML 文件声明了不支持的编码“{encodingName}”。", ex);
+        }
+    }
 
-            return new DetectedEncoding(Utf8NoBom, [], 0);
+    private static Encoding CreateStrictEncoding(Encoding encoding) =>
+        Encoding.GetEncoding(encoding.CodePage, EncoderFallback.ExceptionFallback, DecoderFallback.ExceptionFallback);
+
+    private static bool TryDecode(ReadOnlySpan<byte> bytes, Encoding encoding, out string text)
+    {
+        try
+        {
+            text = encoding.GetString(bytes);
+            return true;
         }
         catch (DecoderFallbackException)
         {
-            return ChooseSingleByteFallback(bytes, fallbackEncoding);
+            text = string.Empty;
+            return false;
         }
     }
 
-    /// <summary>
-    /// Selects the configured fallback for byte streams that are neither BOM-marked Unicode nor
-    /// valid strict UTF-8. CP932 is the Japanese ERA default; localized Chinese games select CP936
-    /// or CP950. These legacy code pages overlap, so replacement-count guessing is unreliable.
-    /// </summary>
-    private static DetectedEncoding ChooseSingleByteFallback(ReadOnlySpan<byte> bytes, Encoding? fallbackEncoding)
-    {
-        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
-        Encoding selected = fallbackEncoding ?? Encoding.GetEncoding(932);
-        if (selected.CodePage is 65001 or 1200 or 1201) selected = Encoding.GetEncoding(932);
-        return new DetectedEncoding(selected, [], 0);
-    }
-
-    /// <summary>
-    /// Detects BOM-less UTF-16 by looking at where the zero bytes fall: UTF-16LE ASCII text keeps
-    /// 0x00 in every odd position, UTF-16BE in every even one. Real ERB scripts are mostly ASCII
-    /// syntax with Japanese literals, so a quarter of the stream being zero bytes in one lane and
-    /// almost none in the other is a reliable signal.
-    /// </summary>
     private static bool TryDetectBomlessUtf16(ReadOnlySpan<byte> bytes, out DetectedEncoding detected)
     {
         detected = default;
         if (bytes.Length < 16 || bytes.Length % 2 != 0)
-        {
             return false;
-        }
-
-        int evenZeros = 0;
-        int oddZeros = 0;
+        int evenZeros = 0, oddZeros = 0;
         for (int i = 0; i < bytes.Length; i += 2)
         {
-            if (bytes[i] == 0)
-            {
-                evenZeros++;
-            }
-
-            if (bytes[i + 1] == 0)
-            {
-                oddZeros++;
-            }
+            if (bytes[i] == 0) evenZeros++;
+            if (bytes[i + 1] == 0) oddZeros++;
         }
-
         int pairs = bytes.Length / 2;
         int laneThreshold = pairs / 4;
         int otherThreshold = Math.Max(1, pairs / 50);
 
-        if (oddZeros >= laneThreshold && evenZeros <= otherThreshold)
+        if (oddZeros >= laneThreshold && evenZeros <= otherThreshold && TryDecodeCleanUtf16(bytes, StrictUtf16Le))
         {
-            detected = new DetectedEncoding(Encoding.Unicode, [], 0);
+            detected = new DetectedEncoding(StrictUtf16Le, [], 0);
             return true;
         }
-
-        if (evenZeros >= laneThreshold && oddZeros <= otherThreshold)
+        if (evenZeros >= laneThreshold && oddZeros <= otherThreshold && TryDecodeCleanUtf16(bytes, StrictUtf16Be))
         {
-            detected = new DetectedEncoding(Encoding.BigEndianUnicode, [], 0);
+            detected = new DetectedEncoding(StrictUtf16Be, [], 0);
             return true;
         }
-
-        return false;
-    }
-
-    /// <summary>
-    /// A BOM-less UTF-16 file passes strict UTF-8 as long as no surrogate is broken, but the
-    /// decoded text is full of U+0000. When that happens, actually decode the bytes as UTF-16
-    /// (both endiannesses) and accept the first interpretation that produces clean text.
-    /// </summary>
-    private static bool TryDetectUtf16ByContent(ReadOnlySpan<byte> bytes, out DetectedEncoding detected)
-    {
-        detected = default;
-        if (bytes.Length < 16 || bytes.Length % 2 != 0)
-        {
-            return false;
-        }
-
-        if (TryDecodeCleanUtf16(bytes, new UnicodeEncoding(bigEndian: false, byteOrderMark: false, throwOnInvalidBytes: true)))
-        {
-            detected = new DetectedEncoding(Encoding.Unicode, [], 0);
-            return true;
-        }
-
-        if (TryDecodeCleanUtf16(bytes, new UnicodeEncoding(bigEndian: true, byteOrderMark: false, throwOnInvalidBytes: true)))
-        {
-            detected = new DetectedEncoding(Encoding.BigEndianUnicode, [], 0);
-            return true;
-        }
-
         return false;
     }
 
     private static bool TryDecodeCleanUtf16(ReadOnlySpan<byte> bytes, Encoding encoding)
     {
-        try
-        {
-            string text = encoding.GetString(bytes);
-            if (text.IndexOf('\0') >= 0 || text.IndexOf('\uFFFD') >= 0)
-            {
-                return false;
-            }
-
-            int printable = 0;
-            foreach (char c in text)
-            {
-                if (!char.IsControl(c) || c == '\r' || c == '\n' || c == '\t')
-                {
-                    printable++;
-                }
-            }
-
-            return printable * 10 >= text.Length * 9;
-        }
-        catch (DecoderFallbackException)
-        {
+        if (!TryDecode(bytes, encoding, out string text) || text.IndexOf('\0') >= 0 || text.IndexOf('\uFFFD') >= 0)
             return false;
-        }
+        int printable = 0;
+        foreach (char c in text)
+            if (!char.IsControl(c) || c is '\r' or '\n' or '\t') printable++;
+        return text.Length == 0 || printable * 10 >= text.Length * 9;
     }
-
 }
 
 public readonly record struct DetectedEncoding(Encoding Encoding, byte[] Preamble, int BodyOffset);

@@ -104,13 +104,14 @@ public sealed class EraTransUserSettingsTests
     {
         using var temporary = new TemporaryDirectory();
         string path = Path.Combine(temporary.Path, "settings.json");
-        File.WriteAllText(path, """{"FileEncodingId":"utf8-bom"}""");
+        File.WriteAllText(path, """{"FileEncodingId":"utf8-bom","FileEncodingOverrides":{"ERB/old.erb":"950"}}""");
 
         EraTransUserSettings loaded = new EraTransUserSettingsStore(path).Load();
 
         Assert.Equal(string.Empty, loaded.LastGameDirectory);
         Assert.Equal(string.Empty, loaded.LastOutputRootDirectory);
         Assert.Equal(string.Empty, loaded.LastDictionaryFileRelativePath);
+        Assert.Equal("932", loaded.FileEncodingId);
     }
 
     [Fact]
@@ -194,30 +195,6 @@ public sealed class EraTransUserSettingsTests
         EraTransUserSettings settings = EraTransUserSettings.CreateDefault();
         Assert.Equal("932", settings.FileEncodingId);
         Assert.Equal(932, settings.ToParserOptions().FileEncoding.CodePage);
-    }
-
-    [Fact]
-    public void Validate_NormalizesAndAcceptsPerFileEncodingOverrides()
-    {
-        EraTransUserSettings settings = EraTransUserSettings.CreateDefault();
-        settings.FileEncodingOverrides = new Dictionary<string, string>
-        {
-            ["ERB\\translated.erb"] = "950",
-            ["CSV/simplified.csv"] = "936"
-        };
-        EraParserOptions options = settings.ToParserOptions();
-        Assert.Equal(950, options.GetFileEncodingOverride("ERB/translated.erb")?.CodePage);
-        Assert.Equal(936, options.GetFileEncodingOverride("CSV\\simplified.csv")?.CodePage);
-    }
-
-    [Theory]
-    [InlineData("../outside.erb", "932")]
-    [InlineData("ERB/file.erb", "99999")]
-    public void Validate_RejectsUnsafeOrUnsupportedFileEncodingOverrides(string path, string encodingId)
-    {
-        EraTransUserSettings settings = EraTransUserSettings.CreateDefault();
-        settings.FileEncodingOverrides = new Dictionary<string, string> { [path] = encodingId };
-        Assert.Throws<InvalidDataException>(() => settings.Validate());
     }
 
     [Fact]

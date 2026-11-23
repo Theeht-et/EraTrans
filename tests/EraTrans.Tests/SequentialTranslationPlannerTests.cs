@@ -218,6 +218,72 @@ public sealed class SequentialTranslationPlannerTests
     private static ErbTranslationGroupingIndex Index(params ErbTranslationGroupEntry[] entries) =>
         new(1, "a.ERB", "source-fingerprint", "a.json", "dictionary-fingerprint", [], entries);
 
+    [Fact]
+    public void PrintFormCommand_ProducesTheJoinSignal()
+    {
+        var sources = new List<WindowSourceLine>
+        {
+            new(1, "k1", "こんにちは、", true),
+            new(2, "k2", "いい天気ですね", true)
+        };
+
+        WindowPlan plan = new SequentialTranslationPlanner().Build(
+            sources,
+            Index(
+                Link("k1", 0, "@A", command: "PRINTFORM"),
+                Link("k2", 1, "@A", command: "PRINTL")));
+
+        TranslationWindow window = Assert.Single(plan.Windows);
+        Assert.Equal(1, window.Lines[1].Join);
+        Assert.Equal("PRINTFORM", window.Lines[0].Command);
+        Assert.Equal(1, plan.JoinedLineCount);
+    }
+
+    [Fact]
+    public void Window_CarriesSceneIdAndGroupType()
+    {
+        var sources = new List<WindowSourceLine>
+        {
+            new(1, "k1", "こんにちは", true),
+            new(2, "k2", "おはよう", true)
+        };
+
+        WindowPlan plan = new SequentialTranslationPlanner().Build(
+            sources,
+            Indexed(
+                "menu",
+                Link("k1", 0, "@A", scope: "A#0000"),
+                Link("k2", 1, "@A", scope: "A#0000")));
+
+        TranslationWindow window = Assert.Single(plan.Windows);
+        Assert.Equal("A#0000", window.SceneId);
+        Assert.Equal("menu", window.SceneType);
+        Assert.All(window.Lines, line => Assert.True(line.Menu));
+    }
+
+    private static ErbTranslationGroupingIndex Indexed(
+        string groupType,
+        params ErbTranslationGroupEntry[] entries) =>
+        new(
+            1,
+            "a.ERB",
+            "source-fingerprint",
+            "a.json",
+            "dictionary-fingerprint",
+            [
+                new ErbTranslationGroup(
+                    "group_000001",
+                    groupType,
+                    entries[0].FunctionId,
+                    entries[0].BranchPath,
+                    entries[0].ControlScopeId,
+                    entries[0].BranchLabel,
+                    entries[0].Sequence,
+                    entries[^1].Sequence,
+                    [.. entries.Select(entry => entry.Key)])
+            ],
+            entries);
+
     private static ErbTranslationGroupEntry Link(
         string key,
         int sequence,
@@ -225,7 +291,9 @@ public sealed class SequentialTranslationPlannerTests
         string branch = "",
         string scope = "",
         string label = "",
-        string outputType = "PRINTFORMW") =>
+        string outputType = "PRINTFORMW",
+        string? command = null,
+        string? kind = null) =>
         new(key, "原文" + key, sequence, sequence, functionId, outputType, branch, scope, label,
-            "group_000001", "dialogue", null);
+            "group_000001", "dialogue", null, command, kind);
 }

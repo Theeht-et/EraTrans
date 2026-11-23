@@ -7,6 +7,34 @@ namespace EraTrans.Core;
 internal static class Configs
 {
     internal static Encoding fileEncoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: true);
+    private static Func<string, string>? fileTextReader;
+    internal static string ReadAllText(string path) =>
+        fileTextReader is null ? File.ReadAllText(path, fileEncoding) : fileTextReader(path);
+    internal static string[] ReadAllLines(string path)
+    {
+        using var reader = new StringReader(ReadAllText(path));
+        var lines = new List<string>();
+        string? line;
+        while ((line = reader.ReadLine()) is not null) lines.Add(line);
+        return lines.ToArray();
+    }
+    internal static IDisposable UseFileTextReader(Func<string, string> reader)
+    {
+        ArgumentNullException.ThrowIfNull(reader);
+        Func<string, string>? previous = fileTextReader;
+        fileTextReader = reader;
+        return new FileTextReaderScope(previous);
+    }
+    private sealed class FileTextReaderScope(Func<string, string>? previous) : IDisposable
+    {
+        private bool _disposed;
+        public void Dispose()
+        {
+            if (_disposed) return;
+            fileTextReader = previous;
+            _disposed = true;
+        }
+    }
     internal static List<string> operators =
     [
         "(", ")", "{", "}", "?", "#", "=", "+=", "-=", "*=", "/=",
@@ -24,7 +52,6 @@ internal static class Configs
     internal static void Apply(EraParserOptions options)
     {
         fileEncoding = options.FileEncoding;
-        forceFilter = options.ForceFilterVariableNames;
         hideEngText = options.HideEnglishText;
         mergeSameText = options.MergeDuplicateEntries;
         hideVarOutput = options.HideVariableEntries;

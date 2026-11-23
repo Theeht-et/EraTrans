@@ -21,7 +21,7 @@ public class XMLParser
     {
         try
         {
-            XDocument doc = XDocument.Load(filePath, LoadOptions.None);
+            XDocument doc = XDocument.Parse(Configs.ReadAllText(filePath), LoadOptions.None);
 
             // 现在这个函数不止负责技能，还负责其他几个同样使用defname资源的文件
             ProcessDefnameDefinitions(doc, valueList);

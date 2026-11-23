@@ -32,7 +32,16 @@ public partial class ParserSettingsWindow : Window
                 settings.FileEncodingId,
                 StringComparison.Ordinal));
 
-        ForceFilterVariableNamesCheckBox.IsChecked = settings.ForceFilterVariableNames;
+        ExtractionModeComboBox.SelectedItem = ExtractionModeComboBox.Items
+            .OfType<ComboBoxItem>()
+            .FirstOrDefault(item => string.Equals(
+                item.Tag?.ToString(),
+                settings.ErbExtractionMode,
+                StringComparison.OrdinalIgnoreCase));
+
+        ExtractHtmlTitleCheckBox.IsChecked = settings.ExtractHtmlTitle;
+        ExtractPrintDataEntriesCheckBox.IsChecked = settings.ExtractPrintDataEntries;
+        SkipNonJapaneseEntriesCheckBox.IsChecked = settings.SkipNonJapaneseEntries;
         AutoOpenFolderCheckBox.IsChecked = settings.AutoOpenFolder;
         EnableVariableAutoCorrectionCheckBox.IsChecked = settings.EnableVariableAutoCorrection;
         HideEnglishTextCheckBox.IsChecked = settings.HideEnglishText;
@@ -50,6 +59,34 @@ public partial class ParserSettingsWindow : Window
         AutoReplaceReferenceFilesTextBox.Text = string.Join(Environment.NewLine, settings.AutoReplaceReferenceFiles);
         VariableNameCharactersTextBox.Text = string.Join(Environment.NewLine, settings.VariableNameCharacters);
         OperatorsTextBox.Text = string.Join(Environment.NewLine, settings.Operators);
+
+        UpdateModeAvailability();
+    }
+
+    private void ExtractionModeComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e) =>
+        UpdateModeAvailability();
+
+    /// <summary>
+    /// New and legacy settings do not apply to each other: grey out whichever group the selected
+    /// extractor ignores so it is obvious which switches currently do nothing.
+    /// </summary>
+    private void UpdateModeAvailability()
+    {
+        if (LexerSettingsPanel is null || LegacySettingsPanel is null)
+        {
+            return;
+        }
+
+        bool isLexer = string.Equals(
+            (ExtractionModeComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString(),
+            "lexer",
+            StringComparison.OrdinalIgnoreCase);
+
+        LexerSettingsPanel.IsEnabled = isLexer;
+        LexerSettingsPanel.Opacity = isLexer ? 1.0 : 0.55;
+
+        LegacySettingsPanel.IsEnabled = !isLexer;
+        LegacySettingsPanel.Opacity = isLexer ? 0.55 : 1.0;
     }
 
     private static List<string> ReadLines(TextBox textBox) =>
@@ -86,10 +123,27 @@ public partial class ParserSettingsWindow : Window
                 throw new InvalidDataException("请选择有效的文件编码。");
             }
 
+            if (ExtractionModeComboBox.SelectedItem is not ComboBoxItem extractionItem ||
+                extractionItem.Tag is not string extractionMode)
+            {
+                throw new InvalidDataException("请选择有效的文本抽取方式。");
+            }
+
+            List<string> targetExtensions = ReadLines(TargetFileExtensionsTextBox);
+            if (!targetExtensions.Any(value =>
+                    string.Equals(value, ".erb", StringComparison.OrdinalIgnoreCase)))
+            {
+                throw new InvalidDataException(
+                    "游戏文件扩展名必须包含 .erb，否则 ERB 译文在写回时会被静默跳过。");
+            }
+
             var settings = new EraTransUserSettings
             {
                 FileEncodingId = encodingId,
-                ForceFilterVariableNames = ForceFilterVariableNamesCheckBox.IsChecked == true,
+                ErbExtractionMode = extractionMode,
+                ExtractHtmlTitle = ExtractHtmlTitleCheckBox.IsChecked == true,
+                ExtractPrintDataEntries = ExtractPrintDataEntriesCheckBox.IsChecked == true,
+                SkipNonJapaneseEntries = SkipNonJapaneseEntriesCheckBox.IsChecked == true,
                 AutoOpenFolder = AutoOpenFolderCheckBox.IsChecked == true,
                 EnableVariableAutoCorrection = EnableVariableAutoCorrectionCheckBox.IsChecked == true,
                 HideEnglishText = HideEnglishTextCheckBox.IsChecked == true,
@@ -119,16 +173,22 @@ public partial class ParserSettingsWindow : Window
                 LastGameDirectory = _settingsToPreserve.LastGameDirectory,
                 LastOutputRootDirectory = _settingsToPreserve.LastOutputRootDirectory,
                 LastDictionaryFileRelativePath = _settingsToPreserve.LastDictionaryFileRelativePath,
-                TargetFileExtensions = ReadLines(TargetFileExtensionsTextBox),
+                TargetFileExtensions = targetExtensions,
                 AutoReplaceReferenceFiles = ReadLines(AutoReplaceReferenceFilesTextBox),
                 VariableNameCharacters = ReadLines(VariableNameCharactersTextBox),
                 Operators = ReadLines(OperatorsTextBox)
             };
 
             _store.Save(settings);
+            bool modeChanged = !string.Equals(
+                extractionMode,
+                _settingsToPreserve.ErbExtractionMode,
+                StringComparison.OrdinalIgnoreCase);
             MessageBox.Show(
                 this,
-                "设置已保存。下一次提取或应用译文时生效。",
+                modeChanged
+                    ? "设置已保存。文本抽取方式已改变：请重新提取字典，两版字典内容不同，不能混用。"
+                    : "设置已保存。下一次提取或应用译文时生效。",
                 "保存成功",
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);

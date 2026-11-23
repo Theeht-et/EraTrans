@@ -75,7 +75,7 @@ public class ERBParser
     {
         try
         {
-            string content = File.ReadAllText(filePath, Configs.fileEncoding);
+            string content = Configs.ReadAllText(filePath);
             // Keep the legacy behavior of prepending a same-name ERH file to an ERB file.
             // Do not prepend an ERH file to itself when parsing standalone ERH input.
             if (Path.GetExtension(filePath).Equals(".erb", StringComparison.OrdinalIgnoreCase))
@@ -89,7 +89,7 @@ public class ERBParser
 
                 if (companionErh is not null)
                 {
-                    content = File.ReadAllText(companionErh, Configs.fileEncoding) + "\n" + content;
+                    content = Configs.ReadAllText(companionErh) + "\n" + content;
                 }
             }
             // 这里处理了[SKIPSTART]～[SKIPEND]

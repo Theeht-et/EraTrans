@@ -17,7 +17,7 @@ public class CSVParser
     private readonly Dictionary<string, string> contextByValue = new(StringComparer.Ordinal);
     public void ParseFile(string filePath)
     {
-        var lines = File.ReadAllLines(filePath, Configs.fileEncoding);
+        var lines = Configs.ReadAllLines(filePath);
         foreach (var line in lines)
         {
             IEnumerable<string>? values = Tools.GetCSVValue(line);

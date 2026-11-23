@@ -1,4 +1,5 @@
 using System.Text;
+using EraTrans.Core.VisibleText;
 
 namespace EraTrans.Core;
 
@@ -7,8 +8,37 @@ namespace EraTrans.Core;
 /// </summary>
 public sealed class EraParserOptions
 {
-    public Encoding FileEncoding { get; init; } = new UTF8Encoding(encoderShouldEmitUTF8Identifier: true);
-    public bool ForceFilterVariableNames { get; init; } = true;
+    /// <summary>
+    /// Which extractor produces the ERB dictionaries. The CSV/RES/XML/ERD branches always
+    /// use the legacy parsers; only the ERB branch switches.
+    /// </summary>
+    public ExtractionMode ExtractionMode { get; init; } = ExtractionMode.Legacy;
+
+    /// <summary>
+    /// New extractor: include the <c>title=</c> tooltip text of HTML_PRINT / HTML_PRINT_ISLAND tags.
+    /// </summary>
+    public bool ExtractHtmlTitle { get; init; } = true;
+
+    /// <summary>
+    /// New extractor: include DATA / DATAFORM rows inside PRINTDATA / DATALIST blocks.
+    /// </summary>
+    public bool ExtractPrintDataEntries { get; init; } = true;
+
+    /// <summary>
+    /// New extractor: drop entries whose template contains no Japanese characters
+    /// (plain English words, symbols) instead of sending them to the translator.
+    /// </summary>
+    public bool SkipNonJapaneseEntries { get; init; } = true;
+
+    private static Encoding CreateDefaultFileEncoding()
+    {
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        return Encoding.GetEncoding(932);
+    }
+
+    /// <summary>Fallback for BOM-less legacy files; CP932 is the default for Japanese ERA games.</summary>
+    public Encoding FileEncoding { get; init; } = CreateDefaultFileEncoding();
+
     public bool HideEnglishText { get; init; } = true;
     public bool MergeDuplicateEntries { get; init; } = false;
     public bool HideVariableEntries { get; init; } = true;

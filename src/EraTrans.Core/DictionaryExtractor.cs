@@ -1,6 +1,8 @@
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
+using EraTrans.Core.VisibleText;
+using EraTrans.Core.WriteBack;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -22,7 +24,8 @@ public sealed class DictionaryExtractor
         string gameDirectory,
         string outputDirectory,
         string? referenceGameDirectory = null,
-        EraParserOptions? options = null)
+        EraParserOptions? options = null,
+        bool ignoreEncodingIssueFiles = true)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(gameDirectory);
         ArgumentException.ThrowIfNullOrWhiteSpace(outputDirectory);
@@ -47,20 +50,90 @@ public sealed class DictionaryExtractor
             EnsureOutputIsOutsideDirectory(referenceRoot, outputRoot);
         }
 
+        EraParserOptions effectiveOptions = options ?? new EraParserOptions();
+        HashSet<string> textExtensions = GameFileEncodingValidator.CreateTextExtensions(effectiveOptions.TargetFileExtensions);
+        var encodingIssues = new List<GameFileEncodingIssue>(
+            GameFileEncodingValidator.FindDirectoryIssues(gameRoot, effectiveOptions.FileEncoding, textExtensions));
+        if (referenceRoot is not null && !IsPathContained(gameRoot, referenceRoot))
+        {
+            encodingIssues.AddRange(
+                GameFileEncodingValidator.FindDirectoryIssues(referenceRoot, effectiveOptions.FileEncoding, textExtensions));
+        }
+
+        if (encodingIssues.Count > 0 && !ignoreEncodingIssueFiles)
+        {
+            throw GameFileEncodingValidator.CreatePreflightException(encodingIssues);
+        }
+
+        var ignoredFilePaths = new HashSet<string>(
+            encodingIssues.Select(issue => Path.GetFullPath(issue.FullPath)),
+            StringComparer.OrdinalIgnoreCase);
+
         Directory.CreateDirectory(outputRoot);
         var warnings = new ConcurrentBag<string>();
         var generatedFiles = new ConcurrentBag<string>();
         var updatedContextFiles = new ConcurrentBag<string>();
         var updatedGroupingFiles = new ConcurrentBag<string>();
 
+        foreach (GameFileEncodingIssue issue in encodingIssues)
+        {
+            string macroNote = Path.GetExtension(issue.FullPath).Equals(".erh", StringComparison.OrdinalIgnoreCase)
+                ? "；该文件为宏定义文件，可能影响依赖它的条件编译"
+                : string.Empty;
+            warnings.Add($"已忽略编码异常文件（未提取）：{issue.RelativePath}{macroNote}");
+        }
+
+        if (encodingIssues.Count > 0)
+        {
+            warnings.Add($"文本编码：共 {encodingIssues.Count} 个文件无法可靠解码，已跳过（原文件未改动）。");
+        }
+
         lock (LegacyParserRuntime.SyncRoot)
         {
-            LegacyParserRuntime.Initialize(options ?? new EraParserOptions());
+            LegacyParserRuntime.Initialize(effectiveOptions);
+
+            using IDisposable textReaderScope = Configs.UseFileTextReader(path =>
+            {
+                string fullPath = Path.GetFullPath(path);
+                if (!IsPathContained(gameRoot, fullPath) &&
+                    !(referenceRoot is not null && IsPathContained(referenceRoot, fullPath)))
+                {
+                    throw new InvalidOperationException($"解析器请求了游戏目录之外的文件：{fullPath}");
+                }
+
+                if (ignoredFilePaths.Contains(fullPath))
+                {
+                    return string.Empty;
+                }
+
+                return GameFileText.Read(fullPath, effectiveOptions.FileEncoding).Text;
+            });
 
             var scannedFiles = GameDirectoryScanner.Scan(gameRoot);
             if (!Directory.Exists(Path.Combine(gameRoot, "XML")))
             {
                 scannedFiles = scannedFiles.Where(file => file.Kind != GameFileKind.Xml).ToArray();
+            }
+
+            if (ignoredFilePaths.Count > 0)
+            {
+                scannedFiles = scannedFiles
+                    .Where(file => !ignoredFilePaths.Contains(Path.GetFullPath(file.FullPath)))
+                    .ToArray();
+            }
+
+            WriteExtractorMarker(outputRoot, effectiveOptions.ExtractionMode, warnings);
+            if (effectiveOptions.ExtractionMode != ExtractionMode.Legacy)
+            {
+                scannedFiles = ExtractVisibleTextErb(
+                    gameRoot,
+                    outputRoot,
+                    referenceRoot,
+                    effectiveOptions,
+                    scannedFiles,
+                    generatedFiles,
+                    warnings,
+                    ignoredFilePaths);
             }
 
             var erdFiles = scannedFiles
@@ -133,7 +206,9 @@ public sealed class DictionaryExtractor
                             ? null
                             : ResolveOutputPath(referenceRoot, file.RelativePath);
 
-                        bool hasReference = referenceFile is not null && File.Exists(referenceFile);
+                        bool hasReference = referenceFile is not null &&
+                                            File.Exists(referenceFile) &&
+                                            !ignoredFilePaths.Contains(Path.GetFullPath(referenceFile));
                         if (referenceRoot is not null && !hasReference)
                         {
                             warnings.Add($"未找到参考文件：{referenceFile}");
@@ -201,7 +276,7 @@ public sealed class DictionaryExtractor
                                     }
                                     catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                                     {
-                                        warnings.Add($"解析完成后无法再次校验 ERB 源文件，跳过其 AI 分组文件：{file.RelativePath} - {ex.Message}");
+                                        warnings.Add($"解析完成后无法再次校验 ERB 源文件，跳过 AI 分组文件：{file.RelativePath} - {ex.Message}");
                                     }
 
                                     if (sourceFingerprintAfterParse is not null &&
@@ -487,6 +562,14 @@ public sealed class DictionaryExtractor
         return fullPath;
     }
 
+    private static bool IsPathContained(string root, string path)
+    {
+        string relative = Path.GetRelativePath(Path.GetFullPath(root), Path.GetFullPath(path));
+        return !Path.IsPathRooted(relative) && !relative.Equals("..", StringComparison.Ordinal) &&
+               !relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal) &&
+               !relative.StartsWith(".." + Path.AltDirectorySeparatorChar, StringComparison.Ordinal);
+    }
+
     private static void EnsureOutputIsOutsideDirectory(string gameRoot, string outputRoot)
     {
         string relative = Path.GetRelativePath(gameRoot, outputRoot);
@@ -498,4 +581,102 @@ public sealed class DictionaryExtractor
             throw new InvalidOperationException("Output directory must be outside every source directory.");
         }
     }
+
+    /// <summary>
+    /// Replaces the legacy ERB branch with the visible-text extractor. CSV/RES/XML/ERD files are
+    /// still processed by the legacy parsers, so only ERB entries are removed from the returned list.
+    /// </summary>
+    private static IReadOnlyList<GameFile> ExtractVisibleTextErb(
+        string gameRoot,
+        string outputRoot,
+        string? referenceRoot,
+        EraParserOptions options,
+        IReadOnlyList<GameFile> scannedFiles,
+        ConcurrentBag<string> generatedFiles,
+        ConcurrentBag<string> warnings,
+        IReadOnlySet<string>? ignoredFilePaths = null)
+    {
+        GameFile[] erbFiles = scannedFiles.Where(file => file.Kind == GameFileKind.Erb).ToArray();
+        if (erbFiles.Length == 0)
+        {
+            return scannedFiles;
+        }
+
+        if (referenceRoot is not null)
+        {
+            warnings.Add("参考目录填充只在旧版 ERB 抽取下可用，本次已忽略参考目录。");
+        }
+
+        string firstRelative = erbFiles[0].RelativePath.Replace('\\', '/');
+        string erbRootName = firstRelative.Contains('/') ? firstRelative[..firstRelative.IndexOf('/')] : "ERB";
+
+        VisibleTextExtractionResult result = new VisibleTextExtractor()
+            .Extract(gameRoot, outputRoot, erbRootName, options, ignoredFilePaths);
+
+        foreach (string file in result.GeneratedFiles)
+        {
+            generatedFiles.Add(file);
+        }
+        foreach (string warning in result.Warnings)
+        {
+            warnings.Add(warning);
+        }
+        warnings.Add(
+            $"新版可见文本抽取：{result.FileCount} 个 ERB / {result.EntryCount} 条；保留译文 {result.PreservedTranslations} 条" +
+            (result.ResetTranslations > 0
+                ? $"，因原文变化重置 {result.ResetTranslations} 条。"
+                : "。"));
+
+        return scannedFiles.Where(file => file.Kind != GameFileKind.Erb).ToArray();
+    }
+
+    /// <summary>
+    /// Records which extractor produced the dictionaries in this output directory. Re-extracting
+    /// with another mode overwrites the ERB dictionaries, so the next run can warn about it.
+    /// </summary>
+    private static void WriteExtractorMarker(
+        string outputRoot,
+        ExtractionMode mode,
+        ConcurrentBag<string> warnings)
+    {
+        string modeName = mode switch
+        {
+            ExtractionMode.Lexer => "lexer",
+            _ => "legacy"
+        };
+
+        string path = Path.Combine(outputRoot, "extractor.json");
+        if (File.Exists(path))
+        {
+            try
+            {
+                JObject existing = JObject.Parse(File.ReadAllText(path));
+                string? previousMode = existing.Value<string>("mode");
+                if (!string.IsNullOrEmpty(previousMode) &&
+                    !string.Equals(previousMode, modeName, StringComparison.OrdinalIgnoreCase))
+                {
+                    warnings.Add(
+                        $"该输出目录上一次由「{DescribeExtractionMode(previousMode)}」提取，本次改为「{DescribeExtractionMode(modeName)}」并覆盖 ERB 字典；" +
+                        "如需保留旧字典，请先备份输出目录或改用另一个目录。");
+                }
+            }
+            catch (JsonException)
+            {
+                warnings.Add("extractor.json 无法解析，已按本次抽取方式重写该标记。");
+            }
+        }
+
+        var marker = new JObject
+        {
+            ["schema"] = 1,
+            ["mode"] = modeName
+        };
+        File.WriteAllText(path, marker.ToString(Formatting.Indented));
+    }
+
+    private static string DescribeExtractionMode(string mode) => mode.ToLowerInvariant() switch
+    {
+        "lexer" => "新版（仅可见文本）",
+        _ => "旧版"
+    };
 }

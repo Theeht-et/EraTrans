@@ -25,8 +25,7 @@ public sealed class EraTransUserSettingsTests
     {
         EraTransUserSettings settings = EraTransUserSettings.CreateDefault();
 
-        Assert.Equal("utf8-bom", settings.FileEncodingId);
-        Assert.True(settings.ForceFilterVariableNames);
+        Assert.Equal("932", settings.FileEncodingId);
         Assert.True(settings.AutoOpenFolder);
         Assert.True(settings.EnableVariableAutoCorrection);
         Assert.True(settings.HideEnglishText);
@@ -34,6 +33,9 @@ public sealed class EraTransUserSettingsTests
         Assert.True(settings.HideVariableEntries);
         Assert.True(settings.MergeConcatenatedStrings);
         Assert.True(settings.WriteContext);
+        Assert.True(settings.ExtractHtmlTitle);
+        Assert.True(settings.ExtractPrintDataEntries);
+        Assert.True(settings.SkipNonJapaneseEntries);
         Assert.False(settings.EnableErbSemanticGroupingTranslation);
         Assert.Equal(string.Empty, settings.LastGameDirectory);
         Assert.Equal(string.Empty, settings.LastOutputRootDirectory);
@@ -59,7 +61,6 @@ public sealed class EraTransUserSettingsTests
         var store = new EraTransUserSettingsStore(Path.Combine(temporary.Path, "settings.json"));
         var settings = EraTransUserSettings.CreateDefault();
         settings.FileEncodingId = "932";
-        settings.ForceFilterVariableNames = false;
         settings.AutoOpenFolder = false;
         settings.EnableVariableAutoCorrection = false;
         settings.HideEnglishText = false;
@@ -80,7 +81,6 @@ public sealed class EraTransUserSettingsTests
         EraTransUserSettings loaded = store.Load();
 
         Assert.Equal(settings.FileEncodingId, loaded.FileEncodingId);
-        Assert.Equal(settings.ForceFilterVariableNames, loaded.ForceFilterVariableNames);
         Assert.Equal(settings.AutoOpenFolder, loaded.AutoOpenFolder);
         Assert.Equal(settings.EnableVariableAutoCorrection, loaded.EnableVariableAutoCorrection);
         Assert.Equal(settings.HideEnglishText, loaded.HideEnglishText);
@@ -104,13 +104,14 @@ public sealed class EraTransUserSettingsTests
     {
         using var temporary = new TemporaryDirectory();
         string path = Path.Combine(temporary.Path, "settings.json");
-        File.WriteAllText(path, """{"FileEncodingId":"utf8-bom"}""");
+        File.WriteAllText(path, """{"FileEncodingId":"utf8-bom","FileEncodingOverrides":{"ERB/old.erb":"950"}}""");
 
         EraTransUserSettings loaded = new EraTransUserSettingsStore(path).Load();
 
         Assert.Equal(string.Empty, loaded.LastGameDirectory);
         Assert.Equal(string.Empty, loaded.LastOutputRootDirectory);
         Assert.Equal(string.Empty, loaded.LastDictionaryFileRelativePath);
+        Assert.Equal("932", loaded.FileEncodingId);
     }
 
     [Fact]
@@ -130,8 +131,7 @@ public sealed class EraTransUserSettingsTests
     public void ToParserOptions_MapsParserBehaviorAndAdvancedLists()
     {
         EraTransUserSettings settings = EraTransUserSettings.CreateDefault();
-        settings.FileEncodingId = "utf8";
-        settings.ForceFilterVariableNames = false;
+        settings.FileEncodingId = "936";
         settings.HideEnglishText = false;
         settings.MergeDuplicateEntries = true;
         settings.HideVariableEntries = true;
@@ -145,18 +145,35 @@ public sealed class EraTransUserSettingsTests
 
         EraParserOptions options = settings.ToParserOptions();
 
-        Assert.Equal(Encoding.UTF8.CodePage, options.FileEncoding.CodePage);
-        Assert.False(options.ForceFilterVariableNames);
+        Assert.Equal(936, options.FileEncoding.CodePage);
         Assert.False(options.HideEnglishText);
         Assert.True(options.MergeDuplicateEntries);
         Assert.True(options.HideVariableEntries);
         Assert.False(options.MergeConcatenatedStrings);
         Assert.False(options.WriteContext);
         Assert.False(options.EnableVariableAutoCorrection);
+        Assert.True(options.ExtractHtmlTitle);
+        Assert.True(options.ExtractPrintDataEntries);
+        Assert.True(options.SkipNonJapaneseEntries);
         Assert.Equal(new[] { ".erb" }, options.TargetFileExtensions);
         Assert.Equal(new[] { "Base" }, options.AutoReplaceReferenceFiles);
         Assert.Equal(new[] { "※" }, options.VariableNameCharacters);
         Assert.Equal(new[] { "(", ")", "==" }, options.Operators);
+    }
+
+
+    [Theory]
+    [InlineData("utf8-bom")]
+    [InlineData("utf8")]
+    public void Validate_MigratesLegacyUtf8FallbackSettingsToJapaneseCp932(string legacyEncodingId)
+    {
+        EraTransUserSettings settings = EraTransUserSettings.CreateDefault();
+        settings.FileEncodingId = legacyEncodingId;
+
+        EraParserOptions options = settings.ToParserOptions();
+
+        Assert.Equal("932", settings.FileEncodingId);
+        Assert.Equal(932, options.FileEncoding.CodePage);
     }
 
     [Fact]
@@ -169,6 +186,15 @@ public sealed class EraTransUserSettingsTests
         EraTransUserSettings referenceSettings = EraTransUserSettings.CreateDefault();
         referenceSettings.AutoReplaceReferenceFiles = ["../Abl"];
         Assert.Throws<InvalidDataException>(() => referenceSettings.Validate());
+    }
+
+
+    [Fact]
+    public void Defaults_UseShiftJisForOriginalJapaneseEraGames()
+    {
+        EraTransUserSettings settings = EraTransUserSettings.CreateDefault();
+        Assert.Equal("932", settings.FileEncodingId);
+        Assert.Equal(932, settings.ToParserOptions().FileEncoding.CodePage);
     }
 
     [Fact]

@@ -1,4 +1,5 @@
 using EraTrans.Core;
+using EraTrans.Core.WriteBack;
 using System.ComponentModel;
 using System.IO;
 using System.Windows;
@@ -28,6 +29,8 @@ public partial class DictionaryEditorControl : UserControl
     private string? _groupingFallbackReason;
     private Dictionary<string, ErbTranslationGroupEntry>? _groupLinksByKey;
     private Dictionary<string, ErbTranslationGroup>? _groupsById;
+    private SpanCatalog? _spanCatalog;
+    private string? _spanCatalogDirectory;
     private Dictionary<string, DictionaryEditorEntry>? _entriesByKey;
     private readonly AiTranslationLogStore _translationLogStore = new();
     private readonly AiTranslationService _translationService;
@@ -430,6 +433,7 @@ public partial class DictionaryEditorControl : UserControl
             _groupLinksByKey = null;
             _groupsById = null;
 
+            EnsureSpanCatalog();
             string outputRoot = Directory.GetParent(_dictionaryDirectory)?.FullName ?? _dictionaryDirectory;
             string sidecarPath = Path.Combine(
                 outputRoot,
@@ -659,6 +663,44 @@ public partial class DictionaryEditorControl : UserControl
         UpdateDocumentStatus();
     }
 
+    /// <summary>Loads (once per dictionary) the optional span sidecar that records source lines.</summary>
+    private void EnsureSpanCatalog()
+    {
+        if (_spanCatalog is not null &&
+            string.Equals(_spanCatalogDirectory, _dictionaryDirectory, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        _spanCatalogDirectory = _dictionaryDirectory;
+        try
+        {
+            _spanCatalog = SpanCatalog.LoadFromSidecar(_dictionaryDirectory);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _spanCatalog = SpanCatalog.Empty;
+        }
+    }
+
+    /// <summary>Human readable origin of one entry: which line and command produced it.</summary>
+    private string BuildEntrySourceLabel(DictionaryEditorEntry entry)
+    {
+        if (_spanCatalog is null || _currentFile is null || _spanCatalog.FileCount == 0)
+        {
+            return string.Empty;
+        }
+
+        string relativePath = _currentFile.RelativePath;
+        if (!_spanCatalog.TryGetInfo(relativePath, entry.Key, out SpanInfo info))
+        {
+            return string.Empty;
+        }
+
+        string command = info.Command.Length == 0 ? string.Empty : " " + info.Command;
+        return info.Line > 0 ? $"第 {info.Line} 行{command}" : command.Trim();
+    }
+
     private void UpdateContextPreview()
     {
         // CurrentCell tracks the entry the user is actively viewing. SelectedCells can
@@ -672,9 +714,14 @@ public partial class DictionaryEditorControl : UserControl
                 .OfType<DictionaryEditorEntry>()
                 .FirstOrDefault();
 
-        EntryGroupLabelTextBlock.Text = entry is null || string.IsNullOrWhiteSpace(entry.SemanticGroupLabel)
+        string sourceLabel = entry is null ? string.Empty : BuildEntrySourceLabel(entry);
+        EntryGroupLabelTextBlock.Text = entry is null
             ? "同组条目"
-            : $"同组条目 · {entry.SemanticGroupLabel}";
+            : string.IsNullOrWhiteSpace(entry.SemanticGroupLabel)
+                ? sourceLabel.Length == 0 ? "同组条目" : $"同组条目 · {sourceLabel}"
+                : sourceLabel.Length == 0
+                    ? $"同组条目 · {entry.SemanticGroupLabel}"
+                    : $"同组条目 · {entry.SemanticGroupLabel} · {sourceLabel}";
 
         string groupPreview = entry is null ? string.Empty : BuildGroupPreview(entry.Key);
         EntryGroupTextBox.Text = string.IsNullOrWhiteSpace(groupPreview)

@@ -2,6 +2,7 @@ using EraTrans.Core;
 using Newtonsoft.Json.Linq;
 using System.Text;
 using Xunit;
+using EraTrans.Core.WriteBack;
 
 namespace EraTrans.Tests;
 
@@ -409,6 +410,7 @@ public sealed class DictionaryExtractorTests
     }
 
 
+
     [Fact]
     public void Extract_ErbNullableBoundariesPreserveDeclarationAndCompoundAssignmentEntries()
     {
@@ -418,7 +420,7 @@ public sealed class DictionaryExtractorTests
         Write(game, "ERB/nullable-boundaries.erb", string.Join(Environment.NewLine,
         [
             "@関数名,引数名=定義パラメータ",
-            "#DIM 変数名 = 10",
+            "#DIM 变量名 = 10",
             "RESULTS:0 += \"追加テキスト\""
         ]));
 
@@ -440,7 +442,7 @@ public sealed class DictionaryExtractorTests
 
         Assert.Contains("関数名", originals);
         Assert.Contains("引数名", originals);
-        Assert.Contains("変数名", originals);
+        Assert.Contains("变量名", originals);
         Assert.Contains(originals, original =>
             original.Contains("定義パラメータ", StringComparison.Ordinal));
         Assert.Contains(originals, original =>
@@ -487,6 +489,48 @@ public sealed class DictionaryExtractorTests
         Assert.NotEqual(
             GroupFor("控制转移后的文本"),
             GroupFor("标签函数中的文本"));
+    }
+
+    [Fact]
+    public void Extract_CanIgnoreAmbiguousAndInvalidFiles_AndContinueExtractingValidFiles()
+    {
+        System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
+        System.Text.Encoding gbk = System.Text.Encoding.GetEncoding(936);
+
+        string root = CreateTempDirectory();
+        string game = Path.Combine(root, "Game");
+        string output = Path.Combine(root, "Output");
+        Directory.CreateDirectory(Path.Combine(game, "ERB"));
+
+        File.WriteAllBytes(
+            Path.Combine(game, "ERB", "valid.erb"),
+            gbk.GetBytes("@MAIN\r\nPRINTL 你好世界\r\n"));
+        File.WriteAllBytes(
+            Path.Combine(game, "ERB", "ambiguous.erb"),
+            gbk.GetBytes("学习"));
+        File.WriteAllBytes(
+            Path.Combine(game, "ERB", "invalid.erb"),
+            [0xFF, 0xFE, 0x00]);
+
+        var options = new EraParserOptions { FileEncoding = gbk };
+        var extractor = new DictionaryExtractor();
+
+        GameFileEncodingPreflightException error = Assert.Throws<GameFileEncodingPreflightException>(() =>
+            extractor.Extract(game, output, options: options));
+        Assert.Equal(2, error.Issues.Count);
+        Assert.False(Directory.Exists(output));
+
+        DictionaryExtractionResult result = extractor.Extract(
+            game,
+            output,
+            options: options,
+            ignoreEncodingIssueFiles: true);
+
+        Assert.True(File.Exists(Path.Combine(output, "ERB", "valid.json")));
+        Assert.False(File.Exists(Path.Combine(output, "ERB", "ambiguous.json")));
+        Assert.False(File.Exists(Path.Combine(output, "ERB", "invalid.json")));
+        Assert.Contains(result.Warnings, warning => warning.Contains("ERB/ambiguous.erb", StringComparison.Ordinal));
+        Assert.Contains(result.Warnings, warning => warning.Contains("ERB/invalid.erb", StringComparison.Ordinal));
     }
 
     private static List<string> ReadOriginals(string path)

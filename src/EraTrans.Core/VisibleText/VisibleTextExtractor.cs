@@ -10,9 +10,9 @@ namespace EraTrans.Core.VisibleText;
 /// Extracts every visible literal of an entire ERB tree into per-file dictionaries plus the
 /// position sidecars used for write-back.
 /// <para>
-/// Dictionaries go to <c>&lt;dictionaryRoot&gt;/&lt;relative path&gt;.json</c> and sidecars to
-/// <c>&lt;output root&gt;/AI上下文/&lt;relative path&gt;.spans.json</c>, matching
-/// <see cref="SpanCatalog"/>. <c>&lt;output root&gt;</c> is the parent of a
+/// Dictionaries go to <c><dictionaryRoot>/<relative path>.json</c> and sidecars to
+/// <c><output root>/AI上下文/<relative path>.spans.json</c>, matching
+/// <see cref="SpanCatalog"/>. <c><output root></c> is the parent of a
 /// <c>dictionaryRoot</c> whose last segment is <c>字典</c>, otherwise <c>dictionaryRoot</c> itself.
 /// </para>
 /// </summary>
@@ -37,7 +37,9 @@ public sealed class VisibleTextExtractor
         string gameDirectory,
         string dictionaryRoot,
         string sourceSubdirectory,
-        EraParserOptions options)
+        EraParserOptions options,
+        IReadOnlySet<string>? ignoredFilePaths = null,
+        bool ignoreEncodingIssueFiles = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(gameDirectory);
         ArgumentException.ThrowIfNullOrWhiteSpace(dictionaryRoot);
@@ -75,10 +77,45 @@ public sealed class VisibleTextExtractor
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
-        GameFileEncodingValidator.ValidateFiles(files.Concat(macroFiles), options.FileEncoding, gameRoot);
-        IReadOnlyCollection<string> macros = LoadMacros(gameRoot, options.FileEncoding);
+        var ignored = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (ignoredFilePaths is not null)
+        {
+            foreach (string ignoredPath in ignoredFilePaths)
+            {
+                ignored.Add(Path.GetFullPath(ignoredPath));
+            }
+        }
+
+        if (ignored.Count > 0)
+        {
+            files = files.Where(path => !ignored.Contains(Path.GetFullPath(path))).ToArray();
+            macroFiles = macroFiles.Where(path => !ignored.Contains(Path.GetFullPath(path))).ToArray();
+        }
 
         var warnings = new List<string>();
+        IReadOnlyList<GameFileEncodingIssue> encodingIssues =
+            GameFileEncodingValidator.FindFileIssues(files.Concat(macroFiles), options.FileEncoding, gameRoot);
+        if (encodingIssues.Count > 0)
+        {
+            if (!ignoreEncodingIssueFiles)
+            {
+                throw GameFileEncodingValidator.CreatePreflightException(encodingIssues);
+            }
+
+            foreach (GameFileEncodingIssue issue in encodingIssues)
+            {
+                ignored.Add(Path.GetFullPath(issue.FullPath));
+                string macroNote = Path.GetExtension(issue.FullPath).Equals(".erh", StringComparison.OrdinalIgnoreCase)
+                    ? "；该文件为宏定义文件，可能影响依赖它的条件编译"
+                    : string.Empty;
+                warnings.Add($"已忽略编码异常文件（未提取）：{issue.RelativePath}（{issue.KindLabel}）{macroNote}");
+            }
+
+            files = files.Where(path => !ignored.Contains(Path.GetFullPath(path))).ToArray();
+            macroFiles = macroFiles.Where(path => !ignored.Contains(Path.GetFullPath(path))).ToArray();
+        }
+
+        IReadOnlyCollection<string> macros = LoadMacros(gameRoot, options.FileEncoding, ignored);
         var generatedFiles = new List<string>();
         var diagnostics = new VisibleTextDiagnostics();
         int entryCount = 0;
@@ -278,7 +315,10 @@ public sealed class VisibleTextExtractor
     /// Collects <c>#DEFINE</c> names from the game's <c>.erh</c> files. This mirrors the
     /// prototype and Emuera's ERB loader: <c>ERH</c>, <c>erb</c> and <c>ERB</c> at the game root.
     /// </summary>
-    private static IReadOnlyCollection<string> LoadMacros(string gameRoot, Encoding fileEncoding)
+    private static IReadOnlyCollection<string> LoadMacros(
+        string gameRoot,
+        Encoding fileEncoding,
+        IReadOnlySet<string>? ignoredFilePaths = null)
     {
         var macros = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var seenDirectories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -293,6 +333,11 @@ public sealed class VisibleTextExtractor
 
             foreach (string file in Directory.EnumerateFiles(directory, "*.erh", SearchOption.TopDirectoryOnly))
             {
+                if (ignoredFilePaths is not null && ignoredFilePaths.Contains(Path.GetFullPath(file)))
+                {
+                    continue;
+                }
+
                 using var reader = new StringReader(GameFileText.Read(file, fileEncoding).Text);
                 string? rawLine;
                 while ((rawLine = reader.ReadLine()) is not null)
@@ -376,7 +421,9 @@ public sealed class VisibleTextExtractor
         return info;
     }
 
-    /// <summary>Context shown next to a dictionary entry in the translation UI.</summary>
+    /// <summary>
+    /// Context shown next to a dictionary entry in the translation UI.
+    /// </summary>
     private static string BuildContext(VisibleTextEntry entry, List<LineInfo> lineInfo)
     {
         if (entry.Line < 1 || entry.Line > lineInfo.Count)

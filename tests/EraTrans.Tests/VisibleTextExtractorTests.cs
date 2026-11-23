@@ -298,7 +298,7 @@ public sealed class VisibleTextExtractorTests
 
             // The same file is rewritten without translatable text: last round's dictionary (and
             // its span sidecar) would otherwise keep showing entries that no longer exist.
-            File.WriteAllText(source, "@HELLO\n; 显示するものがなくなった\n", new UTF8Encoding(true));
+            File.WriteAllText(source, "@HELLO\n; 表示するものがなくなった\n", new UTF8Encoding(true));
             extractor.Extract(gameDirectory, dictionaryRoot, "ERB", new EraParserOptions());
 
             Assert.False(File.Exists(dictionaryPath));
@@ -340,7 +340,6 @@ public sealed class VisibleTextExtractorTests
             Directory.Delete(root, recursive: true);
         }
     }
-
 
 
     [Fact]

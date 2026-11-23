@@ -362,6 +362,31 @@ public sealed class DictionaryExtractorTests
     }
 
     [Fact]
+    public void Extract_RejectsAmbiguousEncodingBeforeCreatingDictionaryOutput()
+    {
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        string root = CreateTempDirectory();
+        string game = Path.Combine(root, "Game");
+        string output = Path.Combine(root, "Output");
+        string source = Path.Combine(game, "ERB", "ambiguous.erb");
+        Directory.CreateDirectory(Path.GetDirectoryName(source)!);
+        byte[] gbkBytes = Encoding.GetEncoding(936).GetBytes("学习");
+        File.WriteAllBytes(source, gbkBytes);
+
+        InvalidDataException error = Assert.Throws<InvalidDataException>(() =>
+            new DictionaryExtractor().Extract(
+                game,
+                output,
+                options: new EraParserOptions { FileEncoding = Encoding.GetEncoding(936) }));
+
+        Assert.Contains("ERB/ambiguous.erb", error.Message);
+        Assert.Contains("歧义", error.Message);
+        Assert.False(Directory.Exists(output));
+        Assert.Equal(gbkBytes, File.ReadAllBytes(source));
+    }
+
+
+    [Fact]
     public void Extract_UsesConfiguredShiftJisEncoding()
     {
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);

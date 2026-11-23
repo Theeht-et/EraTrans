@@ -309,6 +309,39 @@ public sealed class VisibleTextExtractorTests
     }
 
     [Fact]
+    public void Extract_RejectsAmbiguousEncodingBeforeCreatingVisibleTextDictionaries()
+    {
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        string root = CreateTempRoot();
+        try
+        {
+            string gameDirectory = Path.Combine(root, "game");
+            string source = Path.Combine(gameDirectory, "ERB", "ambiguous.erb");
+            string dictionaryRoot = Path.Combine(root, "out", "字典");
+            Directory.CreateDirectory(Path.GetDirectoryName(source)!);
+            byte[] gbkBytes = Encoding.GetEncoding(936).GetBytes("学习");
+            File.WriteAllBytes(source, gbkBytes);
+
+            InvalidDataException error = Assert.Throws<InvalidDataException>(() =>
+                new VisibleTextExtractor().Extract(
+                    gameDirectory,
+                    dictionaryRoot,
+                    "ERB",
+                    new EraParserOptions { FileEncoding = Encoding.GetEncoding(936) }));
+
+            Assert.Contains("ERB/ambiguous.erb", error.Message);
+            Assert.Contains("歧义", error.Message);
+            Assert.False(Directory.Exists(dictionaryRoot));
+            Assert.Equal(gbkBytes, File.ReadAllBytes(source));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+
+    [Fact]
     public void Extract_RemovesDictionaryWhoseSourceFileIsGone()
     {
         string root = CreateTempRoot();

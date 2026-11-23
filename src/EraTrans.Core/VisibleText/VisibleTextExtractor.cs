@@ -58,13 +58,25 @@ public sealed class VisibleTextExtractor
 
         string dictionaryRootFull = Path.GetFullPath(dictionaryRoot);
         string sidecarRoot = ResolveSidecarRoot(dictionaryRootFull);
-        IReadOnlyCollection<string> macros = LoadMacros(gameRoot);
-
         string[] files = Directory
             .GetFiles(sourceRoot, "*.erb", SearchOption.AllDirectories)
             .OrderBy(path => Path.GetRelativePath(gameRoot, path), StringComparer.OrdinalIgnoreCase)
             .ThenBy(path => Path.GetRelativePath(gameRoot, path), StringComparer.Ordinal)
             .ToArray();
+
+        string[] macroFiles = new[] { "ERH", "erb", "ERB" }
+            .SelectMany(directoryName =>
+            {
+                string directory = Path.Combine(gameRoot, directoryName);
+                return Directory.Exists(directory)
+                    ? Directory.EnumerateFiles(directory, "*.erh", SearchOption.TopDirectoryOnly)
+                    : Enumerable.Empty<string>();
+            })
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        GameFileEncodingValidator.ValidateFiles(files.Concat(macroFiles), options.FileEncoding, gameRoot);
+        IReadOnlyCollection<string> macros = LoadMacros(gameRoot, options.FileEncoding);
 
         var warnings = new List<string>();
         var generatedFiles = new List<string>();
@@ -266,7 +278,7 @@ public sealed class VisibleTextExtractor
     /// Collects <c>#DEFINE</c> names from the game's <c>.erh</c> files. This mirrors the
     /// prototype and Emuera's ERB loader: <c>ERH</c>, <c>erb</c> and <c>ERB</c> at the game root.
     /// </summary>
-    private static IReadOnlyCollection<string> LoadMacros(string gameRoot)
+    private static IReadOnlyCollection<string> LoadMacros(string gameRoot, Encoding fileEncoding)
     {
         var macros = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var seenDirectories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -281,7 +293,9 @@ public sealed class VisibleTextExtractor
 
             foreach (string file in Directory.EnumerateFiles(directory, "*.erh", SearchOption.TopDirectoryOnly))
             {
-                foreach (string rawLine in File.ReadLines(file))
+                using var reader = new StringReader(GameFileText.Read(file, fileEncoding).Text);
+                string? rawLine;
+                while ((rawLine = reader.ReadLine()) is not null)
                 {
                     string? macro = ParseDefine(rawLine);
                     if (macro is not null)

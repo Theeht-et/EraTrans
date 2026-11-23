@@ -49,6 +49,12 @@ public sealed class DictionaryExtractor
             EnsureOutputIsOutsideDirectory(referenceRoot, outputRoot);
         }
 
+        EraParserOptions effectiveOptions = options ?? new EraParserOptions();
+        HashSet<string> textExtensions = GameFileEncodingValidator.CreateTextExtensions(effectiveOptions.TargetFileExtensions);
+        GameFileEncodingValidator.ValidateDirectory(gameRoot, effectiveOptions.FileEncoding, textExtensions);
+        if (referenceRoot is not null && !IsPathContained(gameRoot, referenceRoot))
+            GameFileEncodingValidator.ValidateDirectory(referenceRoot, effectiveOptions.FileEncoding, textExtensions);
+
         Directory.CreateDirectory(outputRoot);
         var warnings = new ConcurrentBag<string>();
         var generatedFiles = new ConcurrentBag<string>();
@@ -57,7 +63,6 @@ public sealed class DictionaryExtractor
 
         lock (LegacyParserRuntime.SyncRoot)
         {
-            EraParserOptions effectiveOptions = options ?? new EraParserOptions();
             LegacyParserRuntime.Initialize(effectiveOptions);
 
             using IDisposable textReaderScope = Configs.UseFileTextReader(path =>

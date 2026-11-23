@@ -64,20 +64,9 @@ public static class GameFileWorkspace
             throw new ArgumentException("The game-copy destination must be a named directory.", nameof(outputDirectory));
         }
 
-        var textExtensions = new HashSet<string>(
-            [".erb", ".erh", ".csv", ".erd", ".res", ".xml"],
-            StringComparer.OrdinalIgnoreCase);
-        if (targetFileExtensions is not null)
-        {
-            foreach (string extension in targetFileExtensions)
-            {
-                if (string.IsNullOrWhiteSpace(extension) || !extension.StartsWith(".", StringComparison.Ordinal))
-                    throw new ArgumentException($"无效的目标文件扩展名：{extension}", nameof(targetFileExtensions));
-                textExtensions.Add(extension);
-            }
-        }
+        HashSet<string> textExtensions = GameFileEncodingValidator.CreateTextExtensions(targetFileExtensions);
         if (fallbackEncoding is not null)
-            PreflightTextFiles(gameRoot, fallbackEncoding, textExtensions);
+            GameFileEncodingValidator.ValidateDirectory(gameRoot, fallbackEncoding, textExtensions);
 
         Directory.CreateDirectory(parentDirectory);
         string stagingDirectory = Path.Combine(
@@ -232,61 +221,6 @@ public static class GameFileWorkspace
                 copiedFiles.Add(Path.GetRelativePath(workspaceRoot, destinationPath));
             }
         }
-    }
-
-    private static void PreflightTextFiles(string sourceRoot, Encoding fallbackEncoding, IReadOnlySet<string> textExtensions)
-    {
-        var errors = new List<string>();
-        var pendingDirectories = new Stack<string>();
-        pendingDirectories.Push(sourceRoot);
-        var enumerationOptions = new EnumerationOptions
-        {
-            AttributesToSkip = 0,
-            IgnoreInaccessible = false,
-            RecurseSubdirectories = false
-        };
-
-        while (pendingDirectories.TryPop(out string? directory))
-        {
-            foreach (string path in Directory.EnumerateFileSystemEntries(directory, "*", enumerationOptions))
-            {
-                FileAttributes attributes = File.GetAttributes(path);
-                if ((attributes & FileAttributes.ReparsePoint) != 0)
-                    throw new IOException($"游戏目录包含符号链接或其他 Reparse Point，出于安全考虑不能继续编码预检：{path}");
-                if ((attributes & FileAttributes.Directory) != 0)
-                {
-                    pendingDirectories.Push(path);
-                    continue;
-                }
-                if (!IsGameTextFile(path, textExtensions))
-                    continue;
-
-                string relativePath = Path.GetRelativePath(sourceRoot, path).Replace('\\', '/');
-                try
-                {
-                    string text = GameFileText.Read(path, fallbackEncoding).Text;
-                    if (text.Contains('\uFFFD'))
-                        throw new InvalidDataException("解码结果包含替换字符。");
-                }
-                catch (InvalidDataException ex)
-                {
-                    errors.Add($"{relativePath}：{ex.Message}");
-                }
-            }
-        }
-
-        if (errors.Count == 0)
-            return;
-        string details = string.Join(
-            Environment.NewLine,
-            errors.OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
-                .ThenBy(value => value, StringComparer.Ordinal)
-                .Take(20)
-                .Select(value => " - " + value));
-        if (errors.Count > 20)
-            details += $"{Environment.NewLine} - 另有 {errors.Count - 20} 个文件存在编码问题。";
-        throw new InvalidDataException(
-            $"文本编码预检失败，未生成游戏副本。以下文件无法安全确定编码：{Environment.NewLine}{details}{Environment.NewLine}请在外部文本编辑器中确认这些文件的编码，并将有歧义或无法解码的文件转换为 UTF-8 BOM 后重试。");
     }
 
     private static bool IsGameTextFile(string path, IReadOnlySet<string> textExtensions) =>

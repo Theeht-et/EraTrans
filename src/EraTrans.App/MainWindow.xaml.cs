@@ -244,7 +244,8 @@ public partial class MainWindow : Window
                 result = await Task.Run(() => extractor.Extract(
                     gameDirectory,
                     dictionaryDirectory,
-                    options: options));
+                    options: options,
+                    ignoreEncodingIssueFiles: false));
             }
             catch (InvalidDataException ex) when (GameFileEncodingPreflightException.TryExtract(ex, out GameFileEncodingPreflightException? preflight))
             {
@@ -328,7 +329,8 @@ public partial class MainWindow : Window
                     gameDirectory,
                     dictionaryDirectory,
                     workingCopyDirectory,
-                    options));
+                    options,
+                    ignoreEncodingIssueFiles: false));
             }
             catch (InvalidDataException ex) when (GameFileEncodingPreflightException.TryExtract(ex, out GameFileEncodingPreflightException? preflight))
             {

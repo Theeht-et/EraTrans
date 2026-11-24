@@ -33,9 +33,20 @@ public sealed class DictionaryEditorService
             .Select(path => new DictionaryEditorFile(
                 path,
                 Path.GetRelativePath(root, path)))
+            .Where(file => !IsNonDictionaryJson(file.RelativePath))
             .OrderBy(file => file.RelativePath, NaturalPathComparer.Instance)
             .ThenBy(file => file.RelativePath, StringComparer.Ordinal)
             .ToArray();
+    }
+
+    private static bool IsNonDictionaryJson(string relativePath)
+    {
+        string normalized = relativePath.Replace('\\', '/');
+        return normalized.Equals("extractor.json", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Equals("visibletext-report.json", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith("AI上下文/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.EndsWith(".spans.json", StringComparison.OrdinalIgnoreCase) ||
+               normalized.EndsWith(".groups.json", StringComparison.OrdinalIgnoreCase);
     }
 
     private sealed class NaturalPathComparer : IComparer<string>

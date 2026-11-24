@@ -226,6 +226,8 @@ public partial class DictionaryEditorControl : UserControl
         _groupingFallbackReason = null;
         _groupLinksByKey = null;
         _groupsById = null;
+        _spanCatalog = null;
+        _spanCatalogDirectory = null;
         _entriesByKey = null;
         EntriesDataGrid.ItemsSource = null;
         EntrySearchTextBox.Text = string.Empty;

@@ -439,11 +439,16 @@ public partial class DictionaryEditorControl : UserControl
             string outputRoot = Directory.GetParent(_dictionaryDirectory)?.FullName ?? _dictionaryDirectory;
             string sidecarPath = Path.Combine(
                 outputRoot,
+                "辅助数据",
+                Path.ChangeExtension(file.RelativePath, ".groups.json"));
+            string legacySidecarPath = Path.Combine(
+                outputRoot,
                 "AI上下文",
                 Path.ChangeExtension(file.RelativePath, ".groups.json"));
             bool shouldLoadGrouping =
                 file.RelativePath.StartsWith("ERB" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
-                File.Exists(sidecarPath);
+                File.Exists(sidecarPath) ||
+                File.Exists(legacySidecarPath);
 
             if (shouldLoadGrouping)
             {

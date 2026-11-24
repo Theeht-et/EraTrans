@@ -9,6 +9,7 @@ using System.Windows.Data;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Shapes;
 
 namespace EraTrans.App;
 
@@ -16,6 +17,15 @@ public partial class DictionaryEditorControl : UserControl
 {
     private const int GroupPreviewMaxLines = 60;
     private const int GroupPreviewMaxLineLength = 240;
+
+    private static readonly SolidColorBrush StatusCompletedBrush = CreateFrozenBrush("#2B8A3E");
+    private static readonly SolidColorBrush StatusInProgressBrush = CreateFrozenBrush("#1971C2");
+    private static readonly SolidColorBrush StatusNotStartedBrush = CreateFrozenBrush("#ADB5BD");
+    private static readonly SolidColorBrush StatusEmptyBrush = CreateFrozenBrush("#CED4DA");
+    private static readonly SolidColorBrush StatusPendingScanBrush = CreateFrozenBrush("#DEE2E6");
+
+    private sealed record FileTreeVisual(Ellipse StatusDot, FrameworkElement HeaderContainer, DictionaryEditorFile File);
+    private sealed record FolderTreeVisual(Ellipse StatusDot, FrameworkElement HeaderContainer, DictionaryFileTreeFolder Folder);
 
     private string _dictionaryDirectory = string.Empty;
     private string _gameDirectory = string.Empty;
@@ -37,6 +47,10 @@ public partial class DictionaryEditorControl : UserControl
     private string? _spanCatalogDirectory;
     private Dictionary<string, DictionaryEditorEntry>? _entriesByKey;
     private IReadOnlyList<DictionaryEditorFile> _allDictionaryFiles = Array.Empty<DictionaryEditorFile>();
+    private readonly Dictionary<string, DictionaryFileProgress> _progressByFullPath = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, FileTreeVisual> _fileTreeVisuals = new(StringComparer.OrdinalIgnoreCase);
+    private readonly List<FolderTreeVisual> _folderTreeVisuals = new();
+    private CancellationTokenSource? _progressScanCancellation;
     private string? _coverageReportPath;
     private readonly AiTranslationLogStore _translationLogStore = new();
     private readonly AiTranslationService _translationService;
@@ -55,11 +69,19 @@ public partial class DictionaryEditorControl : UserControl
 
         InitializeComponent();
         EntryFilterComboBox.SelectedIndex = 0;
+        FileTreeStatusFilterComboBox.SelectedIndex = 0;
         _translationService = new AiTranslationService(logStore: _translationLogStore);
         UpdateProviderStatus();
         SetEmptyState(
             "尚未打开工作区",
             "选择原游戏目录和统一输出目录，然后打开工作区或提取字典。");
+    }
+
+    private static SolidColorBrush CreateFrozenBrush(string hex)
+    {
+        var brush = (SolidColorBrush)new BrushConverter().ConvertFromString(hex)!;
+        brush.Freeze();
+        return brush;
     }
 
     public void UpdateSettings(EraTransUserSettings settings)
@@ -221,6 +243,10 @@ public partial class DictionaryEditorControl : UserControl
 
     private void RefreshDictionaryFiles(string? preferredRelativePath)
     {
+        _progressScanCancellation?.Cancel();
+        _progressScanCancellation?.Dispose();
+        _progressScanCancellation = null;
+
         if (_document is not null)
         {
             _document.PropertyChanged -= Document_PropertyChanged;
@@ -238,15 +264,22 @@ public partial class DictionaryEditorControl : UserControl
         _spanCatalogDirectory = null;
         _entriesByKey = null;
         _allDictionaryFiles = Array.Empty<DictionaryEditorFile>();
+        _progressByFullPath.Clear();
+        _fileTreeVisuals.Clear();
+        _folderTreeVisuals.Clear();
         EntriesDataGrid.ItemsSource = null;
         EntrySearchTextBox.Text = string.Empty;
         FileTreeSearchTextBox.Text = string.Empty;
+        FileTreeStatusFilterComboBox.SelectedIndex = 0;
         EntryFilterComboBox.SelectedIndex = 0;
         EntryGroupTextBox.Text = string.Empty;
         EntryContextTextBox.Text = string.Empty;
         EntryGroupLabelTextBlock.Text = "同组条目";
         ScreenPreviewCheckBox.Visibility = Visibility.Collapsed;
         SelectedFileTextBlock.Text = "请选择左侧字典文件";
+        WorkspaceProgressTextBlock.Text = string.Empty;
+        WorkspaceProgressTextBlock.Visibility = Visibility.Collapsed;
+        ProgressStatsButton.IsEnabled = false;
         UpdateCoverageReportButton();
         UpdateDocumentStatus();
         UpdateTranslationButtons();
@@ -304,6 +337,7 @@ public partial class DictionaryEditorControl : UserControl
 
             _changingFileSelection = false;
             LoadDictionary(selectedFile);
+            _ = ScanWorkspaceProgressAsync(files, _dictionaryDirectory);
         }
         catch (Exception ex)
         {
@@ -316,6 +350,273 @@ public partial class DictionaryEditorControl : UserControl
         {
             _changingFileSelection = false;
         }
+    }
+
+    private async Task ScanWorkspaceProgressAsync(
+        IReadOnlyList<DictionaryEditorFile> files,
+        string expectedDirectory)
+    {
+        _progressScanCancellation?.Cancel();
+        _progressScanCancellation?.Dispose();
+        var cts = new CancellationTokenSource();
+        _progressScanCancellation = cts;
+        CancellationToken token = cts.Token;
+
+        WorkspaceProgressTextBlock.Text = $"正在统计 {files.Count:N0} 个字典文件进度…";
+        WorkspaceProgressTextBlock.Visibility = Visibility.Visible;
+
+        List<DictionaryFileProgress> results;
+        try
+        {
+            results = await Task.Run(() =>
+            {
+                var list = new List<DictionaryFileProgress>(files.Count);
+                foreach (DictionaryEditorFile file in files)
+                {
+                    token.ThrowIfCancellationRequested();
+                    list.Add(DictionaryProgressScanner.ScanFile(file));
+                }
+
+                return list;
+            }, token);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        if (token.IsCancellationRequested || !PathsEqual(_dictionaryDirectory, expectedDirectory))
+        {
+            return;
+        }
+
+        _progressByFullPath.Clear();
+        foreach (DictionaryFileProgress progress in results)
+        {
+            _progressByFullPath[progress.FullPath] = progress;
+        }
+
+        if (_currentFile is not null && _document is not null)
+        {
+            _progressByFullPath[_currentFile.FullPath] =
+                DictionaryProgressScanner.FromDocument(_currentFile, _document);
+        }
+
+        ProgressStatsButton.IsEnabled = _allDictionaryFiles.Count > 0;
+        UpdateWorkspaceProgressSummary();
+
+        if (!string.Equals(SelectedFileTreeStatusTag, "all", StringComparison.Ordinal))
+        {
+            ApplyFileTreeFilters();
+        }
+        else
+        {
+            RefreshTreeProgressIndicators();
+        }
+    }
+
+    private void UpdateCurrentFileProgressFromDocument()
+    {
+        if (_currentFile is null || _document is null)
+        {
+            return;
+        }
+
+        _progressByFullPath[_currentFile.FullPath] =
+            DictionaryProgressScanner.FromDocument(_currentFile, _document);
+
+        if (_progressByFullPath.Count > 0)
+        {
+            ProgressStatsButton.IsEnabled = true;
+            UpdateWorkspaceProgressSummary();
+            RefreshTreeProgressIndicators();
+        }
+    }
+
+    private void UpdateWorkspaceProgressSummary()
+    {
+        if (_allDictionaryFiles.Count == 0 || _progressByFullPath.Count == 0)
+        {
+            WorkspaceProgressTextBlock.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        DictionaryWorkspaceProgress summary = BuildCurrentWorkspaceProgress();
+        WorkspaceProgressTextBlock.Text = summary.TotalActive == 0
+            ? $"文件 {summary.TotalFiles:N0} · 暂无待翻译词条"
+            : $"进度 {summary.TotalTranslated:N0} / {summary.TotalActive:N0}（{summary.CompletionPercent:0.0}%）· 完成 {summary.CompletedFiles:N0} / {summary.TotalFiles:N0} 文件";
+        WorkspaceProgressTextBlock.Visibility = Visibility.Visible;
+    }
+
+    private DictionaryWorkspaceProgress BuildCurrentWorkspaceProgress()
+    {
+        var list = new List<DictionaryFileProgress>(_allDictionaryFiles.Count);
+        foreach (DictionaryEditorFile file in _allDictionaryFiles)
+        {
+            if (_progressByFullPath.TryGetValue(file.FullPath, out DictionaryFileProgress? progress))
+            {
+                list.Add(progress);
+            }
+            else
+            {
+                DictionaryFileProgress scanned = DictionaryProgressScanner.ScanFile(file);
+                _progressByFullPath[file.FullPath] = scanned;
+                list.Add(scanned);
+            }
+        }
+
+        return DictionaryProgressScanner.Aggregate(list);
+    }
+
+    private void RefreshTreeProgressIndicators()
+    {
+        foreach (FileTreeVisual visual in _fileTreeVisuals.Values)
+        {
+            if (_progressByFullPath.TryGetValue(visual.File.FullPath, out DictionaryFileProgress? progress))
+            {
+                visual.StatusDot.Fill = GetStatusBrush(progress.Status);
+                visual.HeaderContainer.ToolTip = FormatFileToolTip(visual.File, progress);
+            }
+            else
+            {
+                visual.StatusDot.Fill = StatusPendingScanBrush;
+                visual.HeaderContainer.ToolTip = visual.File.RelativePath;
+            }
+        }
+
+        foreach (FolderTreeVisual visual in _folderTreeVisuals)
+        {
+            if (_progressByFullPath.Count == 0)
+            {
+                visual.StatusDot.Fill = StatusPendingScanBrush;
+                visual.HeaderContainer.ToolTip = visual.Folder.FullRelativePath;
+                continue;
+            }
+
+            DictionaryFolderProgress folderProgress =
+                DictionaryProgressScanner.AggregateFolder(visual.Folder, _progressByFullPath);
+            visual.StatusDot.Fill = GetStatusBrush(folderProgress.Status);
+            visual.HeaderContainer.ToolTip = FormatFolderToolTip(visual.Folder, folderProgress);
+        }
+    }
+
+    private static SolidColorBrush GetStatusBrush(DictionaryProgressStatus? status) => status switch
+    {
+        DictionaryProgressStatus.Completed => StatusCompletedBrush,
+        DictionaryProgressStatus.InProgress => StatusInProgressBrush,
+        DictionaryProgressStatus.NotStarted => StatusNotStartedBrush,
+        DictionaryProgressStatus.Empty => StatusEmptyBrush,
+        _ => StatusPendingScanBrush
+    };
+
+    private static string FormatFileToolTip(DictionaryEditorFile file, DictionaryFileProgress? progress)
+    {
+        if (progress is null)
+        {
+            return file.RelativePath;
+        }
+
+        if (progress.ReadFailed)
+        {
+            return $"{file.RelativePath}\n状态：读取失败";
+        }
+
+        if (progress.ActiveCount == 0)
+        {
+            return $"{file.RelativePath}\n状态：无需翻译（可编辑 {progress.EditableCount} · 已忽略 {progress.IgnoredCount}）";
+        }
+
+        return $"{file.RelativePath}\n已翻译 {progress.TranslatedCount} / {progress.ActiveCount}（{progress.CompletionPercent:0.0}%）· 待翻 {progress.PendingCount} · {progress.StatusLabel}";
+    }
+
+    private static string FormatFolderToolTip(DictionaryFileTreeFolder folder, DictionaryFolderProgress progress)
+    {
+        if (progress.ActiveCount == 0)
+        {
+            return $"{folder.FullRelativePath}\n文件 {progress.TotalFiles} · 暂无待翻译词条";
+        }
+
+        return $"{folder.FullRelativePath}\n已完成 {progress.CompletedFiles} / {progress.TotalFiles} 文件 · 词条 {progress.TranslatedCount} / {progress.ActiveCount}（{progress.CompletionPercent:0.0}%）";
+    }
+
+    private void ProgressStatsButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_allDictionaryFiles.Count == 0)
+        {
+            return;
+        }
+
+        DictionaryWorkspaceProgress progress = BuildCurrentWorkspaceProgress();
+        var window = new TranslationProgressWindow(_dictionaryDirectory, progress)
+        {
+            Owner = OwnerWindow
+        };
+
+        if (window.ShowDialog() == true &&
+            !string.IsNullOrWhiteSpace(window.SelectedFileRelativePath))
+        {
+            NavigateToDictionaryFile(window.SelectedFileRelativePath);
+        }
+    }
+
+    private void NavigateToDictionaryFile(string relativePath)
+    {
+        DictionaryEditorFile? target = _allDictionaryFiles.FirstOrDefault(file => string.Equals(
+            NormalizeRelativePath(file.RelativePath),
+            NormalizeRelativePath(relativePath),
+            StringComparison.OrdinalIgnoreCase));
+        if (target is null)
+        {
+            return;
+        }
+
+        if (_currentFile is not null && PathsEqual(_currentFile.FullPath, target.FullPath))
+        {
+            if (_fileTreeItems.TryGetValue(target.FullPath, out TreeViewItem? currentNode))
+            {
+                currentNode.IsSelected = true;
+                ExpandParentFolders(currentNode);
+                currentNode.BringIntoView();
+            }
+            return;
+        }
+
+        if (!ResolvePendingDocument("切换字典文件", reloadWhenDiscarded: false))
+        {
+            return;
+        }
+
+        if (!_fileTreeItems.ContainsKey(target.FullPath))
+        {
+            _changingFileSelection = true;
+            try
+            {
+                FileTreeSearchTextBox.Text = string.Empty;
+                FileTreeStatusFilterComboBox.SelectedIndex = 0;
+                BuildDictionaryTree(_allDictionaryFiles, expandAll: false);
+            }
+            finally
+            {
+                _changingFileSelection = false;
+            }
+        }
+
+        _changingFileSelection = true;
+        try
+        {
+            if (_fileTreeItems.TryGetValue(target.FullPath, out TreeViewItem? targetNode))
+            {
+                targetNode.IsSelected = true;
+                ExpandParentFolders(targetNode);
+                targetNode.BringIntoView();
+            }
+        }
+        finally
+        {
+            _changingFileSelection = false;
+        }
+
+        LoadDictionary(target);
     }
 
     private void UpdateCoverageReportButton()
@@ -359,6 +660,9 @@ public partial class DictionaryEditorControl : UserControl
         window.ShowDialog();
     }
 
+    private string SelectedFileTreeStatusTag =>
+        (FileTreeStatusFilterComboBox?.SelectedItem as ComboBoxItem)?.Tag as string ?? "all";
+
     private void FileTreeSearchTextBox_TextChanged(object sender, TextChangedEventArgs e)
     {
         string filter = FileTreeSearchTextBox.Text.Trim();
@@ -374,16 +678,57 @@ public partial class DictionaryEditorControl : UserControl
             return;
         }
 
-        IReadOnlyList<DictionaryEditorFile> visibleFiles = filter.Length == 0
-            ? _allDictionaryFiles
-            : _allDictionaryFiles
-                .Where(file => file.RelativePath.Contains(filter, StringComparison.OrdinalIgnoreCase))
-                .ToArray();
+        ApplyFileTreeFilters();
+    }
+
+    private void FileTreeStatusFilterComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (DictionaryFilesTreeView is null || _allDictionaryFiles.Count == 0)
+        {
+            return;
+        }
+
+        ApplyFileTreeFilters();
+    }
+
+    private void ApplyFileTreeFilters()
+    {
+        string keyword = FileTreeSearchTextBox.Text.Trim();
+        string statusTag = SelectedFileTreeStatusTag;
+
+        IEnumerable<DictionaryEditorFile> query = _allDictionaryFiles;
+        if (keyword.Length > 0)
+        {
+            query = query.Where(file => file.RelativePath.Contains(keyword, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (!string.Equals(statusTag, "all", StringComparison.Ordinal) && _progressByFullPath.Count > 0)
+        {
+            query = query.Where(file =>
+            {
+                if (!_progressByFullPath.TryGetValue(file.FullPath, out DictionaryFileProgress? progress))
+                {
+                    return true;
+                }
+
+                return statusTag switch
+                {
+                    "incomplete" => progress.Status is DictionaryProgressStatus.NotStarted or DictionaryProgressStatus.InProgress,
+                    "not_started" => progress.Status == DictionaryProgressStatus.NotStarted,
+                    "in_progress" => progress.Status == DictionaryProgressStatus.InProgress,
+                    "completed" => progress.Status == DictionaryProgressStatus.Completed,
+                    _ => true
+                };
+            });
+        }
+
+        IReadOnlyList<DictionaryEditorFile> visibleFiles = query.ToArray();
+        bool expandAll = keyword.Length > 0 || !string.Equals(statusTag, "all", StringComparison.Ordinal);
 
         _changingFileSelection = true;
         try
         {
-            BuildDictionaryTree(visibleFiles, expandAll: filter.Length > 0);
+            BuildDictionaryTree(visibleFiles, expandAll);
             if (_currentFile is not null &&
                 _fileTreeItems.TryGetValue(_currentFile.FullPath, out TreeViewItem? currentNode))
             {
@@ -433,17 +778,41 @@ public partial class DictionaryEditorControl : UserControl
         LoadDictionary(selectedFile);
     }
 
-    private static TextBlock CreateTreeHeader(string text, string toolTip, bool useMiddleEllipsis = false)
+    private static (Grid Container, Ellipse StatusDot) CreateTreeHeader(
+        string text,
+        string toolTip,
+        DictionaryProgressStatus? status,
+        bool useMiddleEllipsis = false)
     {
+        var container = new Grid
+        {
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            ToolTip = toolTip
+        };
+        container.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        container.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        var dot = new Ellipse
+        {
+            Width = 6,
+            Height = 6,
+            Margin = new Thickness(0, 0, 5, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            Fill = GetStatusBrush(status)
+        };
+        Grid.SetColumn(dot, 0);
+        container.Children.Add(dot);
+
         var textBlock = new TextBlock
         {
             Text = text,
             TextTrimming = useMiddleEllipsis ? TextTrimming.None : TextTrimming.CharacterEllipsis,
             TextWrapping = TextWrapping.NoWrap,
             HorizontalAlignment = HorizontalAlignment.Stretch,
-            VerticalAlignment = VerticalAlignment.Center,
-            ToolTip = toolTip
+            VerticalAlignment = VerticalAlignment.Center
         };
+        Grid.SetColumn(textBlock, 1);
+        container.Children.Add(textBlock);
 
         if (useMiddleEllipsis)
         {
@@ -490,13 +859,15 @@ public partial class DictionaryEditorControl : UserControl
             };
         }
 
-        return textBlock;
+        return (container, dot);
     }
 
     private void BuildDictionaryTree(IReadOnlyList<DictionaryEditorFile> files, bool expandAll)
     {
         DictionaryFilesTreeView.Items.Clear();
         _fileTreeItems.Clear();
+        _fileTreeVisuals.Clear();
+        _folderTreeVisuals.Clear();
 
         DictionaryFileTreeFolder root = DictionaryFileTreeBuilder.Build(files);
         PopulateTreeItems(DictionaryFilesTreeView.Items, root, expandAll);
@@ -511,13 +882,28 @@ public partial class DictionaryEditorControl : UserControl
         // chains compacted into one node by DictionaryFileTreeBuilder.
         foreach (DictionaryFileTreeFolder subFolder in folder.Folders)
         {
+            DictionaryProgressStatus? folderStatus = null;
+            string folderToolTip = subFolder.FullRelativePath;
+            if (_progressByFullPath.Count > 0)
+            {
+                DictionaryFolderProgress folderProgress =
+                    DictionaryProgressScanner.AggregateFolder(subFolder, _progressByFullPath);
+                folderStatus = folderProgress.Status;
+                folderToolTip = FormatFolderToolTip(subFolder, folderProgress);
+            }
+
+            (Grid header, Ellipse dot) = CreateTreeHeader(
+                subFolder.DisplayName,
+                folderToolTip,
+                folderStatus);
             var folderNode = new TreeViewItem
             {
-                Header = CreateTreeHeader(subFolder.DisplayName, subFolder.FullRelativePath),
+                Header = header,
                 IsExpanded = expandAll,
                 FontWeight = FontWeights.SemiBold
             };
             targetItems.Add(folderNode);
+            _folderTreeVisuals.Add(new FolderTreeVisual(dot, header, subFolder));
             PopulateTreeItems(folderNode.Items, subFolder, expandAll);
         }
 
@@ -525,13 +911,20 @@ public partial class DictionaryEditorControl : UserControl
         {
             string fileName = Path.GetFileName(
                 file.RelativePath.Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar));
+            _progressByFullPath.TryGetValue(file.FullPath, out DictionaryFileProgress? fileProgress);
+            (Grid header, Ellipse dot) = CreateTreeHeader(
+                fileName,
+                FormatFileToolTip(file, fileProgress),
+                fileProgress?.Status,
+                useMiddleEllipsis: true);
             var fileNode = new TreeViewItem
             {
-                Header = CreateTreeHeader(fileName, file.RelativePath, useMiddleEllipsis: true),
+                Header = header,
                 Tag = file
             };
             targetItems.Add(fileNode);
             _fileTreeItems[file.FullPath] = fileNode;
+            _fileTreeVisuals[file.FullPath] = new FileTreeVisual(dot, header, file);
         }
     }
 
@@ -621,6 +1014,7 @@ public partial class DictionaryEditorControl : UserControl
                 ? "字典已加载。"
                 : $"字典已加载；分组文件不可用：{_groupingFallbackReason}";
             UpdateDocumentStatus();
+            UpdateCurrentFileProgressFromDocument();
             UpdateTranslationButtons();
             EmptyStateBorder.Visibility = Visibility.Collapsed;
             CurrentFileChanged?.Invoke(file.RelativePath);
@@ -1049,6 +1443,10 @@ public partial class DictionaryEditorControl : UserControl
     private void Document_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         UpdateDocumentStatus();
+        if (e.PropertyName == nameof(DictionaryEditorDocument.SummaryText))
+        {
+            UpdateCurrentFileProgressFromDocument();
+        }
     }
 
     private void UpdateDocumentStatus()
@@ -1111,6 +1509,7 @@ public partial class DictionaryEditorControl : UserControl
             _document.Save();
             StatusTextBlock.Text = "保存成功。原始字段和其他 JSON 字段均已保留。";
             UpdateDocumentStatus();
+            UpdateCurrentFileProgressFromDocument();
             return true;
         }
         catch (Exception ex)
@@ -1217,8 +1616,10 @@ public partial class DictionaryEditorControl : UserControl
     {
         DictionaryFilesTreeView.IsEnabled = enabled;
         FileTreeSearchTextBox.IsEnabled = enabled;
+        FileTreeStatusFilterComboBox.IsEnabled = enabled;
         EntriesDataGrid.IsEnabled = enabled;
         AiSettingsButton.IsEnabled = enabled;
+        ProgressStatsButton.IsEnabled = enabled && _allDictionaryFiles.Count > 0;
         TranslateSelectedButton.IsEnabled = enabled && _document is not null;
         TranslatePendingButton.IsEnabled = enabled && _document is not null;
         CancelTranslationButton.IsEnabled = !enabled;

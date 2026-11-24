@@ -1,0 +1,229 @@
+<Window x:Class="EraTrans.App.TranslationProgressWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="工作区翻译进度统计"
+        Width="880"
+        Height="620"
+        MinWidth="680"
+        MinHeight="460"
+        ResizeMode="CanResize"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        Background="#F5F6F8">
+    <Grid Margin="18">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Margin="0,0,0,12">
+            <TextBlock Text="工作区翻译进度统计"
+                       FontSize="19"
+                       FontWeight="SemiBold"
+                       Foreground="#20242A" />
+            <TextBlock x:Name="WorkspacePathTextBlock"
+                       Margin="0,4,0,0"
+                       FontSize="11"
+                       Foreground="#87909B"
+                       TextWrapping="Wrap" />
+        </StackPanel>
+
+        <Border Grid.Row="1"
+                Padding="12"
+                Margin="0,0,0,12"
+                Background="White"
+                BorderBrush="#E3E6EA"
+                BorderThickness="1"
+                CornerRadius="6">
+            <StackPanel>
+                <DockPanel Margin="0,0,0,8">
+                    <TextBlock x:Name="OverallPercentTextBlock"
+                               DockPanel.Dock="Right"
+                               FontSize="15"
+                               FontWeight="SemiBold"
+                               Foreground="#2B8A3E"
+                               VerticalAlignment="Center" />
+                    <TextBlock x:Name="EntrySummaryTextBlock"
+                               FontSize="13"
+                               FontWeight="SemiBold"
+                               Foreground="#20242A"
+                               VerticalAlignment="Center"
+                               TextWrapping="Wrap" />
+                </DockPanel>
+                <ProgressBar x:Name="OverallProgressBar"
+                             Height="10"
+                             Minimum="0"
+                             Maximum="100"
+                             Foreground="#2B8A3E"
+                             Background="#E9ECEF"
+                             BorderThickness="0" />
+                <TextBlock x:Name="FileSummaryTextBlock"
+                           Margin="0,8,0,0"
+                           FontSize="12"
+                           Foreground="#59636F"
+                           TextWrapping="Wrap" />
+            </StackPanel>
+        </Border>
+
+        <Grid Grid.Row="2" Margin="0,0,0,10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="136" />
+            </Grid.ColumnDefinitions>
+            <Grid>
+                <TextBox x:Name="SearchTextBox"
+                         Height="30"
+                         VerticalContentAlignment="Center"
+                         Padding="8,0"
+                         FontSize="12"
+                         TextChanged="SearchTextBox_TextChanged" />
+                <TextBlock x:Name="SearchPlaceholder"
+                           Text="按文件路径搜索…"
+                           Margin="10,0,0,0"
+                           VerticalAlignment="Center"
+                           FontSize="12"
+                           Foreground="#9AA3AE"
+                           IsHitTestVisible="False" />
+            </Grid>
+            <ComboBox x:Name="StatusFilterComboBox"
+                      Grid.Column="1"
+                      Height="30"
+                      Margin="8,0,0,0"
+                      VerticalContentAlignment="Center"
+                      FontSize="12"
+                      SelectionChanged="StatusFilterComboBox_SelectionChanged">
+                <ComboBoxItem Content="全部文件" Tag="all" />
+                <ComboBoxItem Content="未完成" Tag="incomplete" />
+                <ComboBoxItem Content="未翻译" Tag="not_started" />
+                <ComboBoxItem Content="翻译中" Tag="in_progress" />
+                <ComboBoxItem Content="已完成" Tag="completed" />
+                <ComboBoxItem Content="无需翻译" Tag="empty" />
+            </ComboBox>
+        </Grid>
+
+        <Border Grid.Row="3"
+                Padding="1"
+                Background="White"
+                BorderBrush="#E3E6EA"
+                BorderThickness="1"
+                CornerRadius="6">
+            <DataGrid x:Name="FilesDataGrid"
+                      AutoGenerateColumns="False"
+                      IsReadOnly="True"
+                      CanUserAddRows="False"
+                      CanUserDeleteRows="False"
+                      CanUserSortColumns="True"
+                      HeadersVisibility="Column"
+                      GridLinesVisibility="Horizontal"
+                      RowHeaderWidth="0"
+                      SelectionMode="Single"
+                      SelectionUnit="FullRow"
+                      BorderThickness="0"
+                      MouseDoubleClick="FilesDataGrid_MouseDoubleClick"
+                      SelectionChanged="FilesDataGrid_SelectionChanged">
+                <DataGrid.ColumnHeaderStyle>
+                    <Style TargetType="{x:Type DataGridColumnHeader}">
+                        <Setter Property="HorizontalContentAlignment" Value="Center" />
+                    </Style>
+                </DataGrid.ColumnHeaderStyle>
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="字典文件" Binding="{Binding RelativePath}" Width="*" />
+                    <DataGridTextColumn Header="待翻" Binding="{Binding PendingCount}" Width="64">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="{x:Type TextBlock}">
+                                <Setter Property="HorizontalAlignment" Value="Center" />
+                                <Setter Property="VerticalAlignment" Value="Center" />
+                            </Style>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
+                    <DataGridTextColumn Header="已翻" Binding="{Binding TranslatedCount}" Width="64">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="{x:Type TextBlock}">
+                                <Setter Property="HorizontalAlignment" Value="Center" />
+                                <Setter Property="VerticalAlignment" Value="Center" />
+                            </Style>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
+                    <DataGridTextColumn Header="可编辑" Binding="{Binding EditableCount}" Width="68">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="{x:Type TextBlock}">
+                                <Setter Property="HorizontalAlignment" Value="Center" />
+                                <Setter Property="VerticalAlignment" Value="Center" />
+                            </Style>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
+                    <DataGridTextColumn Header="忽略" Binding="{Binding IgnoredCount}" Width="56">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="{x:Type TextBlock}">
+                                <Setter Property="HorizontalAlignment" Value="Center" />
+                                <Setter Property="VerticalAlignment" Value="Center" />
+                            </Style>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
+                    <DataGridTextColumn Header="完成度"
+                                        Binding="{Binding CompletionText}"
+                                        SortMemberPath="CompletionPercent"
+                                        Width="72">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="{x:Type TextBlock}">
+                                <Setter Property="HorizontalAlignment" Value="Center" />
+                                <Setter Property="VerticalAlignment" Value="Center" />
+                            </Style>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
+                    <DataGridTemplateColumn Header="状态" Width="74" SortMemberPath="Status">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding StatusLabel}"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           FontWeight="SemiBold">
+                                    <TextBlock.Style>
+                                        <Style TargetType="{x:Type TextBlock}">
+                                            <Setter Property="Foreground" Value="#68717D" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Status}" Value="Completed">
+                                                    <Setter Property="Foreground" Value="#2B8A3E" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Status}" Value="InProgress">
+                                                    <Setter Property="Foreground" Value="#1971C2" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Status}" Value="Empty">
+                                                    <Setter Property="Foreground" Value="#9AA3AE" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                </DataGrid.Columns>
+            </DataGrid>
+        </Border>
+
+        <DockPanel Grid.Row="4" Margin="0,12,0,0">
+            <TextBlock DockPanel.Dock="Left"
+                       Text="提示：点击表头可按待翻数或完成度排序；双击任意文件行可直接跳转编辑。"
+                       VerticalAlignment="Center"
+                       FontSize="12"
+                       Foreground="#68717D" />
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="OpenSelectedButton"
+                        Content="跳转到选中文件"
+                        Width="120"
+                        Height="34"
+                        Margin="0,0,8,0"
+                        IsEnabled="False"
+                        Click="OpenSelectedButton_Click" />
+                <Button Content="关闭"
+                        Width="84"
+                        Height="34"
+                        IsCancel="True" />
+            </StackPanel>
+        </DockPanel>
+    </Grid>
+</Window>

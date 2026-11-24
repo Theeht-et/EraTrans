@@ -31,21 +31,48 @@
                                    FontSize="11"
                                    Foreground="#87909B"
                                    TextWrapping="Wrap" />
+                        <TextBlock x:Name="WorkspaceProgressTextBlock"
+                                   Margin="0,4,0,0"
+                                   FontSize="11"
+                                   FontWeight="SemiBold"
+                                   Foreground="#39414A"
+                                   TextWrapping="Wrap"
+                                   Visibility="Collapsed" />
                         <Grid Margin="0,8,0,0">
-                            <TextBox x:Name="FileTreeSearchTextBox"
-                                     Height="28"
-                                     VerticalContentAlignment="Center"
-                                     Padding="6,0"
-                                     FontSize="12"
-                                     ToolTip="输入文件名或路径关键词筛选左侧字典树"
-                                     TextChanged="FileTreeSearchTextBox_TextChanged" />
-                            <TextBlock x:Name="FileTreeSearchPlaceholder"
-                                       Text="筛选字典文件…"
-                                       Margin="8,0,0,0"
-                                       VerticalAlignment="Center"
-                                       FontSize="12"
-                                       Foreground="#9AA3AE"
-                                       IsHitTestVisible="False" />
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="74" />
+                            </Grid.ColumnDefinitions>
+                            <Grid>
+                                <TextBox x:Name="FileTreeSearchTextBox"
+                                         Height="28"
+                                         VerticalContentAlignment="Center"
+                                         Padding="6,0"
+                                         FontSize="12"
+                                         ToolTip="输入文件名或路径关键词筛选左侧字典树"
+                                         TextChanged="FileTreeSearchTextBox_TextChanged" />
+                                <TextBlock x:Name="FileTreeSearchPlaceholder"
+                                           Text="筛选字典文件…"
+                                           Margin="8,0,0,0"
+                                           VerticalAlignment="Center"
+                                           FontSize="12"
+                                           Foreground="#9AA3AE"
+                                           IsHitTestVisible="False" />
+                            </Grid>
+                            <ComboBox x:Name="FileTreeStatusFilterComboBox"
+                                      Grid.Column="1"
+                                      Height="28"
+                                      Margin="6,0,0,0"
+                                      VerticalContentAlignment="Center"
+                                      FontSize="11"
+                                      ToolTip="按文件翻译进度筛选左侧字典树"
+                                      SelectionChanged="FileTreeStatusFilterComboBox_SelectionChanged">
+                                <ComboBoxItem Content="全部" Tag="all" />
+                                <ComboBoxItem Content="未完成" Tag="incomplete" />
+                                <ComboBoxItem Content="未翻译" Tag="not_started" />
+                                <ComboBoxItem Content="翻译中" Tag="in_progress" />
+                                <ComboBoxItem Content="已完成" Tag="completed" />
+                            </ComboBox>
                         </Grid>
                     </StackPanel>
                     <TreeView x:Name="DictionaryFilesTreeView"
@@ -285,42 +312,50 @@
                         <StackPanel Orientation="Horizontal">
                             <Button x:Name="AiSettingsButton"
                                     Content="AI 服务设置"
-                                    Width="104"
+                                    Width="100"
                                     Height="32"
-                                    Margin="0,0,8,0"
+                                    Margin="0,0,6,0"
                                     Click="AiSettingsButton_Click" />
                             <Button x:Name="AiLogsButton"
                                     Content="AI 翻译记录"
-                                    Width="104"
+                                    Width="100"
                                     Height="32"
-                                    Margin="0,0,8,0"
+                                    Margin="0,0,6,0"
                                     Click="AiLogsButton_Click"
                                     ToolTip="查看每次 AI 请求、原始回复和错误详情" />
                             <Button x:Name="TranslateSelectedButton"
                                     Content="翻译选中"
-                                    Width="92"
+                                    Width="84"
                                     Height="32"
-                                    Margin="0,0,8,0"
+                                    Margin="0,0,6,0"
                                     IsEnabled="False"
                                     Click="TranslateSelectedButton_Click" />
                             <Button x:Name="TranslatePendingButton"
                                     Content="批量翻译未翻译项"
-                                    Width="142"
+                                    Width="132"
                                     Height="32"
-                                    Margin="0,0,8,0"
+                                    Margin="0,0,6,0"
                                     IsEnabled="False"
                                     Click="TranslatePendingButton_Click" />
                             <Button x:Name="CancelTranslationButton"
                                     Content="取消翻译"
-                                    Width="86"
+                                    Width="80"
                                     Height="32"
                                     IsEnabled="False"
                                     Click="CancelTranslationButton_Click" />
+                            <Button x:Name="ProgressStatsButton"
+                                    Content="翻译统计"
+                                    Width="80"
+                                    Height="32"
+                                    Margin="6,0,0,0"
+                                    IsEnabled="False"
+                                    Click="ProgressStatsButton_Click"
+                                    ToolTip="查看当前工作区各文件的翻译进度统计，双击文件行可快速跳转" />
                             <Button x:Name="CoverageReportButton"
                                     Content="提取自检"
-                                    Width="86"
+                                    Width="80"
                                     Height="32"
-                                    Margin="8,0,0,0"
+                                    Margin="6,0,0,0"
                                     Visibility="Collapsed"
                                     Click="CoverageReportButton_Click"
                                     ToolTip="查看新版可见文本提取的覆盖率自检报告（visibletext-report.json）" />
@@ -347,26 +382,38 @@
                                   ScrollViewer.VerticalScrollBarVisibility="Auto"
                                   SelectionChanged="EntriesDataGrid_SelectionChanged"
                                   CurrentCellChanged="EntriesDataGrid_CurrentCellChanged">
+                            <DataGrid.ColumnHeaderStyle>
+                                <Style TargetType="{x:Type DataGridColumnHeader}">
+                                    <Setter Property="HorizontalContentAlignment" Value="Center" />
+                                </Style>
+                            </DataGrid.ColumnHeaderStyle>
                             <DataGrid.Columns>
-                                <DataGridTemplateColumn Header="编号" Width="72" IsReadOnly="True">
+                                <DataGridTemplateColumn Header="编号" Width="56" IsReadOnly="True">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
                                             <TextBlock Text="{Binding DisplayKey}"
                                                        ToolTip="{Binding Key}"
                                                        HorizontalAlignment="Center"
                                                        VerticalAlignment="Center"
-                                                       Padding="4,2" />
+                                                       Padding="2,2" />
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
                                 </DataGridTemplateColumn>
                                 <DataGridTextColumn Header="屏 / 分组"
                                                     Binding="{Binding SemanticGroupLabel}"
                                                     IsReadOnly="True"
-                                                    Width="128" />
+                                                    Width="112" />
                                 <DataGridTextColumn Header="类型"
                                                     Binding="{Binding EntryTypeLabel}"
                                                     IsReadOnly="True"
-                                                    Width="68" />
+                                                    Width="56">
+                                    <DataGridTextColumn.ElementStyle>
+                                        <Style TargetType="{x:Type TextBlock}">
+                                            <Setter Property="HorizontalAlignment" Value="Center" />
+                                            <Setter Property="VerticalAlignment" Value="Center" />
+                                        </Style>
+                                    </DataGridTextColumn.ElementStyle>
+                                </DataGridTextColumn>
                                 <DataGridTextColumn Header="原文"
                                                     Binding="{Binding Original}"
                                                     IsReadOnly="True"
@@ -406,11 +453,12 @@
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellEditingTemplate>
                                 </DataGridTemplateColumn>
-                                <DataGridTemplateColumn Header="翻译状态" Width="130">
+                                <DataGridTemplateColumn Header="翻译状态" Width="76">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
                                             <TextBlock Text="{Binding StageDescription}"
-                                                       Padding="5,4"
+                                                       Padding="4,4"
+                                                       HorizontalAlignment="Center"
                                                        VerticalAlignment="Center" />
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
@@ -421,18 +469,18 @@
                                                       SelectedValuePath="Value"
                                                       SelectedValue="{Binding Stage, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                       IsEnabled="{Binding IsEditable}"
-                                                      MinWidth="116"
-                                                      Padding="4" />
+                                                      HorizontalAlignment="Stretch"
+                                                      Padding="2,2" />
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellEditingTemplate>
                                 </DataGridTemplateColumn>
-                                <DataGridTemplateColumn Header="操作" Width="72" IsReadOnly="True">
+                                <DataGridTemplateColumn Header="操作" Width="62" IsReadOnly="True">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
                                             <Button Content="编辑"
                                                     Height="28"
-                                                    Padding="10,0"
-                                                    Margin="4,2"
+                                                    Padding="6,0"
+                                                    Margin="3,2"
                                                     IsEnabled="{Binding IsEditable}"
                                                     Click="EditTranslationButton_Click"
                                                     ToolTip="打开完整译文编辑窗口" />

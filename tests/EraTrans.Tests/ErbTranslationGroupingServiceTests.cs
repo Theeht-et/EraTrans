@@ -41,7 +41,7 @@ public sealed class ErbTranslationGroupingServiceTests
 
         Assert.True(File.Exists(sidecarPath));
         Assert.Equal(
-            Path.Combine(output, "AI上下文", "ERB", "sample.groups.json"),
+            Path.Combine(output, "辅助数据", "ERB", "sample.groups.json"),
             sidecarPath);
 
         DictionaryEditorDocument document = new DictionaryEditorService().Load(dictionaryPath);

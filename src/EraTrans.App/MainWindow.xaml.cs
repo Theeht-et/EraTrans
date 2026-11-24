@@ -108,7 +108,7 @@ public partial class MainWindow : Window
 
         try
         {
-            layout = EraTransOutputLayout.Create(outputRoot, gameDirectory);
+            layout = EraTransOutputLayout.Create(outputRoot, gameDirectory, _settings.ToParserOptions().ExtractionMode);
             return true;
         }
         catch (Exception ex)
@@ -142,7 +142,8 @@ public partial class MainWindow : Window
         _settings.LastGameDirectory = layout.GameDirectory;
         _settings.LastOutputRootDirectory = layout.OutputRoot;
         SaveWorkspacePreferences();
-        StatusText.Text = $"当前工作区：{layout.GameDirectoryName} · 字典目录：{layout.DictionaryDirectory}";
+        string versionTag = EraTransOutputLayout.GetVersionFolderName(_settings.ToParserOptions().ExtractionMode);
+        StatusText.Text = $"当前工作区：{layout.GameDirectoryName}（{versionTag}）· 字典目录：{layout.DictionaryDirectory}";
         return true;
     }
 
@@ -190,7 +191,16 @@ public partial class MainWindow : Window
             _settings = _settingsStore.Load();
             _canPersistSettings = true;
             _editor.UpdateSettings(_settings);
-            StatusText.Text = "解析与输出设置已保存；下一次提取或应用译文时生效。";
+            if (_activeLayout is not null &&
+                TryGetGameOutputLayout(out EraTransOutputLayout updatedLayout, showErrors: false) &&
+                !PathsEqual(_activeLayout.DictionaryDirectory, updatedLayout.DictionaryDirectory))
+            {
+                ActivateWorkspace(updatedLayout);
+            }
+            else
+            {
+                StatusText.Text = "解析与输出设置已保存；下一次提取或应用译文时生效。";
+            }
         }
     }
 

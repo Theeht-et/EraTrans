@@ -7,6 +7,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Data;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using Ellipse = System.Windows.Shapes.Ellipse;
@@ -76,6 +77,8 @@ public partial class DictionaryEditorControl : UserControl
             "尚未打开工作区",
             "选择原游戏目录和统一输出目录，然后打开工作区或提取字典。");
     }
+
+    public void OpenAiSettings() => AiSettingsButton_Click(this, new RoutedEventArgs());
 
     private static SolidColorBrush CreateFrozenBrush(string hex)
     {
@@ -241,6 +244,15 @@ public partial class DictionaryEditorControl : UserControl
         EmptyStateBorder.Visibility = Visibility.Visible;
     }
 
+    private void ToolsMenuButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (ToolsContextMenu is null)
+            return;
+        ToolsContextMenu.PlacementTarget = ToolsMenuButton;
+        ToolsContextMenu.Placement = PlacementMode.Bottom;
+        ToolsContextMenu.IsOpen = true;
+    }
+
     private void RefreshDictionaryFiles(string? preferredRelativePath)
     {
         _progressScanCancellation?.Cancel();
@@ -279,7 +291,7 @@ public partial class DictionaryEditorControl : UserControl
         SelectedFileTextBlock.Text = "请选择左侧字典文件";
         WorkspaceProgressTextBlock.Text = string.Empty;
         WorkspaceProgressTextBlock.Visibility = Visibility.Collapsed;
-        ProgressStatsButton.IsEnabled = false;
+        ProgressStatsMenuItem.IsEnabled = false;
         UpdateCoverageReportButton();
         UpdateDocumentStatus();
         UpdateTranslationButtons();
@@ -402,7 +414,7 @@ public partial class DictionaryEditorControl : UserControl
                 DictionaryProgressScanner.FromDocument(_currentFile, _document);
         }
 
-        ProgressStatsButton.IsEnabled = _allDictionaryFiles.Count > 0;
+        ProgressStatsMenuItem.IsEnabled = _allDictionaryFiles.Count > 0 && !_isTranslating;
         UpdateWorkspaceProgressSummary();
 
         if (!string.Equals(SelectedFileTreeStatusTag, "all", StringComparison.Ordinal))
@@ -427,7 +439,7 @@ public partial class DictionaryEditorControl : UserControl
 
         if (_progressByFullPath.Count > 0)
         {
-            ProgressStatsButton.IsEnabled = true;
+            ProgressStatsMenuItem.IsEnabled = !_isTranslating;
             UpdateWorkspaceProgressSummary();
             RefreshTreeProgressIndicators();
         }
@@ -643,7 +655,7 @@ public partial class DictionaryEditorControl : UserControl
             }
         }
 
-        CoverageReportButton.Visibility = _coverageReportPath is null
+        CoverageReportMenuItem.Visibility = _coverageReportPath is null
             ? Visibility.Collapsed
             : Visibility.Visible;
     }
@@ -1011,7 +1023,7 @@ public partial class DictionaryEditorControl : UserControl
                 EntryGroupLabelTextBlock.Text = "同组条目";
             }
             StatusTextBlock.Text = string.IsNullOrWhiteSpace(_groupingFallbackReason)
-                ? "字典已加载。"
+                ? "字典已加载（右键词条或按 Ctrl+E 可打开完整译文编辑窗口）。"
                 : $"字典已加载；分组文件不可用：{_groupingFallbackReason}";
             UpdateDocumentStatus();
             UpdateCurrentFileProgressFromDocument();
@@ -1322,11 +1334,26 @@ public partial class DictionaryEditorControl : UserControl
         UpdateContextPreview();
     }
 
-    private void EditTranslationButton_Click(object sender, RoutedEventArgs e)
+    private DictionaryEditorEntry? GetActiveEntry() =>
+        EntriesDataGrid.CurrentCell.Item as DictionaryEditorEntry ??
+        EntriesDataGrid.SelectedItem as DictionaryEditorEntry ??
+        EntriesDataGrid.SelectedCells
+            .Select(cell => cell.Item)
+            .OfType<DictionaryEditorEntry>()
+            .FirstOrDefault();
+
+    private void EditSelectedTranslationMenuItem_Click(object sender, RoutedEventArgs e)
     {
-        if (_isTranslating ||
-            sender is not FrameworkElement { DataContext: DictionaryEditorEntry entry } ||
-            !entry.IsEditable)
+        DictionaryEditorEntry? entry = GetActiveEntry();
+        if (entry is not null)
+        {
+            OpenTranslationEditDialog(entry);
+        }
+    }
+
+    private void OpenTranslationEditDialog(DictionaryEditorEntry entry)
+    {
+        if (_isTranslating || !entry.IsEditable)
         {
             return;
         }
@@ -1407,13 +1434,7 @@ public partial class DictionaryEditorControl : UserControl
         // CurrentCell tracks the entry the user is actively viewing. SelectedCells can
         // contain cells from a previous multi-selection, so preferring its first item
         // can leave the preview showing stale or empty context after navigation.
-        DictionaryEditorEntry? entry =
-            EntriesDataGrid.CurrentCell.Item as DictionaryEditorEntry ??
-            EntriesDataGrid.SelectedItem as DictionaryEditorEntry ??
-            EntriesDataGrid.SelectedCells
-                .Select(cell => cell.Item)
-                .OfType<DictionaryEditorEntry>()
-                .FirstOrDefault();
+        DictionaryEditorEntry? entry = GetActiveEntry();
 
         bool wholeScreen = ScreenPreviewCheckBox.Visibility == Visibility.Visible &&
                            ScreenPreviewCheckBox.IsChecked == true;
@@ -1470,10 +1491,12 @@ public partial class DictionaryEditorControl : UserControl
     private void UpdateTranslationButtons()
     {
         bool hasDocument = _document is not null;
-        AiSettingsButton.IsEnabled = !_isTranslating;
+        AiSettingsMenuItem.IsEnabled = !_isTranslating;
+        ProgressStatsMenuItem.IsEnabled = !_isTranslating && _allDictionaryFiles.Count > 0;
         TranslateSelectedButton.IsEnabled = hasDocument && !_isTranslating;
         TranslatePendingButton.IsEnabled = hasDocument && !_isTranslating;
         CancelTranslationButton.IsEnabled = _isTranslating;
+        CancelTranslationButton.Visibility = _isTranslating ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void UpdateProviderStatus()
@@ -1618,11 +1641,12 @@ public partial class DictionaryEditorControl : UserControl
         FileTreeSearchTextBox.IsEnabled = enabled;
         FileTreeStatusFilterComboBox.IsEnabled = enabled;
         EntriesDataGrid.IsEnabled = enabled;
-        AiSettingsButton.IsEnabled = enabled;
-        ProgressStatsButton.IsEnabled = enabled && _allDictionaryFiles.Count > 0;
+        AiSettingsMenuItem.IsEnabled = enabled;
+        ProgressStatsMenuItem.IsEnabled = enabled && _allDictionaryFiles.Count > 0;
         TranslateSelectedButton.IsEnabled = enabled && _document is not null;
         TranslatePendingButton.IsEnabled = enabled && _document is not null;
         CancelTranslationButton.IsEnabled = !enabled;
+        CancelTranslationButton.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
     }
 
     private void CancelTranslationButton_Click(object sender, RoutedEventArgs e)
@@ -1654,6 +1678,15 @@ public partial class DictionaryEditorControl : UserControl
             EntrySearchTextBox.Focus();
             EntrySearchTextBox.SelectAll();
             e.Handled = true;
+        }
+        else if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.E)
+        {
+            DictionaryEditorEntry? entry = GetActiveEntry();
+            if (entry is not null)
+            {
+                OpenTranslationEditDialog(entry);
+                e.Handled = true;
+            }
         }
     }
 }

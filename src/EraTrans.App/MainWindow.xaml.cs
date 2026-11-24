@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 
 namespace EraTrans.App;
 
@@ -49,19 +50,55 @@ public partial class MainWindow : Window
         RestoreLastWorkspace();
     }
 
+    private void SetPathsDrawerExpanded(bool expanded)
+    {
+        PathsDrawerBorder.Visibility = expanded ? Visibility.Visible : Visibility.Collapsed;
+        TogglePathsButton.Content = expanded ? "收起目录 ▴" : "切换目录 ▾";
+    }
+
+    private void TogglePathsButton_Click(object sender, RoutedEventArgs e)
+    {
+        SetPathsDrawerExpanded(PathsDrawerBorder.Visibility != Visibility.Visible);
+    }
+
+    private void SettingsMenuButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (SettingsContextMenu is null)
+            return;
+        SettingsContextMenu.PlacementTarget = SettingsMenuButton;
+        SettingsContextMenu.Placement = PlacementMode.Bottom;
+        SettingsContextMenu.IsOpen = true;
+    }
+
+    private void AiSettingsMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_isProcessing)
+            _editor.OpenAiSettings();
+    }
+
+    private void ReloadWorkspaceMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_isProcessing && TryGetGameOutputLayout(out EraTransOutputLayout layout))
+            ActivateWorkspace(layout);
+    }
+
     private void RestoreLastWorkspace()
     {
         if (TryGetGameOutputLayout(out EraTransOutputLayout layout, showErrors: false) &&
             ActivateWorkspace(layout))
         {
+            SetPathsDrawerExpanded(false);
             StatusText.Text = $"已恢复上次工作区：{layout.GameDirectoryName}。可直接在下方编辑字典。";
             return;
         }
 
+        SetPathsDrawerExpanded(true);
+        WorkspaceBadgeTextBlock.Text = "尚未选择工作区";
+        WorkspaceBadgeTextBlock.ToolTip = null;
         StatusText.Text =
             string.IsNullOrWhiteSpace(GameDirectoryTextBox.Text) ||
             string.IsNullOrWhiteSpace(OutputDirectoryTextBox.Text)
-                ? "首次使用请先选择原游戏目录和统一输出目录，然后打开工作区或提取字典。"
+                ? "首次使用请先选择原游戏目录和统一输出目录，选完将自动加载工作区。"
                 : "上次保存的目录不可用或配置无效，请重新选择目录。";
     }
 
@@ -82,7 +119,17 @@ public partial class MainWindow : Window
         {
             target.Text = dialog.FolderName;
             SaveWorkspacePreferences();
-            StatusText.Text = "目录选择已更新。点击“打开工作区”应用新目录；提取或应用译文时也会自动切换。";
+            if (TryGetGameOutputLayout(out EraTransOutputLayout layout, showErrors: false))
+            {
+                if (ActivateWorkspace(layout))
+                {
+                    SetPathsDrawerExpanded(false);
+                }
+            }
+            else
+            {
+                StatusText.Text = "已更新目录；请补全另一个目录以自动打开工作区。";
+            }
         }
     }
 
@@ -95,14 +142,20 @@ public partial class MainWindow : Window
         if (string.IsNullOrWhiteSpace(gameDirectory) || !Directory.Exists(gameDirectory))
         {
             if (showErrors)
+            {
+                SetPathsDrawerExpanded(true);
                 MessageBox.Show(this, "请选择有效的原游戏目录。", "目录无效", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
             return false;
         }
 
         if (string.IsNullOrWhiteSpace(outputRoot))
         {
             if (showErrors)
+            {
+                SetPathsDrawerExpanded(true);
                 MessageBox.Show(this, "请选择统一输出目录。", "目录无效", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
             return false;
         }
 
@@ -114,7 +167,10 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             if (showErrors)
+            {
+                SetPathsDrawerExpanded(true);
                 MessageBox.Show(this, ex.Message, "输出目录无效", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
             return false;
         }
     }
@@ -143,6 +199,10 @@ public partial class MainWindow : Window
         _settings.LastOutputRootDirectory = layout.OutputRoot;
         SaveWorkspacePreferences();
         string versionTag = EraTransOutputLayout.GetVersionFolderName(_settings.ToParserOptions().ExtractionMode);
+        WorkspaceBadgeTextBlock.Text = $"{layout.GameDirectoryName}（{versionTag}）";
+        WorkspaceBadgeTextBlock.ToolTip =
+            $"原游戏目录：{layout.GameDirectory}\n输出目录：{layout.OutputRoot}\n字典目录：{layout.DictionaryDirectory}";
+        WorkspaceModeStatusText.Text = $"模式：{versionTag} · 原游戏目录始终只读";
         StatusText.Text = $"当前工作区：{layout.GameDirectoryName}（{versionTag}）· 字典目录：{layout.DictionaryDirectory}";
         return true;
     }
@@ -152,12 +212,6 @@ public partial class MainWindow : Window
             Path.TrimEndingDirectorySeparator(Path.GetFullPath(first)),
             Path.TrimEndingDirectorySeparator(Path.GetFullPath(second)),
             StringComparison.OrdinalIgnoreCase);
-
-    private void OpenWorkspace_Click(object sender, RoutedEventArgs e)
-    {
-        if (TryGetGameOutputLayout(out EraTransOutputLayout layout))
-            ActivateWorkspace(layout);
-    }
 
     private void Editor_CurrentFileChanged(string? relativePath)
     {
@@ -218,13 +272,13 @@ public partial class MainWindow : Window
     private void SetBusy(bool busy)
     {
         _isProcessing = busy;
-        OpenWorkspaceButton.IsEnabled = !busy;
+        TogglePathsButton.IsEnabled = !busy;
         BrowseGameDirectoryButton.IsEnabled = !busy;
         BrowseOutputDirectoryButton.IsEnabled = !busy;
         ExtractButton.IsEnabled = !busy;
         ApplyTranslationsButton.IsEnabled = !busy;
         SaveCurrentDictionaryButton.IsEnabled = !busy && _editor.CanSaveCurrentDictionary;
-        SettingsButton.IsEnabled = !busy;
+        SettingsMenuButton.IsEnabled = !busy;
         _editor.IsEnabled = !busy;
     }
 

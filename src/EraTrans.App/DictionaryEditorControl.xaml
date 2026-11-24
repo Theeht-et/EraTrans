@@ -245,7 +245,7 @@
                                   Margin="8,0,0,0"
                                   VerticalContentAlignment="Center"
                                   FontSize="12"
-                                  ToolTip="按翻译状态、校验告警或文本类型筛选当前字典词条"
+                                  ToolTip="按翻译状态或类型筛选词条"
                                   SelectionChanged="EntryFilterComboBox_SelectionChanged">
                             <ComboBoxItem Content="全部词条" Tag="all" />
                             <ComboBoxItem Content="未翻译" Tag="pending" />
@@ -258,7 +258,7 @@
                                      Height="30"
                                      VerticalContentAlignment="Center"
                                      Padding="8,0"
-                                     ToolTip="搜索 key、原文、译文、类型、分组或上下文（Ctrl+F）"
+                                     ToolTip="搜索原文、译文、编号或上下文（Ctrl+F）"
                                      TextChanged="EntrySearchTextBox_TextChanged" />
                             <TextBlock x:Name="EntrySearchPlaceholder"
                                        Text="搜索词条（Ctrl+F）…"
@@ -287,7 +287,7 @@
                                       FontSize="12"
                                       SelectionChanged="AiReasoningComboBox_SelectionChanged"
                                       DropDownOpened="AiReasoningComboBox_DropDownOpened"
-                                      ToolTip="自动：使用服务商默认设置。开启/关闭：向请求附加当前服务商对应的推理字段。">
+                                      ToolTip="控制模型是否开启深度思考（自动 = 按服务商默认）">
                                 <ComboBoxItem Content="自动" Tag="auto" />
                                 <ComboBoxItem Content="开启" Tag="on" />
                                 <ComboBoxItem Content="关闭" Tag="off" />
@@ -308,7 +308,7 @@
                                     Margin="0,0,8,0"
                                     IsEnabled="False"
                                     Style="{StaticResource SecondaryButtonStyle}"
-                                    ToolTip="按原文顺序批量翻译当前字典中所有未翻译项"
+                                    ToolTip="批量翻译当前文件中所有未翻译的词条"
                                     Click="TranslatePendingButton_Click" />
                             <Button x:Name="CancelTranslationButton"
                                     Content="取消翻译"
@@ -319,26 +319,23 @@
                                     Style="{StaticResource DangerButtonStyle}"
                                     Click="CancelTranslationButton_Click" />
                             <Button x:Name="ToolsMenuButton"
-                                    Content="工具与统计 ▾"
+                                    Content="数据统计 ▾"
                                     Height="30"
                                     Style="{StaticResource SecondaryButtonStyle}"
                                     Click="ToolsMenuButton_Click">
                                 <Button.ContextMenu>
                                     <ContextMenu x:Name="ToolsContextMenu">
                                         <MenuItem x:Name="ProgressStatsMenuItem"
-                                                  Header="翻译进度统计…"
+                                                  Header="翻译进度统计"
                                                   IsEnabled="False"
                                                   Click="ProgressStatsButton_Click" />
                                         <MenuItem x:Name="CoverageReportMenuItem"
-                                                  Header="提取覆盖率自检报告…"
+                                                  Header="提取覆盖率自检"
                                                   Visibility="Collapsed"
                                                   Click="CoverageReportButton_Click" />
                                         <Separator />
-                                        <MenuItem x:Name="AiSettingsMenuItem"
-                                                  Header="AI 服务设置…"
-                                                  Click="AiSettingsButton_Click" />
                                         <MenuItem x:Name="AiLogsMenuItem"
-                                                  Header="AI 翻译记录…"
+                                                  Header="AI 翻译记录"
                                                   Click="AiLogsButton_Click" />
                                     </ContextMenu>
                                 </Button.ContextMenu>
@@ -481,9 +478,18 @@
                                            FontSize="20" FontWeight="SemiBold" Foreground="#39414A"
                                            TextAlignment="Center" />
                                 <TextBlock x:Name="EmptyStateDescriptionTextBlock" Margin="0,10,0,0"
-                                           Text="选择原游戏目录和统一输出目录，然后打开工作区或提取字典。"
+                                           Text="请先在上方选择原游戏目录和输出目录。"
                                            FontSize="13" Foreground="#68717D" TextWrapping="Wrap"
                                            TextAlignment="Center" />
+                                <ProgressBar x:Name="EmptyStateProgressBar"
+                                             Width="240"
+                                             Height="6"
+                                             Margin="0,16,0,0"
+                                             IsIndeterminate="True"
+                                             Foreground="#1971C2"
+                                             Background="#E9ECEF"
+                                             BorderThickness="0"
+                                             Visibility="Collapsed" />
                             </StackPanel>
                         </Border>
                     </Grid>
@@ -532,7 +538,7 @@
                                               Visibility="Collapsed"
                                               Checked="ScreenPreviewCheckBox_Changed"
                                               Unchecked="ScreenPreviewCheckBox_Changed"
-                                              ToolTip="勾选后显示当前一整屏（WAIT/INPUT 之间）的全部条目；取消勾选则只显示当前语义小组" />
+                                              ToolTip="勾选查看整屏全部对话，取消只看当前小组" />
                                     <TextBlock x:Name="EntryGroupLabelTextBlock" Text="同组条目"
                                                FontSize="12" FontWeight="SemiBold" Foreground="#39414A"
                                                VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
@@ -541,7 +547,7 @@
                                          BorderThickness="0" Background="Transparent" TextWrapping="Wrap"
                                          AcceptsReturn="True" VerticalScrollBarVisibility="Auto"
                                          HorizontalScrollBarVisibility="Auto"
-                                         Text="当前词条没有可用的 ERB 语义分组信息。" />
+                                         Text="当前词条无分组信息" />
                             </Grid>
                             <GridSplitter Grid.Column="1" Width="8" HorizontalAlignment="Stretch"
                                           VerticalAlignment="Stretch" ResizeDirection="Columns"
@@ -566,7 +572,7 @@
                                          BorderThickness="0" Background="Transparent" TextWrapping="Wrap"
                                          AcceptsReturn="True" VerticalScrollBarVisibility="Auto"
                                          HorizontalScrollBarVisibility="Auto"
-                                         Text="选择一个词条查看上下文。" />
+                                         Text="点击词条查看上下文" />
                             </Grid>
                         </Grid>
                     </Border>
@@ -586,7 +592,7 @@
                                    VerticalAlignment="Center"
                                    TextTrimming="CharacterEllipsis"
                                    ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"
-                                   Text="就绪（右键词条或按 Ctrl+E 可打开完整译文编辑窗口）" />
+                                   Text="就绪 · 右键词条或按 Ctrl+E 可打开大窗口编辑" />
                     </DockPanel>
                 </Grid>
             </Border>

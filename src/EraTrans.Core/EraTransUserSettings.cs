@@ -28,13 +28,13 @@ public sealed class EraTransUserSettings
     public bool HideVariableEntries { get; set; } = true;
     public bool MergeConcatenatedStrings { get; set; } = true;
     public bool WriteContext { get; set; } = true;
-    public bool EnableErbSemanticGroupingTranslation { get; set; } = false;
+    public bool EnableErbSemanticGroupingTranslation { get; set; } = true;
 
     /// <summary>
-    /// Extractor used for the ERB branch: "legacy" or "lexer" (visible text only).
+    /// Extractor used for the ERB branch: "lexer" (V2 visible text, default) or "legacy" (V1).
     /// The CSV/RES/XML/ERD branches always use the legacy parsers.
     /// </summary>
-    public string ErbExtractionMode { get; set; } = "legacy";
+    public string ErbExtractionMode { get; set; } = "lexer";
 
     /// <summary>New extractor: include HTML title= tooltips.</summary>
     public bool ExtractHtmlTitle { get; set; } = true;

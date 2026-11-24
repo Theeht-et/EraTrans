@@ -191,6 +191,9 @@ public sealed class DictionaryEditorEntry : INotifyPropertyChanged
     private int _stage;
     private string _semanticGroupLabel = string.Empty;
     private string _semanticGroupEntriesPreview = string.Empty;
+    private string _entryTypeLabel = string.Empty;
+    private bool _isScriptEntry;
+    private string _validationWarning = string.Empty;
 
     internal DictionaryEditorEntry(JObject source, Action markDocumentDirty, int index)
     {
@@ -226,6 +229,8 @@ public sealed class DictionaryEditorEntry : INotifyPropertyChanged
             : StandardStageOptions
                 .Append(new DictionaryStageOption(_stage, $"自定义（{_stage}）"))
                 .ToArray();
+
+        _validationWarning = TranslationPreValidator.Validate(Original, _translation, _isScriptEntry);
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -243,6 +248,10 @@ public sealed class DictionaryEditorEntry : INotifyPropertyChanged
     public IReadOnlyList<DictionaryStageOption> StageOptions { get; }
     public string SemanticGroupLabel => _semanticGroupLabel;
     public string SemanticGroupEntriesPreview => _semanticGroupEntriesPreview;
+    public string EntryTypeLabel => _entryTypeLabel;
+    public bool IsScriptEntry => _isScriptEntry;
+    public string ValidationWarning => _validationWarning;
+    public bool HasValidationWarning => _validationWarning.Length > 0;
 
     public void SetSemanticGroupInfo(string label, string entriesPreview)
     {
@@ -250,6 +259,15 @@ public sealed class DictionaryEditorEntry : INotifyPropertyChanged
         _semanticGroupEntriesPreview = entriesPreview ?? string.Empty;
         OnPropertyChanged(nameof(SemanticGroupLabel));
         OnPropertyChanged(nameof(SemanticGroupEntriesPreview));
+    }
+
+    public void SetEntryMetadata(string typeLabel, bool isScriptEntry)
+    {
+        _entryTypeLabel = typeLabel ?? string.Empty;
+        _isScriptEntry = isScriptEntry;
+        OnPropertyChanged(nameof(EntryTypeLabel));
+        OnPropertyChanged(nameof(IsScriptEntry));
+        RefreshValidationWarning();
     }
 
     public string Translation
@@ -268,6 +286,7 @@ public sealed class DictionaryEditorEntry : INotifyPropertyChanged
             _source["translation"] = value;
             _markDocumentDirty();
             OnPropertyChanged();
+            RefreshValidationWarning();
         }
     }
 
@@ -321,7 +340,21 @@ public sealed class DictionaryEditorEntry : INotifyPropertyChanged
         OnPropertyChanged(nameof(Translation));
         OnPropertyChanged(nameof(Stage));
         OnPropertyChanged(nameof(StageDescription));
+        RefreshValidationWarning();
         return true;
+    }
+
+    private void RefreshValidationWarning()
+    {
+        string updated = TranslationPreValidator.Validate(Original, _translation, _isScriptEntry);
+        if (string.Equals(_validationWarning, updated, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _validationWarning = updated;
+        OnPropertyChanged(nameof(ValidationWarning));
+        OnPropertyChanged(nameof(HasValidationWarning));
     }
 
     private void EnsureEditable()
@@ -377,8 +410,10 @@ public sealed class DictionaryEditorDocument : INotifyPropertyChanged
 
     public int EditableEntryCount => Entries.Count(entry => entry.IsEditable);
     public int TranslatedEntryCount => Entries.Count(entry => entry.IsEditable && entry.Stage > 0);
-    public string SummaryText =>
-        $"词条 {Entries.Count} · 可编辑 {EditableEntryCount} · 已翻译 {TranslatedEntryCount}";
+    public int WarningEntryCount => Entries.Count(entry => entry.HasValidationWarning);
+    public string SummaryText => WarningEntryCount > 0
+        ? $"词条 {Entries.Count} · 可编辑 {EditableEntryCount} · 已翻译 {TranslatedEntryCount} · 告警 {WarningEntryCount}"
+        : $"词条 {Entries.Count} · 可编辑 {EditableEntryCount} · 已翻译 {TranslatedEntryCount}";
 
     public void Save()
     {
@@ -447,9 +482,9 @@ public sealed class DictionaryEditorDocument : INotifyPropertyChanged
 
     private void Entry_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        // Translation edits do not affect the summary counters. Recount only when
-        // the translation stage itself changes.
-        if (e.PropertyName == nameof(DictionaryEditorEntry.Stage))
+        // Translation edits do not affect the summary counters unless validation status changes.
+        if (e.PropertyName is nameof(DictionaryEditorEntry.Stage)
+            or nameof(DictionaryEditorEntry.HasValidationWarning))
         {
             OnPropertyChanged(nameof(SummaryText));
         }

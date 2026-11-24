@@ -27,6 +27,7 @@ public sealed class DictionaryEditorServiceTests
         string root = CreateTempDirectory();
         Write(Path.Combine(root, "extractor.json"), "{\"schema\":1,\"mode\":\"lexer\"}");
         Write(Path.Combine(root, "visibletext-report.json"), "{\"schema\":1}");
+        Write(Path.Combine(root, "辅助数据", "ERB", "hello.spans.json"), "{}");
         Write(Path.Combine(root, "AI上下文", "ERB", "hello.spans.json"), "{}");
         Write(Path.Combine(root, "ERB", "hello.spans.json"), "{}");
         Write(Path.Combine(root, "ERB", "hello.groups.json"), "{}");
@@ -72,6 +73,7 @@ public sealed class DictionaryEditorServiceTests
         Assert.True(entry.IsEditable);
         Assert.False(document.IsDirty);
 
+        entry.SetEntryMetadata("正文", isScriptEntry: true);
         entry.Translation = "翻译结果";
         entry.Stage = 1;
         Assert.True(document.IsDirty);
@@ -86,7 +88,42 @@ public sealed class DictionaryEditorServiceTests
         Assert.Equal("第一行\n第二行", (string?)saved["context"]);
         Assert.True((bool?)saved["custom"]?["keep"]);
         Assert.Equal(new JArray(1, "two").ToString(), saved["custom"]?["items"]?.ToString());
+        Assert.Null(saved["entryTypeLabel"]);
+        Assert.Null(saved["validationWarning"]);
         Assert.False(document.IsDirty);
+    }
+
+    [Fact]
+    public void TranslationPreValidator_DetectsScriptNewlinesAndPlaceholderMismatches()
+    {
+        Assert.Equal(string.Empty, TranslationPreValidator.Validate("おはよう%CALLNAME:MASTER%", "早上好%CALLNAME:MASTER%", isScriptTarget: true));
+        Assert.Equal(string.Empty, TranslationPreValidator.Validate("成功率50%、失敗率50%", "成功率50%、失败率50%", isScriptTarget: true));
+        Assert.Equal(string.Empty, TranslationPreValidator.Validate("多行CSV原文", "第一行\n第二行", isScriptTarget: false));
+
+        string newlineWarning = TranslationPreValidator.Validate("单行脚本", "第一行\n第二行", isScriptTarget: true);
+        Assert.Contains("换行", newlineWarning, StringComparison.Ordinal);
+
+        string missingWarning = TranslationPreValidator.Validate("体力{LOCAL} / %CALLNAME:MASTER%", "体力 / %CALLNAME:MASTER%", isScriptTarget: true);
+        Assert.Contains("缺少占位符", missingWarning, StringComparison.Ordinal);
+        Assert.Contains("{LOCAL}", missingWarning, StringComparison.Ordinal);
+
+        string extraWarning = TranslationPreValidator.Validate("こんにちは", "你好%EXTRA%", isScriptTarget: true);
+        Assert.Contains("多出占位符", extraWarning, StringComparison.Ordinal);
+        Assert.Contains("%EXTRA%", extraWarning, StringComparison.Ordinal);
+
+        string ternaryWarning = TranslationPreValidator.Validate(@"\@ARG ? 男 : 女\@だ", "是人", isScriptTarget: true);
+        Assert.Contains("缺少占位符", ternaryWarning, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TranslationPreValidator_DescribeEntryType_MapsKindsAndCommands()
+    {
+        Assert.Equal("悬停提示", TranslationPreValidator.DescribeEntryType("html_title", "HTML_PRINT"));
+        Assert.Equal("界面", TranslationPreValidator.DescribeEntryType("html", "HTML_PRINT"));
+        Assert.Equal("按钮", TranslationPreValidator.DescribeEntryType("button", "PRINTBUTTON"));
+        Assert.Equal("数据块", TranslationPreValidator.DescribeEntryType("data", "DATAFORM"));
+        Assert.Equal("报错", TranslationPreValidator.DescribeEntryType("custom", "THROW"));
+        Assert.Equal("正文", TranslationPreValidator.DescribeEntryType("form", "PRINTFORML"));
     }
 
     [Fact]

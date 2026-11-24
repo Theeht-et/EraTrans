@@ -22,7 +22,7 @@
                        FontWeight="SemiBold"
                        Foreground="#20242A" />
             <TextBlock Margin="0,5,0,0"
-                       Text="配置分为四组：通用（两种抽取方式都生效）、新版设置、旧版设置、写回与翻译设置。设置保存在程序目录下的 Config/ 文件夹中。"
+                       Text="调整文本提取、译文写回与 AI 翻译方式，保存后生效。"
                        TextWrapping="Wrap"
                        FontSize="12"
                        Foreground="#68717D" />
@@ -69,13 +69,13 @@
                                   Margin="0,0,0,6"
                                   VerticalContentAlignment="Center"
                                   SelectionChanged="ExtractionModeComboBox_SelectionChanged">
-                            <ComboBoxItem Content="旧版（按字符长相提取）" Tag="legacy" />
-                            <ComboBoxItem Content="新版（仅提取玩家看得见的文本）" Tag="lexer" />
+                            <ComboBoxItem Content="旧版（按字符规则提取）" Tag="legacy" />
+                            <ComboBoxItem Content="新版（推荐，仅提取玩家可见文本）" Tag="lexer" />
                         </ComboBox>
 
                         <TextBlock Grid.Row="2"
                                    Grid.Column="1"
-                                   Text="只影响 ERB 脚本；CSV / RES / XML / ERD 始终由原有解析器处理。旧版（V1）与新版（V2）的字典和辅助数据会自动隔离在各自的 V1 / V2 文件夹中，互不覆盖。"
+                                   Text="仅影响 ERB 脚本；新版与旧版的字典分开存放，互不覆盖。"
                                    TextWrapping="Wrap"
                                    FontSize="11"
                                    Foreground="#68717D"
@@ -83,7 +83,7 @@
 
                         <Expander Grid.Row="3"
                                   Grid.ColumnSpan="2"
-                                  Header="高级编码设置（无 BOM 老文件回退，默认 Shift-JIS）"
+                                  Header="高级编码设置（默认 Shift-JIS，一般无需修改）"
                                   Margin="0,0,0,12"
                                   Foreground="#39414A">
                             <Grid Margin="0,8,0,0">
@@ -109,7 +109,7 @@
                                 </ComboBox>
                                 <TextBlock Grid.Row="1"
                                            Grid.Column="1"
-                                           Text="UTF-8 / UTF-16 与 XML 声明会自动识别；仅在读取无 BOM 的简体中文（GBK）或繁体中文（Big5）改版游戏时才需要切换。遇到无法无损解码的文件时会整体扫描后统一弹窗列出清单。"
+                                           Text="UTF-8 / UTF-16 会自动识别；仅在读取无 BOM 的简体（GBK）或繁体（Big5）改版游戏时才需切换。"
                                            TextWrapping="Wrap"
                                            FontSize="11"
                                            Foreground="#68717D" />
@@ -119,13 +119,13 @@
                         <CheckBox x:Name="WriteContextCheckBox"
                                   Grid.Row="5"
                                   Content="提取字典时写入上下文"
-                                  ToolTip="在词条中保存原脚本行作为上下文，供字典编辑和 AI 翻译参考。两种抽取方式都生效。"
+                                  ToolTip="保存原脚本行作为上下文，帮助人工校对和 AI 理解语境"
                                   Foreground="#39414A" />
                         <CheckBox x:Name="AutoOpenFolderCheckBox"
                                   Grid.Row="5"
                                   Grid.Column="1"
                                   Content="处理完成后自动打开结果目录"
-                                  ToolTip="提取完成后打开字典目录；应用译文完成后打开游戏副本目录。"
+                                  ToolTip="提取或生成副本后自动打开对应文件夹"
                                   Foreground="#39414A" />
                     </Grid>
                 </Border>
@@ -138,29 +138,25 @@
                         BorderThickness="1"
                         CornerRadius="8">
                     <StackPanel>
-                        <TextBlock Text="新版（仅可见文本）"
+                        <TextBlock Text="新版提取设置"
                                    FontSize="16"
                                    FontWeight="SemiBold"
-                                   Foreground="#20242A" />
-
-                        <TextBlock Text="只在新版抽取方式下生效。"
-                                   Margin="0,4,0,10"
-                                   FontSize="11"
-                                   Foreground="#68717D" />
+                                   Foreground="#20242A"
+                                   Margin="0,0,0,12" />
 
                         <CheckBox x:Name="ExtractHtmlTitleCheckBox"
-                                  Content="提取 HTML 的 title 提示文本"
-                                  ToolTip="HTML_PRINT 里 title='…' 是鼠标悬停提示，玩家看得到。value= 是按钮返回值，不会提取。"
+                                  Content="提取 HTML 悬停提示（title）"
+                                  ToolTip="提取鼠标悬停时显示的提示文字，不影响按钮内部返回值"
                                   Foreground="#39414A"
                                   Margin="0,0,0,10" />
                         <CheckBox x:Name="ExtractPrintDataEntriesCheckBox"
-                                  Content="提取 PRINTDATA / DATALIST 数据块"
-                                  ToolTip="PRINTDATA 会在运行时随机选一条 DATA / DATAFORM 显示，块内每条文本都会提取。"
+                                  Content="提取 PRINTDATA / DATALIST 随机文本块"
+                                  ToolTip="提取随机文本块中的所有候选句子"
                                   Foreground="#39414A"
                                   Margin="0,0,0,10" />
                         <CheckBox x:Name="SkipNonJapaneseEntriesCheckBox"
                                   Content="跳过不含日文的条目（纯英文、纯符号）"
-                                  ToolTip="这些条目通常无需翻译。关闭后会把 &quot;OK&quot;、&quot;EXP+5&quot; 这类文本也放进字典。"
+                                  ToolTip="跳过如 &quot;OK&quot;、&quot;EXP+5&quot; 等通常无需翻译的内容"
                                   Foreground="#39414A" />
                     </StackPanel>
                 </Border>
@@ -173,12 +169,12 @@
                         BorderThickness="1"
                         CornerRadius="8">
                     <StackPanel>
-                        <TextBlock Text="旧版（旧版 ERB 解析器）"
+                        <TextBlock Text="旧版提取设置"
                                    FontSize="16"
                                    FontWeight="SemiBold"
                                    Foreground="#20242A" />
 
-                        <TextBlock Text="只在旧版抽取方式下生效；新版抽取器不使用这些开关（它只抽 PRINT 家族与数据流，不靠字符长相猜）。"
+                        <TextBlock Text="仅旧版模式生效，一般保持默认即可。"
                                    Margin="0,4,0,10"
                                    TextWrapping="Wrap"
                                    FontSize="11"
@@ -196,26 +192,26 @@
 
                             <CheckBox x:Name="HideEnglishTextCheckBox"
                                       Content="隐藏英文词条"
-                                      ToolTip="纯英文条目会以 stage=-1 写入字典（不翻译、不显示）。"
+                                      ToolTip="隐藏纯英文词条，不参与翻译"
                                       Margin="0,0,10,10"
                                       Foreground="#39414A" />
                             <CheckBox x:Name="MergeDuplicateEntriesCheckBox"
                                       Grid.Column="1"
                                       Content="合并同一文件中的相同词条"
-                                      ToolTip="同一个脚本里重复出现的同一段文本只保留一条。"
+                                      ToolTip="同一文件里完全相同的句子只保留一条"
                                       Margin="0,0,0,10"
                                       Foreground="#39414A" />
                             <CheckBox x:Name="HideVariableEntriesCheckBox"
                                       Grid.Row="1"
                                       Content="屏蔽变量词条输出"
-                                      ToolTip="旧版会把疑似变量名的内容写成「变量」条目。保持开启时这些条目不会写入字典。"
+                                      ToolTip="过滤疑似变量名的条目，避免误翻代码"
                                       Margin="0,0,10,0"
                                       Foreground="#39414A" />
                             <CheckBox x:Name="MergeConcatenatedStringsCheckBox"
                                       Grid.Row="1"
                                       Grid.Column="1"
                                       Content="合并联立字符串"
-                                      ToolTip="影响 CALL 等命令参数的拆分方式。实测对结果影响很小，建议保持默认。"
+                                      ToolTip="合并拼接字符串，建议保持默认"
                                       Foreground="#39414A" />
                         </Grid>
 
@@ -223,7 +219,7 @@
                                   Margin="0,14,0,0"
                                   Foreground="#39414A">
                             <StackPanel Margin="0,8,0,0">
-                                <TextBlock Text="这两张表直接喂给旧版的表达式解析器，改错会让旧版抽取整体走样。除非你了解 ERA 表达式规则，否则保持默认。"
+                                <TextBlock Text="直接影响旧版脚本拆分规则，不熟悉 ERA 语法请保持默认。"
                                            TextWrapping="Wrap"
                                            FontSize="11"
                                            Foreground="#68717D"
@@ -279,7 +275,7 @@
                                    FontSize="16"
                                    FontWeight="SemiBold"
                                    Foreground="#20242A" />
-                        <TextBlock Text="写回阶段与抽取方式无关。新版字典按位置精确替换；旧版字典、CSV / RES / XML / ERD 仍按原文匹配。"
+                        <TextBlock Text="新版按精确位置写回，旧版及 CSV 等文件按原文匹配写回。"
                                    Margin="0,4,0,10"
                                    TextWrapping="Wrap"
                                    FontSize="11"
@@ -287,7 +283,7 @@
 
                         <CheckBox x:Name="EnableVariableAutoCorrectionCheckBox"
                                   Content="变量自动修正"
-                                  ToolTip="写回完成后，读取下面列出的 CSV 字典，把其中的译文对全部 ERB / ERH / ERD 再做一次全局替换（用于翻译变量名、能力名等）。这是全局正则替换，可能影响台词中的同名文本。"
+                                  ToolTip="写回后用下方 CSV 词典对脚本做全局替换（如能力名、变量名），可能误伤同名台词，请谨慎开启"
                                   Foreground="#39414A"
                                   Margin="0,0,0,10" />
 
@@ -310,7 +306,7 @@
                                          HorizontalScrollBarVisibility="Auto"
                                          Padding="8"
                                          FontFamily="Consolas" />
-                                <TextBlock Text="必须包含 .erb，否则 ERB 译文会被静默跳过。"
+                                <TextBlock Text="必须保留 .erb，否则脚本译文不会写回。"
                                            Margin="0,4,0,0"
                                            TextWrapping="Wrap"
                                            FontSize="11"
@@ -329,7 +325,7 @@
                                          HorizontalScrollBarVisibility="Auto"
                                          Padding="8"
                                          FontFamily="Consolas" />
-                                <TextBlock Text="填写 CSV 字典文件名，不带 .json。"
+                                <TextBlock Text="填写 CSV 字典名（不含 .json）。"
                                            Margin="0,4,0,0"
                                            FontSize="11"
                                            Foreground="#68717D" />
@@ -352,11 +348,11 @@
 
                         <CheckBox x:Name="EnableErbSemanticGroupingTranslationCheckBox"
                                   Content="按原文顺序整段翻译（按屏分窗）"
-                                  ToolTip="关闭时：按字典顺序每 12 条一批，不做任何顺序分析。开启时：按 ERB 的「一屏」切窗口，同一屏的连续内容一起发送，绝不跨屏切断；需要当前字典配有分组文件（新版抽取会自动生成）。"
+                                  ToolTip="开启：按游戏一屏对话整段发给 AI，上下文更连贯。关闭：固定每 12 条一批翻译。"
                                   Margin="0,12,0,6"
                                   Foreground="#39414A" />
 
-                        <TextBlock Text="两种方式共用同一套提示词与返回格式，区别只在于每一批包含哪些行。开启后需要当前字典配有分组文件；缺失或过期时会直接提示。"
+                        <TextBlock Text="整段翻译需要分组文件（新版提取时自动生成）。"
                                    TextWrapping="Wrap"
                                    FontSize="11"
                                    Foreground="#68717D" />
@@ -378,7 +374,7 @@
                                          Height="32"
                                          Padding="8,0"
                                          VerticalContentAlignment="Center"
-                                         ToolTip="默认 3000。越小越精细，请求次数越多。" />
+                                         ToolTip="默认 3000，越小切分越细" />
                             </StackPanel>
                             <StackPanel Grid.Column="2">
                                 <TextBlock Text="每个窗口的行数上限"
@@ -389,7 +385,7 @@
                                          Height="32"
                                          Padding="8,0"
                                          VerticalContentAlignment="Center"
-                                         ToolTip="默认 60。只作辅助限制，防止短行把窗口拉得过长。" />
+                                         ToolTip="默认 60，防止短句过多拉长单次请求" />
                             </StackPanel>
                             <StackPanel Grid.Column="4">
                                 <TextBlock Text="同时发送的请求数"
@@ -400,11 +396,11 @@
                                          Height="32"
                                          Padding="8,0"
                                          VerticalContentAlignment="Center"
-                                         ToolTip="1–50，默认 1（逐个发送）。调高可同时发送多个窗口，按服务商限流情况自行调整。" />
+                                         ToolTip="1–50，默认 1。调高可加快批量翻译，过高可能触发接口限流" />
                             </StackPanel>
                         </Grid>
 
-                        <TextBlock Text="前两个上限只影响「按原文顺序整段翻译」；固定批次方式固定为每批 12 条。并发数对两种方式都生效。"
+                        <TextBlock Text="前两项仅对「整段翻译」生效；并发数对所有模式生效。"
                                    Margin="0,8,0,0"
                                    TextWrapping="Wrap"
                                    FontSize="11"
@@ -419,7 +415,7 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <TextBlock Text="修改后点击保存，下一次提取或应用译文时生效。"
+            <TextBlock Text="保存后在下次提取或生成副本时生效"
                        VerticalAlignment="Center"
                        TextWrapping="Wrap"
                        Foreground="#87909B"
@@ -429,10 +425,12 @@
                         Width="100"
                         Height="36"
                         Margin="0,0,8,0"
+                        Style="{StaticResource PrimaryButtonStyle}"
                         Click="Save_Click" />
                 <Button Content="取消"
                         Width="82"
                         Height="36"
+                        Style="{StaticResource SecondaryButtonStyle}"
                         Click="Cancel_Click" />
             </StackPanel>
         </Grid>

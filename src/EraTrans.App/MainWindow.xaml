@@ -10,22 +10,96 @@
         WindowStartupLocation="CenterScreen"
         Background="#F5F6F8"
         Closing="MainWindow_Closing">
-    <Grid Margin="14">
+    <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <Grid Grid.Row="0">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="10" />
-                <ColumnDefinition Width="*" />
-            </Grid.ColumnDefinitions>
-            <Border Grid.Column="0" Padding="8,6" Background="White"
-                    BorderBrush="#E3E6EA" BorderThickness="1" CornerRadius="7">
-                <Grid>
+        <Border Grid.Row="0"
+                Margin="14,12,14,0"
+                Padding="12,8"
+                Background="White"
+                BorderBrush="#E3E6EA"
+                BorderThickness="1"
+                CornerRadius="8">
+            <DockPanel LastChildFill="True">
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button x:Name="ExtractButton"
+                            Content="提取/更新字典"
+                            Height="32"
+                            Margin="0,0,8,0"
+                            Style="{StaticResource SecondaryButtonStyle}"
+                            Click="Extract_Click" />
+                    <Button x:Name="SaveCurrentDictionaryButton"
+                            Content="保存字典"
+                            Height="32"
+                            Margin="0,0,8,0"
+                            IsEnabled="False"
+                            Style="{StaticResource PrimaryButtonStyle}"
+                            ToolTip="保存当前打开的字典文件（Ctrl+S）"
+                            Click="SaveCurrentDictionary_Click" />
+                    <Button x:Name="ApplyTranslationsButton"
+                            Content="生成汉化副本"
+                            Height="32"
+                            Margin="0,0,8,0"
+                            Style="{StaticResource SecondaryButtonStyle}"
+                            ToolTip="复制原游戏并写入已保存译文，不会改动原游戏"
+                            Click="ApplyTranslations_Click" />
+                    <Button x:Name="SettingsMenuButton"
+                            Content="设置 ▾"
+                            Height="32"
+                            Style="{StaticResource SecondaryButtonStyle}"
+                            Click="SettingsMenuButton_Click">
+                        <Button.ContextMenu>
+                            <ContextMenu x:Name="SettingsContextMenu">
+                                <MenuItem Header="解析与提取设置" Click="Settings_Click" />
+                                <MenuItem Header="AI 服务设置" Click="AiSettingsMenuItem_Click" />
+                                <Separator />
+                                <MenuItem Header="重新加载工作区" Click="ReloadWorkspaceMenuItem_Click" />
+                            </ContextMenu>
+                        </Button.ContextMenu>
+                    </Button>
+                </StackPanel>
+
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock x:Name="WorkspaceBadgeTextBlock"
+                               Text="尚未选择工作区"
+                               FontSize="14"
+                               FontWeight="SemiBold"
+                               Foreground="#20242A"
+                               VerticalAlignment="Center"
+                               Margin="0,0,10,0" />
+                    <Button x:Name="TogglePathsButton"
+                            Content="目录设置 ▾"
+                            Height="28"
+                            FontSize="12"
+                            Padding="10,0"
+                            Style="{StaticResource SecondaryButtonStyle}"
+                            ToolTip="展开或收起目录选择栏"
+                            Click="TogglePathsButton_Click" />
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <Border x:Name="PathsDrawerBorder"
+                Grid.Row="1"
+                Margin="14,8,14,0"
+                Padding="10,8"
+                Background="White"
+                BorderBrush="#E3E6EA"
+                BorderThickness="1"
+                CornerRadius="8"
+                Visibility="Visible">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="12" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Grid Grid.Column="0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
@@ -36,12 +110,10 @@
                     <TextBox x:Name="GameDirectoryTextBox" Grid.Column="1" Height="30" IsReadOnly="True"
                              VerticalContentAlignment="Center" Padding="8,0" Margin="0,0,6,0" />
                     <Button Grid.Column="2" x:Name="BrowseGameDirectoryButton" Content="浏览"
-                            Height="30" Click="BrowseGameDirectory_Click" />
+                            Height="30" Style="{StaticResource SecondaryButtonStyle}"
+                            Click="BrowseGameDirectory_Click" />
                 </Grid>
-            </Border>
-            <Border Grid.Column="2" Padding="8,6" Background="White"
-                    BorderBrush="#E3E6EA" BorderThickness="1" CornerRadius="7">
-                <Grid>
+                <Grid Grid.Column="2">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
@@ -52,38 +124,46 @@
                     <TextBox x:Name="OutputDirectoryTextBox" Grid.Column="1" Height="30" IsReadOnly="True"
                              VerticalContentAlignment="Center" Padding="8,0" Margin="0,0,6,0" />
                     <Button Grid.Column="2" x:Name="BrowseOutputDirectoryButton" Content="浏览"
-                            Height="30" Click="BrowseOutputDirectory_Click" />
+                            Height="30" Style="{StaticResource SecondaryButtonStyle}"
+                            Click="BrowseOutputDirectory_Click" />
                 </Grid>
-            </Border>
-        </Grid>
+            </Grid>
+        </Border>
 
-        <Grid Grid.Row="1" Margin="0,8,0,0">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-            <Button x:Name="OpenWorkspaceButton" Content="打开工作区" Width="108" Height="34"
-                    Margin="0,0,8,0" FontWeight="SemiBold" Click="OpenWorkspace_Click" />
-            <Button x:Name="ExtractButton" Grid.Column="1" Content="提取/更新字典" Width="134" Height="34"
-                    Margin="0,0,8,0" FontWeight="SemiBold" Click="Extract_Click" />
-            <Button x:Name="ApplyTranslationsButton" Grid.Column="2" Content="生成游戏副本并应用译文"
-                    Width="198" Height="34" Margin="0,0,8,0" FontWeight="SemiBold"
-                    Click="ApplyTranslations_Click" />
-            <Button x:Name="SaveCurrentDictionaryButton" Grid.Column="3" Content="保存当前字典"
-                    Width="120" Height="34" Margin="0,0,12,0" IsEnabled="False"
-                    Click="SaveCurrentDictionary_Click" />
-            <TextBlock x:Name="StatusText" Grid.Column="4" VerticalAlignment="Center"
-                       Text="原游戏目录不会被修改；字典、辅助数据（按 V1/V2 隔离）和游戏副本会按游戏文件夹名称分类保存。"
-                       TextWrapping="Wrap" Foreground="#68717D" FontSize="12" />
-            <Button Grid.Column="5" x:Name="SettingsButton" Content="解析设置"
-                    Width="96" Height="34" Margin="8,0,0,0"
-                    VerticalAlignment="Center" Click="Settings_Click" />
-        </Grid>
+        <ContentControl x:Name="EditorHost" Grid.Row="2" Margin="14,10,14,10" />
 
-        <ContentControl x:Name="EditorHost" Grid.Row="2" Margin="0,10,0,0" />
+        <Border Grid.Row="3"
+                Background="White"
+                BorderBrush="#E3E6EA"
+                BorderThickness="0,1,0,0"
+                Padding="14,5">
+            <DockPanel LastChildFill="True">
+                <TextBlock x:Name="WorkspaceModeStatusText"
+                           DockPanel.Dock="Right"
+                           Margin="12,0,0,0"
+                           FontSize="11"
+                           Foreground="#68717D"
+                           VerticalAlignment="Center"
+                           Text="原游戏只读" />
+                <ProgressBar x:Name="BusyProgressBar"
+                             DockPanel.Dock="Left"
+                             Width="110"
+                             Height="6"
+                             Margin="0,0,10,0"
+                             VerticalAlignment="Center"
+                             IsIndeterminate="True"
+                             Foreground="#1971C2"
+                             Background="#E9ECEF"
+                             BorderThickness="0"
+                             Visibility="Collapsed" />
+                <TextBlock x:Name="StatusText"
+                           FontSize="11.5"
+                           Foreground="#59636F"
+                           VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis"
+                           ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"
+                           Text="请先选择原游戏目录和输出目录" />
+            </DockPanel>
+        </Border>
     </Grid>
 </Window>

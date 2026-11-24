@@ -207,7 +207,7 @@
 
         <DockPanel Grid.Row="4" Margin="0,12,0,0">
             <TextBlock DockPanel.Dock="Left"
-                       Text="提示：点击表头可按待翻数或完成度排序；双击任意文件行可直接跳转编辑。"
+                       Text="点击表头可排序，双击文件行直接跳转编辑"
                        VerticalAlignment="Center"
                        FontSize="12"
                        Foreground="#68717D" />

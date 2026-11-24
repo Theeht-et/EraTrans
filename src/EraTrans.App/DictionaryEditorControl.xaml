@@ -206,7 +206,7 @@
             </GridSplitter>
 
             <Border Grid.Column="2"
-                    Padding="14"
+                    Padding="14,12,14,10"
                     Background="White"
                     BorderBrush="#E3E6EA"
                     BorderThickness="1"
@@ -217,34 +217,35 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" MinHeight="180" />
                         <RowDefinition Height="8" />
-                        <RowDefinition Height="155" MinHeight="84" />
+                        <RowDefinition Height="148" MinHeight="84" />
+                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
-                    <Grid Margin="0,0,0,10">
+                    <Grid Margin="0,0,0,8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="134" />
-                            <ColumnDefinition Width="230" />
+                            <ColumnDefinition Width="126" />
+                            <ColumnDefinition Width="220" />
                         </Grid.ColumnDefinitions>
                         <StackPanel>
                             <TextBlock x:Name="SelectedFileTextBlock"
                                        Text="请选择左侧字典文件"
-                                       FontSize="16"
+                                       FontSize="15"
                                        FontWeight="SemiBold"
                                        Foreground="#20242A" />
                             <TextBlock x:Name="SummaryTextBlock"
-                                       Margin="0,4,0,0"
+                                       Margin="0,3,0,0"
                                        Text="尚未加载字典"
                                        FontSize="12"
                                        Foreground="#68717D" />
                         </StackPanel>
                         <ComboBox x:Name="EntryFilterComboBox"
                                   Grid.Column="1"
-                                  Height="32"
+                                  Height="30"
                                   Margin="8,0,0,0"
                                   VerticalContentAlignment="Center"
                                   FontSize="12"
-                                  ToolTip="按翻译状态、校验告警或文本类型筛选当前字典词条"
+                                  ToolTip="按翻译状态或类型筛选词条"
                                   SelectionChanged="EntryFilterComboBox_SelectionChanged">
                             <ComboBoxItem Content="全部词条" Tag="all" />
                             <ComboBoxItem Content="未翻译" Tag="pending" />
@@ -254,10 +255,10 @@
                         </ComboBox>
                         <Grid Grid.Column="2" Margin="8,0,0,0">
                             <TextBox x:Name="EntrySearchTextBox"
-                                     Height="32"
+                                     Height="30"
                                      VerticalContentAlignment="Center"
                                      Padding="8,0"
-                                     ToolTip="搜索 key、原文、译文、类型、分组或上下文（Ctrl+F）"
+                                     ToolTip="搜索原文、译文、编号或上下文（Ctrl+F）"
                                      TextChanged="EntrySearchTextBox_TextChanged" />
                             <TextBlock x:Name="EntrySearchPlaceholder"
                                        Text="搜索词条（Ctrl+F）…"
@@ -271,94 +272,74 @@
 
                     <DockPanel Grid.Row="1" Margin="0,0,0,10">
                         <StackPanel DockPanel.Dock="Right"
-                                    Width="235"
-                                    Margin="10,0,0,0"
+                                    Orientation="Horizontal"
                                     VerticalAlignment="Center">
-                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                                <TextBlock Text="推理"
-                                           VerticalAlignment="Center"
-                                           Margin="0,0,6,0"
-                                           FontSize="11"
-                                           Foreground="#68717D" />
-                                <ComboBox x:Name="AiReasoningComboBox"
-                                          Width="92"
-                                          Height="24"
-                                          Padding="4,0"
-                                          VerticalContentAlignment="Center"
-                                          FontSize="11"
-                                          SelectionChanged="AiReasoningComboBox_SelectionChanged"
-                                          DropDownOpened="AiReasoningComboBox_DropDownOpened"
-                                          ToolTip="自动：使用服务商默认设置。开启/关闭：向请求附加当前服务商对应的推理字段。">
-                                    <ComboBoxItem Content="自动" Tag="auto" />
-                                    <ComboBoxItem Content="开启" Tag="on" />
-                                    <ComboBoxItem Content="关闭" Tag="off" />
-                                </ComboBox>
-                            </StackPanel>
-                            <TextBlock x:Name="AiProviderStatusTextBlock"
-                                       Margin="0,4,0,0"
-                                       Foreground="#68717D"
-                                       FontSize="11"
-                                       TextAlignment="Right"
-                                       TextTrimming="CharacterEllipsis"
-                                       Text="AI 翻译未配置" />
-                            <TextBlock x:Name="StatusTextBlock"
-                                       Foreground="#68717D"
-                                       FontSize="11"
-                                       TextAlignment="Right"
-                                       TextWrapping="Wrap"
-                                       MaxHeight="30"
-                                       Text="就绪" />
+                            <TextBlock Text="推理"
+                                       VerticalAlignment="Center"
+                                       Margin="0,0,6,0"
+                                       FontSize="12"
+                                       Foreground="#68717D" />
+                            <ComboBox x:Name="AiReasoningComboBox"
+                                      Width="78"
+                                      Height="28"
+                                      Padding="6,0"
+                                      VerticalContentAlignment="Center"
+                                      FontSize="12"
+                                      SelectionChanged="AiReasoningComboBox_SelectionChanged"
+                                      DropDownOpened="AiReasoningComboBox_DropDownOpened"
+                                      ToolTip="控制模型是否开启深度思考（自动 = 按服务商默认）">
+                                <ComboBoxItem Content="自动" Tag="auto" />
+                                <ComboBoxItem Content="开启" Tag="on" />
+                                <ComboBoxItem Content="关闭" Tag="off" />
+                            </ComboBox>
                         </StackPanel>
-                        <StackPanel Orientation="Horizontal">
-                            <Button x:Name="AiSettingsButton"
-                                    Content="AI 服务设置"
-                                    Width="100"
-                                    Height="32"
-                                    Margin="0,0,6,0"
-                                    Click="AiSettingsButton_Click" />
-                            <Button x:Name="AiLogsButton"
-                                    Content="AI 翻译记录"
-                                    Width="100"
-                                    Height="32"
-                                    Margin="0,0,6,0"
-                                    Click="AiLogsButton_Click"
-                                    ToolTip="查看每次 AI 请求、原始回复和错误详情" />
+
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                             <Button x:Name="TranslateSelectedButton"
                                     Content="翻译选中"
-                                    Width="84"
-                                    Height="32"
-                                    Margin="0,0,6,0"
+                                    Height="30"
+                                    Margin="0,0,8,0"
                                     IsEnabled="False"
+                                    Style="{StaticResource PrimaryButtonStyle}"
                                     Click="TranslateSelectedButton_Click" />
                             <Button x:Name="TranslatePendingButton"
-                                    Content="批量翻译未翻译项"
-                                    Width="132"
-                                    Height="32"
-                                    Margin="0,0,6,0"
+                                    Content="批量翻译"
+                                    Height="30"
+                                    Margin="0,0,8,0"
                                     IsEnabled="False"
+                                    Style="{StaticResource SecondaryButtonStyle}"
+                                    ToolTip="批量翻译当前文件中所有未翻译的词条"
                                     Click="TranslatePendingButton_Click" />
                             <Button x:Name="CancelTranslationButton"
                                     Content="取消翻译"
-                                    Width="80"
-                                    Height="32"
+                                    Height="30"
+                                    Margin="0,0,8,0"
                                     IsEnabled="False"
-                                    Click="CancelTranslationButton_Click" />
-                            <Button x:Name="ProgressStatsButton"
-                                    Content="翻译统计"
-                                    Width="80"
-                                    Height="32"
-                                    Margin="6,0,0,0"
-                                    IsEnabled="False"
-                                    Click="ProgressStatsButton_Click"
-                                    ToolTip="查看当前工作区各文件的翻译进度统计，双击文件行可快速跳转" />
-                            <Button x:Name="CoverageReportButton"
-                                    Content="提取自检"
-                                    Width="80"
-                                    Height="32"
-                                    Margin="6,0,0,0"
                                     Visibility="Collapsed"
-                                    Click="CoverageReportButton_Click"
-                                    ToolTip="查看新版可见文本提取的覆盖率自检报告（visibletext-report.json）" />
+                                    Style="{StaticResource DangerButtonStyle}"
+                                    Click="CancelTranslationButton_Click" />
+                            <Button x:Name="ToolsMenuButton"
+                                    Content="数据统计 ▾"
+                                    Height="30"
+                                    Style="{StaticResource SecondaryButtonStyle}"
+                                    Click="ToolsMenuButton_Click">
+                                <Button.ContextMenu>
+                                    <ContextMenu x:Name="ToolsContextMenu">
+                                        <MenuItem x:Name="ProgressStatsMenuItem"
+                                                  Header="翻译进度统计"
+                                                  IsEnabled="False"
+                                                  Click="ProgressStatsButton_Click" />
+                                        <MenuItem x:Name="CoverageReportMenuItem"
+                                                  Header="提取覆盖率自检"
+                                                  Visibility="Collapsed"
+                                                  Click="CoverageReportButton_Click" />
+                                        <Separator />
+                                        <MenuItem x:Name="AiLogsMenuItem"
+                                                  Header="AI 翻译记录"
+                                                  Click="AiLogsButton_Click" />
+                                    </ContextMenu>
+                                </Button.ContextMenu>
+                            </Button>
                         </StackPanel>
                     </DockPanel>
 
@@ -382,6 +363,12 @@
                                   ScrollViewer.VerticalScrollBarVisibility="Auto"
                                   SelectionChanged="EntriesDataGrid_SelectionChanged"
                                   CurrentCellChanged="EntriesDataGrid_CurrentCellChanged">
+                            <DataGrid.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="打开完整译文编辑窗口 (Ctrl+E)"
+                                              Click="EditSelectedTranslationMenuItem_Click" />
+                                </ContextMenu>
+                            </DataGrid.ContextMenu>
                             <DataGrid.ColumnHeaderStyle>
                                 <Style TargetType="{x:Type DataGridColumnHeader}">
                                     <Setter Property="HorizontalContentAlignment" Value="Center" />
@@ -481,20 +468,6 @@
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellEditingTemplate>
                                 </DataGridTemplateColumn>
-                                <DataGridTemplateColumn Header="操作" Width="62" IsReadOnly="True">
-                                    <DataGridTemplateColumn.CellTemplate>
-                                        <DataTemplate>
-                                            <Button Content="编辑"
-                                                    Height="28"
-                                                    Padding="6,0"
-                                                    Margin="3,2"
-                                                    IsEnabled="{Binding IsEditable}"
-                                                    Click="EditTranslationButton_Click"
-                                                    ToolTip="打开完整译文编辑窗口" />
-                                        </DataTemplate>
-                                    </DataGridTemplateColumn.CellTemplate>
-                                </DataGridTemplateColumn>
-
                             </DataGrid.Columns>
                         </DataGrid>
                         <Border x:Name="EmptyStateBorder" Background="#FAFBFC"
@@ -505,9 +478,18 @@
                                            FontSize="20" FontWeight="SemiBold" Foreground="#39414A"
                                            TextAlignment="Center" />
                                 <TextBlock x:Name="EmptyStateDescriptionTextBlock" Margin="0,10,0,0"
-                                           Text="选择原游戏目录和统一输出目录，然后打开工作区或提取字典。"
+                                           Text="请先在上方选择原游戏目录和输出目录。"
                                            FontSize="13" Foreground="#68717D" TextWrapping="Wrap"
                                            TextAlignment="Center" />
+                                <ProgressBar x:Name="EmptyStateProgressBar"
+                                             Width="240"
+                                             Height="6"
+                                             Margin="0,16,0,0"
+                                             IsIndeterminate="True"
+                                             Foreground="#1971C2"
+                                             Background="#E9ECEF"
+                                             BorderThickness="0"
+                                             Visibility="Collapsed" />
                             </StackPanel>
                         </Border>
                     </Grid>
@@ -556,7 +538,7 @@
                                               Visibility="Collapsed"
                                               Checked="ScreenPreviewCheckBox_Changed"
                                               Unchecked="ScreenPreviewCheckBox_Changed"
-                                              ToolTip="勾选后显示当前一整屏（WAIT/INPUT 之间）的全部条目；取消勾选则只显示当前语义小组" />
+                                              ToolTip="勾选查看整屏全部对话，取消只看当前小组" />
                                     <TextBlock x:Name="EntryGroupLabelTextBlock" Text="同组条目"
                                                FontSize="12" FontWeight="SemiBold" Foreground="#39414A"
                                                VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
@@ -565,7 +547,7 @@
                                          BorderThickness="0" Background="Transparent" TextWrapping="Wrap"
                                          AcceptsReturn="True" VerticalScrollBarVisibility="Auto"
                                          HorizontalScrollBarVisibility="Auto"
-                                         Text="当前词条没有可用的 ERB 语义分组信息。" />
+                                         Text="当前词条无分组信息" />
                             </Grid>
                             <GridSplitter Grid.Column="1" Width="8" HorizontalAlignment="Stretch"
                                           VerticalAlignment="Stretch" ResizeDirection="Columns"
@@ -590,11 +572,28 @@
                                          BorderThickness="0" Background="Transparent" TextWrapping="Wrap"
                                          AcceptsReturn="True" VerticalScrollBarVisibility="Auto"
                                          HorizontalScrollBarVisibility="Auto"
-                                         Text="选择一个词条查看上下文。" />
+                                         Text="点击词条查看上下文" />
                             </Grid>
                         </Grid>
                     </Border>
 
+                    <DockPanel Grid.Row="5" Margin="0,6,0,0" LastChildFill="True">
+                        <TextBlock x:Name="AiProviderStatusTextBlock"
+                                   DockPanel.Dock="Right"
+                                   Margin="12,0,0,0"
+                                   Foreground="#68717D"
+                                   FontSize="11"
+                                   VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis"
+                                   Text="AI 翻译未配置" />
+                        <TextBlock x:Name="StatusTextBlock"
+                                   Foreground="#68717D"
+                                   FontSize="11"
+                                   VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis"
+                                   ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"
+                                   Text="就绪 · 右键词条或按 Ctrl+E 可打开大窗口编辑" />
+                    </DockPanel>
                 </Grid>
             </Border>
         </Grid>

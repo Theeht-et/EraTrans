@@ -3,6 +3,9 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              Background="#F5F6F8"
              PreviewKeyDown="Control_PreviewKeyDown">
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+    </UserControl.Resources>
     <Grid>
         <Grid>
             <Grid.ColumnDefinitions>
@@ -18,16 +21,32 @@
                     BorderThickness="1"
                     CornerRadius="8">
                 <DockPanel LastChildFill="True">
-                    <StackPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+                    <StackPanel DockPanel.Dock="Top" Margin="0,0,0,8">
                         <TextBlock Text="字典文件"
                                    FontSize="15"
                                    FontWeight="SemiBold"
                                    Foreground="#20242A" />
                         <TextBlock x:Name="DictionaryDirectoryTextBlock"
-                                   Margin="0,4,0,0"
+                                   Margin="0,3,0,0"
                                    FontSize="11"
                                    Foreground="#87909B"
                                    TextWrapping="Wrap" />
+                        <Grid Margin="0,8,0,0">
+                            <TextBox x:Name="FileTreeSearchTextBox"
+                                     Height="28"
+                                     VerticalContentAlignment="Center"
+                                     Padding="6,0"
+                                     FontSize="12"
+                                     ToolTip="输入文件名或路径关键词筛选左侧字典树"
+                                     TextChanged="FileTreeSearchTextBox_TextChanged" />
+                            <TextBlock x:Name="FileTreeSearchPlaceholder"
+                                       Text="筛选字典文件…"
+                                       Margin="8,0,0,0"
+                                       VerticalAlignment="Center"
+                                       FontSize="12"
+                                       Foreground="#9AA3AE"
+                                       IsHitTestVisible="False" />
+                        </Grid>
                     </StackPanel>
                     <TreeView x:Name="DictionaryFilesTreeView"
                               BorderThickness="0"
@@ -74,14 +93,16 @@
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
-                        <RowDefinition Height="160" />
+                        <RowDefinition Height="*" MinHeight="180" />
+                        <RowDefinition Height="8" />
+                        <RowDefinition Height="155" MinHeight="84" />
                     </Grid.RowDefinitions>
 
-                    <Grid Margin="0,0,0,12">
+                    <Grid Margin="0,0,0,10">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="280" />
+                            <ColumnDefinition Width="134" />
+                            <ColumnDefinition Width="230" />
                         </Grid.ColumnDefinitions>
                         <StackPanel>
                             <TextBlock x:Name="SelectedFileTextBlock"
@@ -95,14 +116,35 @@
                                        FontSize="12"
                                        Foreground="#68717D" />
                         </StackPanel>
-                        <TextBox x:Name="EntrySearchTextBox"
-                                 Grid.Column="1"
-                                 Height="34"
-                                 VerticalContentAlignment="Center"
-                                 Padding="8,0"
-                                 Margin="8,0,0,0"
-                                 ToolTip="搜索 key、原文、译文或上下文"
-                                 TextChanged="EntrySearchTextBox_TextChanged" />
+                        <ComboBox x:Name="EntryFilterComboBox"
+                                  Grid.Column="1"
+                                  Height="32"
+                                  Margin="8,0,0,0"
+                                  VerticalContentAlignment="Center"
+                                  FontSize="12"
+                                  ToolTip="按翻译状态、校验告警或文本类型筛选当前字典词条"
+                                  SelectionChanged="EntryFilterComboBox_SelectionChanged">
+                            <ComboBoxItem Content="全部词条" Tag="all" />
+                            <ComboBoxItem Content="未翻译" Tag="pending" />
+                            <ComboBoxItem Content="已翻译" Tag="translated" />
+                            <ComboBoxItem Content="有校验告警" Tag="warning" />
+                            <ComboBoxItem Content="按钮与界面" Tag="ui" />
+                        </ComboBox>
+                        <Grid Grid.Column="2" Margin="8,0,0,0">
+                            <TextBox x:Name="EntrySearchTextBox"
+                                     Height="32"
+                                     VerticalContentAlignment="Center"
+                                     Padding="8,0"
+                                     ToolTip="搜索 key、原文、译文、类型、分组或上下文（Ctrl+F）"
+                                     TextChanged="EntrySearchTextBox_TextChanged" />
+                            <TextBlock x:Name="EntrySearchPlaceholder"
+                                       Text="搜索词条（Ctrl+F）…"
+                                       Margin="10,0,0,0"
+                                       VerticalAlignment="Center"
+                                       FontSize="12"
+                                       Foreground="#9AA3AE"
+                                       IsHitTestVisible="False" />
+                        </Grid>
                     </Grid>
 
                     <DockPanel Grid.Row="1" Margin="0,0,0,10">
@@ -148,157 +190,204 @@
                         <StackPanel Orientation="Horizontal">
                             <Button x:Name="AiSettingsButton"
                                     Content="AI 服务设置"
-                                    Width="110"
+                                    Width="104"
                                     Height="32"
                                     Margin="0,0,8,0"
                                     Click="AiSettingsButton_Click" />
                             <Button x:Name="AiLogsButton"
                                     Content="AI 翻译记录"
-                                    Width="110"
+                                    Width="104"
                                     Height="32"
                                     Margin="0,0,8,0"
                                     Click="AiLogsButton_Click"
                                     ToolTip="查看每次 AI 请求、原始回复和错误详情" />
                             <Button x:Name="TranslateSelectedButton"
                                     Content="翻译选中"
-                                    Width="100"
+                                    Width="92"
                                     Height="32"
                                     Margin="0,0,8,0"
                                     IsEnabled="False"
                                     Click="TranslateSelectedButton_Click" />
                             <Button x:Name="TranslatePendingButton"
                                     Content="批量翻译未翻译项"
-                                    Width="150"
+                                    Width="142"
                                     Height="32"
                                     Margin="0,0,8,0"
                                     IsEnabled="False"
                                     Click="TranslatePendingButton_Click" />
                             <Button x:Name="CancelTranslationButton"
                                     Content="取消翻译"
-                                    Width="90"
+                                    Width="86"
                                     Height="32"
                                     IsEnabled="False"
                                     Click="CancelTranslationButton_Click" />
+                            <Button x:Name="CoverageReportButton"
+                                    Content="提取自检"
+                                    Width="86"
+                                    Height="32"
+                                    Margin="8,0,0,0"
+                                    Visibility="Collapsed"
+                                    Click="CoverageReportButton_Click"
+                                    ToolTip="查看新版可见文本提取的覆盖率自检报告（visibletext-report.json）" />
                         </StackPanel>
                     </DockPanel>
 
                     <Grid Grid.Row="2">
-                    <DataGrid x:Name="EntriesDataGrid"
-                              AutoGenerateColumns="False"
-                              CanUserAddRows="False"
-                              CanUserDeleteRows="False"
-                              CanUserReorderColumns="True"
-                              CanUserResizeColumns="True"
-                              CanUserSortColumns="True"
-                              HeadersVisibility="Column"
-                              GridLinesVisibility="Horizontal"
-                              RowHeaderWidth="0"
-                              SelectionUnit="CellOrRowHeader"
-                              SelectionMode="Extended"
-                              IsReadOnly="False"
-                              EnableRowVirtualization="True"
-                              EnableColumnVirtualization="True"
-                              ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                              ScrollViewer.VerticalScrollBarVisibility="Auto"
-                              SelectionChanged="EntriesDataGrid_SelectionChanged"
-                              CurrentCellChanged="EntriesDataGrid_CurrentCellChanged">
-                        <DataGrid.Columns>
-                            <DataGridTemplateColumn Header="编号" Width="82" IsReadOnly="True">
-                                <DataGridTemplateColumn.CellTemplate>
-                                    <DataTemplate>
-                                        <TextBlock Text="{Binding DisplayKey}"
-                                                   ToolTip="{Binding Key}"
-                                                   HorizontalAlignment="Center"
-                                                   VerticalAlignment="Center"
-                                                   Padding="4,2" />
-                                    </DataTemplate>
-                                </DataGridTemplateColumn.CellTemplate>
-                            </DataGridTemplateColumn>
-                            <DataGridTextColumn Header="语义组"
-                                                Binding="{Binding SemanticGroupLabel}"
-                                                IsReadOnly="True"
-                                                Width="125" />
-                            <DataGridTextColumn Header="原文"
-                                                Binding="{Binding Original}"
-                                                IsReadOnly="True"
-                                                Width="2*" />
-                            <DataGridTemplateColumn Header="译文" Width="2.5*">
-                                <DataGridTemplateColumn.CellTemplate>
-                                    <DataTemplate>
-                                        <TextBlock Text="{Binding Translation}"
-                                                   Padding="5,4"
-                                                   TextWrapping="Wrap"
-                                                   VerticalAlignment="Center" />
-                                    </DataTemplate>
-                                </DataGridTemplateColumn.CellTemplate>
-                                <DataGridTemplateColumn.CellEditingTemplate>
-                                    <DataTemplate>
-                                        <TextBox Text="{Binding Translation, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                 IsEnabled="{Binding IsEditable}"
-                                                 Padding="5,4"
-                                                 MinHeight="32"
-                                                 TextWrapping="Wrap"
-                                                 AcceptsReturn="True"
-                                                 VerticalScrollBarVisibility="Auto" />
-                                    </DataTemplate>
-                                </DataGridTemplateColumn.CellEditingTemplate>
-                            </DataGridTemplateColumn>
-                            <DataGridTemplateColumn Header="翻译状态" Width="145">
-                                <DataGridTemplateColumn.CellTemplate>
-                                    <DataTemplate>
-                                        <TextBlock Text="{Binding StageDescription}"
-                                                   Padding="5,4"
-                                                   VerticalAlignment="Center" />
-                                    </DataTemplate>
-                                </DataGridTemplateColumn.CellTemplate>
-                                <DataGridTemplateColumn.CellEditingTemplate>
-                                    <DataTemplate>
-                                        <ComboBox ItemsSource="{Binding StageOptions}"
-                                                  DisplayMemberPath="Label"
-                                                  SelectedValuePath="Value"
-                                                  SelectedValue="{Binding Stage, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                  IsEnabled="{Binding IsEditable}"
-                                                  MinWidth="120"
-                                                  Padding="4" />
-                                    </DataTemplate>
-                                </DataGridTemplateColumn.CellEditingTemplate>
-                            </DataGridTemplateColumn>
-                            <DataGridTemplateColumn Header="操作" Width="76" IsReadOnly="True">
-                                <DataGridTemplateColumn.CellTemplate>
-                                    <DataTemplate>
-                                        <Button Content="编辑"
-                                                Height="28"
-                                                Padding="10,0"
-                                                Margin="4,2"
-                                                IsEnabled="{Binding IsEditable}"
-                                                Click="EditTranslationButton_Click"
-                                                ToolTip="打开完整译文编辑窗口" />
-                                    </DataTemplate>
-                                </DataGridTemplateColumn.CellTemplate>
-                            </DataGridTemplateColumn>
+                        <DataGrid x:Name="EntriesDataGrid"
+                                  AutoGenerateColumns="False"
+                                  CanUserAddRows="False"
+                                  CanUserDeleteRows="False"
+                                  CanUserReorderColumns="True"
+                                  CanUserResizeColumns="True"
+                                  CanUserSortColumns="True"
+                                  HeadersVisibility="Column"
+                                  GridLinesVisibility="Horizontal"
+                                  RowHeaderWidth="0"
+                                  SelectionUnit="CellOrRowHeader"
+                                  SelectionMode="Extended"
+                                  IsReadOnly="False"
+                                  EnableRowVirtualization="True"
+                                  EnableColumnVirtualization="True"
+                                  ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                                  ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                  SelectionChanged="EntriesDataGrid_SelectionChanged"
+                                  CurrentCellChanged="EntriesDataGrid_CurrentCellChanged">
+                            <DataGrid.Columns>
+                                <DataGridTemplateColumn Header="编号" Width="72" IsReadOnly="True">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding DisplayKey}"
+                                                       ToolTip="{Binding Key}"
+                                                       HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center"
+                                                       Padding="4,2" />
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTextColumn Header="屏 / 分组"
+                                                    Binding="{Binding SemanticGroupLabel}"
+                                                    IsReadOnly="True"
+                                                    Width="128" />
+                                <DataGridTextColumn Header="类型"
+                                                    Binding="{Binding EntryTypeLabel}"
+                                                    IsReadOnly="True"
+                                                    Width="68" />
+                                <DataGridTextColumn Header="原文"
+                                                    Binding="{Binding Original}"
+                                                    IsReadOnly="True"
+                                                    Width="2*" />
+                                <DataGridTemplateColumn Header="译文" Width="2.4*">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding Translation}"
+                                                           Padding="5,4"
+                                                           TextWrapping="Wrap"
+                                                           VerticalAlignment="Center" />
+                                                <TextBlock Grid.Column="1"
+                                                           Text="⚠"
+                                                           Foreground="#C87500"
+                                                           FontWeight="Bold"
+                                                           Margin="4,0,6,0"
+                                                           VerticalAlignment="Center"
+                                                           ToolTip="{Binding ValidationWarning}"
+                                                           Visibility="{Binding HasValidationWarning, Converter={StaticResource BoolToVisibility}}" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                    <DataGridTemplateColumn.CellEditingTemplate>
+                                        <DataTemplate>
+                                            <TextBox Text="{Binding Translation, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                     IsEnabled="{Binding IsEditable}"
+                                                     Padding="5,4"
+                                                     MinHeight="32"
+                                                     TextWrapping="Wrap"
+                                                     AcceptsReturn="True"
+                                                     VerticalScrollBarVisibility="Auto" />
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellEditingTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTemplateColumn Header="翻译状态" Width="130">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding StageDescription}"
+                                                       Padding="5,4"
+                                                       VerticalAlignment="Center" />
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                    <DataGridTemplateColumn.CellEditingTemplate>
+                                        <DataTemplate>
+                                            <ComboBox ItemsSource="{Binding StageOptions}"
+                                                      DisplayMemberPath="Label"
+                                                      SelectedValuePath="Value"
+                                                      SelectedValue="{Binding Stage, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                      IsEnabled="{Binding IsEditable}"
+                                                      MinWidth="116"
+                                                      Padding="4" />
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellEditingTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTemplateColumn Header="操作" Width="72" IsReadOnly="True">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Button Content="编辑"
+                                                    Height="28"
+                                                    Padding="10,0"
+                                                    Margin="4,2"
+                                                    IsEnabled="{Binding IsEditable}"
+                                                    Click="EditTranslationButton_Click"
+                                                    ToolTip="打开完整译文编辑窗口" />
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
 
-                        </DataGrid.Columns>
-                    </DataGrid>
-                    <Border x:Name="EmptyStateBorder" Background="#FAFBFC"
-                            BorderBrush="#E3E6EA" BorderThickness="1" CornerRadius="6"
-                            Margin="1" Visibility="Visible" IsHitTestVisible="False">
-                        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="520" Margin="24">
-                            <TextBlock x:Name="EmptyStateTitleTextBlock" Text="尚未打开工作区"
-                                       FontSize="20" FontWeight="SemiBold" Foreground="#39414A"
-                                       TextAlignment="Center" />
-                            <TextBlock x:Name="EmptyStateDescriptionTextBlock" Margin="0,10,0,0"
-                                       Text="选择原游戏目录和统一输出目录，然后打开工作区或提取字典。"
-                                       FontSize="13" Foreground="#68717D" TextWrapping="Wrap"
-                                       TextAlignment="Center" />
-                        </StackPanel>
-                    </Border>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                        <Border x:Name="EmptyStateBorder" Background="#FAFBFC"
+                                BorderBrush="#E3E6EA" BorderThickness="1" CornerRadius="6"
+                                Margin="1" Visibility="Visible" IsHitTestVisible="False">
+                            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="520" Margin="24">
+                                <TextBlock x:Name="EmptyStateTitleTextBlock" Text="尚未打开工作区"
+                                           FontSize="20" FontWeight="SemiBold" Foreground="#39414A"
+                                           TextAlignment="Center" />
+                                <TextBlock x:Name="EmptyStateDescriptionTextBlock" Margin="0,10,0,0"
+                                           Text="选择原游戏目录和统一输出目录，然后打开工作区或提取字典。"
+                                           FontSize="13" Foreground="#68717D" TextWrapping="Wrap"
+                                           TextAlignment="Center" />
+                            </StackPanel>
+                        </Border>
                     </Grid>
 
-                    <Border Grid.Row="3" Margin="0,10,0,0" Padding="10"
+                    <GridSplitter Grid.Row="3"
+                                  Height="8"
+                                  HorizontalAlignment="Stretch"
+                                  VerticalAlignment="Stretch"
+                                  ResizeDirection="Rows"
+                                  ResizeBehavior="PreviousAndNext"
+                                  ShowsPreview="False"
+                                  Cursor="SizeNS"
+                                  ToolTip="拖动调整底部预览区高度">
+                        <GridSplitter.Template>
+                            <ControlTemplate TargetType="{x:Type GridSplitter}">
+                                <Border Background="Transparent">
+                                    <Border Height="2"
+                                            VerticalAlignment="Center"
+                                            Background="#D5DAE0"
+                                            CornerRadius="1" />
+                                </Border>
+                            </ControlTemplate>
+                        </GridSplitter.Template>
+                    </GridSplitter>
+
+                    <Border Grid.Row="4" Padding="10"
                             Background="#FAFBFC" BorderBrush="#E3E6EA" BorderThickness="1" CornerRadius="6">
                         <Grid>
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="1.1*" />
+                                <ColumnDefinition Width="1.15*" />
                                 <ColumnDefinition Width="8" />
                                 <ColumnDefinition Width="1*" />
                             </Grid.ColumnDefinitions>
@@ -307,9 +396,21 @@
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="*" />
                                 </Grid.RowDefinitions>
-                                <TextBlock x:Name="EntryGroupLabelTextBlock" Text="同组条目"
-                                           FontSize="12" FontWeight="SemiBold" Foreground="#39414A"
-                                           Margin="0,0,0,4" />
+                                <DockPanel Margin="0,0,0,4">
+                                    <CheckBox x:Name="ScreenPreviewCheckBox"
+                                              DockPanel.Dock="Right"
+                                              Content="整屏预览"
+                                              FontSize="11"
+                                              Foreground="#59636F"
+                                              VerticalAlignment="Center"
+                                              Visibility="Collapsed"
+                                              Checked="ScreenPreviewCheckBox_Changed"
+                                              Unchecked="ScreenPreviewCheckBox_Changed"
+                                              ToolTip="勾选后显示当前一整屏（WAIT/INPUT 之间）的全部条目；取消勾选则只显示当前语义小组" />
+                                    <TextBlock x:Name="EntryGroupLabelTextBlock" Text="同组条目"
+                                               FontSize="12" FontWeight="SemiBold" Foreground="#39414A"
+                                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                </DockPanel>
                                 <TextBox x:Name="EntryGroupTextBox" Grid.Row="1" IsReadOnly="True"
                                          BorderThickness="0" Background="Transparent" TextWrapping="Wrap"
                                          AcceptsReturn="True" VerticalScrollBarVisibility="Auto"

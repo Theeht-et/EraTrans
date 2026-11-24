@@ -32,13 +32,14 @@ public sealed class DictionaryEditorServiceTests
         Write(Path.Combine(root, "ERB", "hello.spans.json"), "{}");
         Write(Path.Combine(root, "ERB", "hello.groups.json"), "{}");
         Write(Path.Combine(root, "ERB", "hello.json"), "[]");
-        Write(Path.Combine(root, "CSV", "items.json"), "[]");
+        Write(Path.Combine(root, "CSV", "items.JSON"), "[]");
+        Write(Path.Combine(root, "CSV", "ignore.txt"), "not a dictionary");
 
         IReadOnlyList<DictionaryEditorFile> files =
             new DictionaryEditorService().ListDictionaryFiles(root);
 
         Assert.Equal(
-            new[] { Path.Combine("CSV", "items.json"), Path.Combine("ERB", "hello.json") },
+            new[] { Path.Combine("CSV", "items.JSON"), Path.Combine("ERB", "hello.json") },
             files.Select(file => file.RelativePath).ToArray());
     }
 
@@ -394,21 +395,6 @@ public sealed class DictionaryEditorServiceTests
     }
 
     [Fact]
-    public void ListDictionaryFiles_RecursivelyReturnsJsonFilesInStableOrder()
-    {
-        string root = CreateTempDirectory();
-        Write(Path.Combine(root, "B", "z.json"), "[]");
-        Write(Path.Combine(root, "A", "a.JSON"), "[]");
-        Write(Path.Combine(root, "A", "ignore.txt"), "not a dictionary");
-
-        var files = new DictionaryEditorService().ListDictionaryFiles(root);
-
-        Assert.Equal(
-            new[] { Path.Combine("A", "a.JSON"), Path.Combine("B", "z.json") },
-            files.Select(file => file.RelativePath).ToArray());
-    }
-
-    [Fact]
     public void Load_InvalidJsonDoesNotModifyTheDictionaryFile()
     {
         string root = CreateTempDirectory();
@@ -418,6 +404,16 @@ public sealed class DictionaryEditorServiceTests
 
         Assert.Throws<InvalidDataException>(() => new DictionaryEditorService().Load(path));
         Assert.Equal(invalid, File.ReadAllText(path));
+    }
+
+    [Theory]
+    [InlineData("文本ERB\\OPENING00001", true)]
+    [InlineData("变量ERB\\OPENING00001", false)]
+    [InlineData("", false)]
+    [InlineData(null, false)]
+    public void IsTranslatableTextKey_UsesTextPrefixOnly(string? key, bool expected)
+    {
+        Assert.Equal(expected, DictionaryKeyRules.IsTranslatableTextKey(key));
     }
 
     private static void Write(string path, string content)

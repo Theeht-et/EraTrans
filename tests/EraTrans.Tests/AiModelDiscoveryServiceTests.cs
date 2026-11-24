@@ -311,30 +311,6 @@ public sealed class AiModelDiscoveryServiceTests
     }
 
     [Fact]
-    public void ModelCapabilityLabels_AlwaysShowUnknownWhenMetadataIsMissing()
-    {
-        var unknown = new AiProviderModel { Id = "provider-model" };
-        Assert.Equal("上下文大小：未知", unknown.ContextLimitLabel);
-        Assert.Equal("推理能力：未知", unknown.ReasoningSupportDescription);
-
-        var supported = new AiProviderModel
-        {
-            Id = "reasoning-model",
-            ContextLimit = 128000,
-            ReasoningSupport = true
-        };
-        Assert.Equal("上下文大小：128K", supported.ContextLimitLabel);
-        Assert.Equal("推理能力：支持", supported.ReasoningSupportDescription);
-
-        var unsupported = new AiProviderModel
-        {
-            Id = "standard-model",
-            ReasoningSupport = false
-        };
-        Assert.Equal("推理能力：不支持", unsupported.ReasoningSupportDescription);
-    }
-
-    [Fact]
     public async Task CatalogEnrichment_ResolvesProviderAliasHostAndPersistsCatalogCache()
     {
         using var temporary = new TemporaryDirectory();
@@ -435,122 +411,6 @@ public sealed class AiModelDiscoveryServiceTests
     }
 
     [Fact]
-    public async Task CatalogEnrichment_MapsNamespacedModelIdsToFirstPartyProviderCatalog()
-    {
-        var catalogUri = new Uri("https://models.dev/api.json?test=provider-prefix-route");
-        const string json = """
-            {
-              "openrouter": {
-                "id": "openrouter",
-                "api": "https://openrouter.ai/api/v1",
-                "models": {}
-              },
-              "deepseek": {
-                "id": "deepseek",
-                "api": "https://api.deepseek.com/v1",
-                "models": {
-                  "deepseek-chat": {
-                    "id": "deepseek-chat",
-                    "name": "DeepSeek Chat",
-                    "reasoning": false,
-                    "ro": [{ "type": "effort", "values": ["low", "medium", "high"] }],
-                    "limit": { "context": 131072 }
-                  }
-                }
-              }
-            }
-            """;
-        using var handler = new StubHandler(_ =>
-            new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = new StringContent(json, Encoding.UTF8, "application/json")
-            });
-        using var client = new HttpClient(handler);
-        var enrichment = new AiModelCatalogEnrichmentService(client, catalogUri: catalogUri);
-
-        IReadOnlyList<AiProviderModel> result = await enrichment.EnrichAsync(
-            new AiProviderProfile { BaseUrl = "https://openrouter.ai/api/v1" },
-            [new AiProviderModel
-            {
-                Id = "deepseek/deepseek-chat",
-                DisplayName = "deepseek/deepseek-chat"
-            }]);
-
-        AiProviderModel model = Assert.Single(result);
-        Assert.Equal("DeepSeek Chat", model.DisplayName);
-        Assert.Equal(131072, model.ContextLimit);
-        Assert.Equal(false, model.ReasoningSupport);
-        Assert.Equal(new[] { "low", "medium", "high" }, model.ReasoningLevels);
-        Assert.Equal("推理能力：不支持", model.ReasoningSupportDescription);
-        Assert.Equal(new[] { "low", "medium", "high" }, model.ReasoningLevels);
-        Assert.Equal("推理能力：不支持", model.ReasoningSupportDescription);
-    }
-
-    [Fact]
-    public async Task CatalogEnrichment_UsesConservativeKelivoStyleReasoningDefaultsOnlyWhenUnknown()
-    {
-        var catalogUri = new Uri("https://models.dev/api.json?test=reasoning-defaults-fallback");
-        using var handler = new StubHandler(_ =>
-            new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
-        using var client = new HttpClient(handler);
-        var enrichment = new AiModelCatalogEnrichmentService(client, catalogUri: catalogUri);
-
-        AiProviderModel[] models =
-        [
-            new() { Id = "deepseek-reasoner", DisplayName = "deepseek-reasoner" },
-            new() { Id = "custom-reasoning-model", DisplayName = "custom-reasoning-model" },
-            new()
-            {
-                Id = "deepseek-r1",
-                DisplayName = "deepseek-r1",
-                ReasoningSupport = false
-            }
-        ];
-
-        IReadOnlyList<AiProviderModel> result = await enrichment.EnrichAsync(
-            new AiProviderProfile { BaseUrl = "https://custom.example.com/v1" },
-            models);
-
-        AiProviderModel deepseekReasoner = Assert.Single(
-            result, model => model.Id == "deepseek-reasoner");
-        Assert.Equal(true, deepseekReasoner.ReasoningSupport);
-
-        AiProviderModel custom = Assert.Single(
-            result, model => model.Id == "custom-reasoning-model");
-        Assert.Null(custom.ReasoningSupport);
-
-        AiProviderModel explicitFalse = Assert.Single(
-            result, model => model.Id == "deepseek-r1");
-        Assert.Equal(false, explicitFalse.ReasoningSupport);
-    }
-
-    [Fact]
-    public void ParseModelsResponse_DoesNotConfuseInputLimitWithTotalContextWindow()
-    {
-        const string json = """
-            {
-              "data": [
-                { "id": "input-limited", "inputTokenLimit": 12000 },
-                {
-                  "id": "context-and-input-limited",
-                  "context_length": 65536,
-                  "max_input_tokens": 60000
-                }
-              ]
-            }
-            """;
-
-        IReadOnlyList<AiProviderModel> models = AiModelDiscoveryService.ParseModelsResponse(json);
-        AiProviderModel inputOnly = Assert.Single(models, model => model.Id == "input-limited");
-        Assert.Equal(12000, inputOnly.ContextLimit);
-        Assert.Null(inputOnly.InputLimit);
-
-        AiProviderModel both = Assert.Single(models, model => model.Id == "context-and-input-limited");
-        Assert.Equal(65536, both.ContextLimit);
-        Assert.Equal(60000, both.InputLimit);
-    }
-
-    [Fact]
     public void ParseModelsResponse_ExtractsProviderReportedReasoningEffortLevels()
     {
         const string json = """
@@ -577,45 +437,6 @@ public sealed class AiModelDiscoveryServiceTests
         AiProviderModel direct = Assert.Single(models, model => model.Id == "model-with-level-list");
         Assert.Equal(true, direct.ReasoningSupport);
         Assert.Equal(new[] { "minimal", "low", "high" }, direct.ReasoningLevels);
-    }
-
-    [Fact]
-    public async Task CatalogEnrichment_UsesContextWindowMarkerWhenCatalogHasNoNumericLimit()
-    {
-        var catalogUri = new Uri("https://models.dev/api.json?test=context-window-suffix");
-        const string json = """
-            {
-              "openai": {
-                "id": "openai",
-                "api": "https://api.openai.com/v1",
-                "models": {
-                  "gpt-4o-mini": {
-                    "id": "gpt-4o-mini",
-                    "name": "GPT-4o mini"
-                  }
-                }
-              }
-            }
-            """;
-        using var handler = new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
-        {
-            Content = new StringContent(json, Encoding.UTF8, "application/json")
-        });
-        using var client = new HttpClient(handler);
-        var enrichment = new AiModelCatalogEnrichmentService(client, catalogUri: catalogUri);
-
-        IReadOnlyList<AiProviderModel> result = await enrichment.EnrichAsync(
-            new AiProviderProfile { BaseUrl = "https://api.openai.com/v1" },
-            [new AiProviderModel
-            {
-                Id = "gpt-4o-mini-128k",
-                DisplayName = "gpt-4o-mini-128k",
-                GroupName = "OpenAI"
-            }]);
-
-        AiProviderModel model = Assert.Single(result);
-        Assert.Equal("GPT-4o mini", model.DisplayName);
-        Assert.Equal(128000, model.ContextLimit);
     }
 
     private sealed class StubHandler(

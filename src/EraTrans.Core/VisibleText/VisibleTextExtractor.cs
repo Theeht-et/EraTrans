@@ -18,7 +18,7 @@ namespace EraTrans.Core.VisibleText;
 /// </summary>
 public sealed class VisibleTextExtractor
 {
-    private const string SidecarDirectoryName = "AI上下文";
+    private const string SidecarDirectoryName = "辅助数据";
     private const string SidecarSuffix = ".spans.json";
     private const string DictionaryDirectoryName = "字典";
     private const string ReportFileName = "visibletext-report.json";

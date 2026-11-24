@@ -159,7 +159,7 @@ public sealed class VisibleTextExtractorTests
             Assert.Equal(@"文本ERB\hello.00001", entries[1].GetProperty("key").GetString());
             Assert.Equal("こんにちは", entries[1].GetProperty("original").GetString());
 
-            string sidecarPath = Path.Combine(root, "out", "AI上下文", "ERB", "hello.spans.json");
+            string sidecarPath = Path.Combine(root, "out", "辅助数据", "ERB", "hello.spans.json");
             Assert.True(File.Exists(sidecarPath));
 
             using JsonDocument sidecar = JsonDocument.Parse(File.ReadAllBytes(sidecarPath));
@@ -253,7 +253,7 @@ public sealed class VisibleTextExtractorTests
             var extractor = new VisibleTextExtractor();
             extractor.Extract(gameDirectory, dictionaryRoot, "ERB", new EraParserOptions { WriteContext = true });
 
-            string sidecarPath = Path.Combine(root, "out", "AI上下文", "ERB", "ui.spans.json");
+            string sidecarPath = Path.Combine(root, "out", "辅助数据", "ERB", "ui.spans.json");
             using JsonDocument sidecar = JsonDocument.Parse(File.ReadAllBytes(sidecarPath));
             string text = File.ReadAllText(source, Encoding.UTF8);
 

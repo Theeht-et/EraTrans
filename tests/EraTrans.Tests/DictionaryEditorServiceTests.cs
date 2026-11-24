@@ -99,6 +99,7 @@ public sealed class DictionaryEditorServiceTests
         Assert.Equal(string.Empty, TranslationPreValidator.Validate("おはよう%CALLNAME:MASTER%", "早上好%CALLNAME:MASTER%", isScriptTarget: true));
         Assert.Equal(string.Empty, TranslationPreValidator.Validate("成功率50%、失敗率50%", "成功率50%、失败率50%", isScriptTarget: true));
         Assert.Equal(string.Empty, TranslationPreValidator.Validate("多行CSV原文", "第一行\n第二行", isScriptTarget: false));
+        Assert.Equal(string.Empty, TranslationPreValidator.Validate(@"\@ARG ? 彼 : 彼女\@だ", @"\@ARG ? 他 : 她\@呀", isScriptTarget: true));
 
         string newlineWarning = TranslationPreValidator.Validate("单行脚本", "第一行\n第二行", isScriptTarget: true);
         Assert.Contains("换行", newlineWarning, StringComparison.Ordinal);
@@ -111,8 +112,62 @@ public sealed class DictionaryEditorServiceTests
         Assert.Contains("多出占位符", extraWarning, StringComparison.Ordinal);
         Assert.Contains("%EXTRA%", extraWarning, StringComparison.Ordinal);
 
-        string ternaryWarning = TranslationPreValidator.Validate(@"\@ARG ? 男 : 女\@だ", "是人", isScriptTarget: true);
-        Assert.Contains("缺少占位符", ternaryWarning, StringComparison.Ordinal);
+        string ternaryMissingWarning = TranslationPreValidator.Validate(@"\@ARG ? 彼 : 彼女\@だ", "是他", isScriptTarget: true);
+        Assert.Contains("条件块数量不一致", ternaryMissingWarning, StringComparison.Ordinal);
+
+        string ternaryUnclosedWarning = TranslationPreValidator.Validate(@"\@ARG ? 彼 : 彼女\@だ", @"\@ARG ? 他 : 她呀", isScriptTarget: true);
+        Assert.Contains("未闭合", ternaryUnclosedWarning, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ValidationWarning_SkipsReadOnlyVariablesAndIgnoredEntries_AndUpdatesWithStage()
+    {
+        string root = CreateTempDirectory();
+        string path = Path.Combine(root, "ERB", "validation.json");
+        Write(path,
+            """
+            [
+              {
+                "key": "变量ERB\\TEST00001",
+                "original": "体力%CALLNAME:MASTER%",
+                "translation": "缺少占位符的只读变量",
+                "stage": 1
+              },
+              {
+                "key": "文本ERB\\TEST00002",
+                "original": "おはよう%CALLNAME:MASTER%",
+                "translation": "早上好",
+                "stage": 1
+              }
+            ]
+            """);
+
+        var document = new DictionaryEditorService().Load(path);
+        DictionaryEditorEntry variableEntry = document.Entries[0];
+        DictionaryEditorEntry editableEntry = document.Entries[1];
+
+        Assert.False(variableEntry.IsEditable);
+        Assert.False(variableEntry.HasValidationWarning);
+        Assert.Equal(string.Empty, variableEntry.ValidationWarning);
+
+        variableEntry.SetEntryMetadata("正文", isScriptEntry: true);
+        Assert.False(variableEntry.HasValidationWarning);
+
+        Assert.True(editableEntry.HasValidationWarning);
+        Assert.Equal(1, document.WarningEntryCount);
+        Assert.Contains("告警 1", document.SummaryText, StringComparison.Ordinal);
+
+        editableEntry.Stage = -1;
+        Assert.False(editableEntry.HasValidationWarning);
+        Assert.Equal(string.Empty, editableEntry.ValidationWarning);
+        Assert.Equal(0, document.WarningEntryCount);
+        Assert.DoesNotContain("告警", document.SummaryText, StringComparison.Ordinal);
+
+        editableEntry.Stage = 1;
+        Assert.True(editableEntry.HasValidationWarning);
+        Assert.Contains("缺少占位符", editableEntry.ValidationWarning, StringComparison.Ordinal);
+        Assert.Equal(1, document.WarningEntryCount);
+        Assert.Contains("告警 1", document.SummaryText, StringComparison.Ordinal);
     }
 
     [Fact]

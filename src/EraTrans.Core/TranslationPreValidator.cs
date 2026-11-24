@@ -16,10 +16,6 @@ public static class TranslationPreValidator
         @"\{[A-Za-z0-9_:\u3040-\u9FFF\(\)\[\],\.\+\-\*/\s""']{1,80}\}",
         RegexOptions.Compiled);
 
-    private static readonly Regex TernaryPlaceholderRegex = new(
-        @"\\@[^@\r\n]{1,160}\\@",
-        RegexOptions.Compiled);
-
     public static string Validate(string original, string translation, bool isScriptTarget)
     {
         if (string.IsNullOrWhiteSpace(translation))
@@ -70,6 +66,22 @@ public static class TranslationPreValidator
             }
         }
 
+        int originalTernaryMarkers = CountTernaryMarkers(original);
+        int translationTernaryMarkers = CountTernaryMarkers(translation);
+        if (translationTernaryMarkers % 2 != 0)
+        {
+            issues.Add(@"存在未闭合的 \@...\@ 条件表达式");
+        }
+        else
+        {
+            int originalTernaryBlocks = originalTernaryMarkers / 2;
+            int translationTernaryBlocks = translationTernaryMarkers / 2;
+            if (originalTernaryBlocks != translationTernaryBlocks)
+            {
+                issues.Add($@"\@...\@ 条件块数量不一致（原文 {originalTernaryBlocks} 处，译文 {translationTernaryBlocks} 处）");
+            }
+        }
+
         return issues.Count == 0 ? string.Empty : string.Join("；", issues);
     }
 
@@ -113,10 +125,27 @@ public static class TranslationPreValidator
             return counts;
         }
 
-        CollectMatches(TernaryPlaceholderRegex, text, counts);
         CollectMatches(PercentPlaceholderRegex, text, counts);
         CollectMatches(BracePlaceholderRegex, text, counts);
         return counts;
+    }
+
+    private static int CountTernaryMarkers(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return 0;
+        }
+
+        int count = 0;
+        int index = 0;
+        while ((index = text.IndexOf(@"\@", index, StringComparison.Ordinal)) >= 0)
+        {
+            count++;
+            index += 2;
+        }
+
+        return count;
     }
 
     private static void CollectMatches(Regex regex, string text, Dictionary<string, int> counts)

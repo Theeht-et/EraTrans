@@ -230,7 +230,7 @@ public sealed class DictionaryEditorEntry : INotifyPropertyChanged
                 .Append(new DictionaryStageOption(_stage, $"自定义（{_stage}）"))
                 .ToArray();
 
-        _validationWarning = TranslationPreValidator.Validate(Original, _translation, _isScriptEntry);
+        _validationWarning = ComputeValidationWarning();
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -306,6 +306,7 @@ public sealed class DictionaryEditorEntry : INotifyPropertyChanged
             _markDocumentDirty();
             OnPropertyChanged();
             OnPropertyChanged(nameof(StageDescription));
+            RefreshValidationWarning();
         }
     }
 
@@ -344,9 +345,14 @@ public sealed class DictionaryEditorEntry : INotifyPropertyChanged
         return true;
     }
 
+    private string ComputeValidationWarning() =>
+        !IsEditable || _stage < 0
+            ? string.Empty
+            : TranslationPreValidator.Validate(Original, _translation, _isScriptEntry);
+
     private void RefreshValidationWarning()
     {
-        string updated = TranslationPreValidator.Validate(Original, _translation, _isScriptEntry);
+        string updated = ComputeValidationWarning();
         if (string.Equals(_validationWarning, updated, StringComparison.Ordinal))
         {
             return;

@@ -22,6 +22,26 @@ public sealed class DictionaryEditorServiceTests
     }
 
     [Fact]
+    public void ListDictionaryFiles_ExcludesExtractorMarkerAndAiSidecarFiles()
+    {
+        string root = CreateTempDirectory();
+        Write(Path.Combine(root, "extractor.json"), "{\"schema\":1,\"mode\":\"lexer\"}");
+        Write(Path.Combine(root, "visibletext-report.json"), "{\"schema\":1}");
+        Write(Path.Combine(root, "AI上下文", "ERB", "hello.spans.json"), "{}");
+        Write(Path.Combine(root, "ERB", "hello.spans.json"), "{}");
+        Write(Path.Combine(root, "ERB", "hello.groups.json"), "{}");
+        Write(Path.Combine(root, "ERB", "hello.json"), "[]");
+        Write(Path.Combine(root, "CSV", "items.json"), "[]");
+
+        IReadOnlyList<DictionaryEditorFile> files =
+            new DictionaryEditorService().ListDictionaryFiles(root);
+
+        Assert.Equal(
+            new[] { Path.Combine("CSV", "items.json"), Path.Combine("ERB", "hello.json") },
+            files.Select(file => file.RelativePath).ToArray());
+    }
+
+    [Fact]
     public void LoadAndSave_ChangesOnlyTranslationAndStage_PreservesUnknownFieldsAndContext()
     {
         string root = CreateTempDirectory();

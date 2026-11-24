@@ -46,7 +46,7 @@
                             Height="32"
                             Margin="0,0,8,0"
                             Style="{StaticResource SecondaryButtonStyle}"
-                            ToolTip="完整复制原游戏到游戏副本并应用已保存译文，原游戏目录始终只读"
+                            ToolTip="复制原游戏并写入已保存译文，不会改动原游戏"
                             Click="ApplyTranslations_Click" />
                     <Button x:Name="SettingsMenuButton"
                             Content="设置 ▾"
@@ -55,10 +55,10 @@
                             Click="SettingsMenuButton_Click">
                         <Button.ContextMenu>
                             <ContextMenu x:Name="SettingsContextMenu">
-                                <MenuItem Header="解析与提取设置…" Click="Settings_Click" />
-                                <MenuItem Header="AI 服务设置…" Click="AiSettingsMenuItem_Click" />
+                                <MenuItem Header="解析与提取设置" Click="Settings_Click" />
+                                <MenuItem Header="AI 服务设置" Click="AiSettingsMenuItem_Click" />
                                 <Separator />
-                                <MenuItem Header="重新加载当前工作区" Click="ReloadWorkspaceMenuItem_Click" />
+                                <MenuItem Header="重新加载工作区" Click="ReloadWorkspaceMenuItem_Click" />
                             </ContextMenu>
                         </Button.ContextMenu>
                     </Button>
@@ -78,7 +78,7 @@
                             FontSize="12"
                             Padding="10,0"
                             Style="{StaticResource SecondaryButtonStyle}"
-                            ToolTip="展开或收起原游戏目录与统一输出目录选择栏"
+                            ToolTip="展开或收起目录选择栏"
                             Click="TogglePathsButton_Click" />
                 </StackPanel>
             </DockPanel>
@@ -144,14 +144,25 @@
                            FontSize="11"
                            Foreground="#68717D"
                            VerticalAlignment="Center"
-                           Text="原游戏目录始终只读" />
+                           Text="原游戏只读" />
+                <ProgressBar x:Name="BusyProgressBar"
+                             DockPanel.Dock="Left"
+                             Width="110"
+                             Height="6"
+                             Margin="0,0,10,0"
+                             VerticalAlignment="Center"
+                             IsIndeterminate="True"
+                             Foreground="#1971C2"
+                             Background="#E9ECEF"
+                             BorderThickness="0"
+                             Visibility="Collapsed" />
                 <TextBlock x:Name="StatusText"
                            FontSize="11.5"
                            Foreground="#59636F"
                            VerticalAlignment="Center"
                            TextTrimming="CharacterEllipsis"
                            ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"
-                           Text="首次使用请先选择原游戏目录和统一输出目录。" />
+                           Text="请先选择原游戏目录和输出目录" />
             </DockPanel>
         </Border>
     </Grid>

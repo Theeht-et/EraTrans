@@ -28,7 +28,7 @@
                        FontWeight="SemiBold"
                        Foreground="#20242A" />
             <TextBlock Margin="0,5,0,0"
-                       Text="在此查看和编辑完整译文。确认后只回填当前编辑器，仍需保存字典文件才会写入磁盘。"
+                       Text="编辑完整译文，点确定后回填表格（仍需按 Ctrl+S 保存字典）。"
                        TextWrapping="Wrap"
                        FontSize="12"
                        Foreground="#68717D" />
@@ -76,11 +76,7 @@
                        FontSize="13"
                        FontWeight="SemiBold"
                        Foreground="#39414A" />
-            <TextBlock Grid.Column="1"
-                       Text="支持多行、长文本和滚动"
-                       VerticalAlignment="Center"
-                       FontSize="11"
-                       Foreground="#87909B" />
+
         </Grid>
 
         <TextBox x:Name="TranslationTextBox"
@@ -129,11 +125,13 @@
                         Height="36"
                         Margin="0,0,8,0"
                         IsDefault="True"
+                        Style="{StaticResource PrimaryButtonStyle}"
                         Click="Confirm_Click" />
                 <Button Content="取消"
                         Width="88"
                         Height="36"
-                        IsCancel="True" />
+                        IsCancel="True"
+                        Style="{StaticResource SecondaryButtonStyle}" />
             </StackPanel>
         </Grid>
     </Grid>

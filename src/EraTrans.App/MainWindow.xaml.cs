@@ -88,7 +88,7 @@ public partial class MainWindow : Window
             ActivateWorkspace(layout))
         {
             SetPathsDrawerExpanded(false);
-            StatusText.Text = $"已恢复上次工作区：{layout.GameDirectoryName}。可直接在下方编辑字典。";
+            StatusText.Text = $"已加载工作区：{layout.GameDirectoryName}";
             return;
         }
 
@@ -98,8 +98,8 @@ public partial class MainWindow : Window
         StatusText.Text =
             string.IsNullOrWhiteSpace(GameDirectoryTextBox.Text) ||
             string.IsNullOrWhiteSpace(OutputDirectoryTextBox.Text)
-                ? "首次使用请先选择原游戏目录和统一输出目录，选完将自动加载工作区。"
-                : "上次保存的目录不可用或配置无效，请重新选择目录。";
+                ? "请先选择原游戏目录和输出目录，选完自动加载"
+                : "上次保存的目录无效，请重新选择";
     }
 
     private void BrowseGameDirectory_Click(object sender, RoutedEventArgs e)
@@ -128,7 +128,7 @@ public partial class MainWindow : Window
             }
             else
             {
-                StatusText.Text = "已更新目录；请补全另一个目录以自动打开工作区。";
+                StatusText.Text = "已更新目录，请继续选择另一个目录";
             }
         }
     }
@@ -202,7 +202,7 @@ public partial class MainWindow : Window
         WorkspaceBadgeTextBlock.Text = $"{layout.GameDirectoryName}（{versionTag}）";
         WorkspaceBadgeTextBlock.ToolTip =
             $"原游戏目录：{layout.GameDirectory}\n输出目录：{layout.OutputRoot}\n字典目录：{layout.DictionaryDirectory}";
-        WorkspaceModeStatusText.Text = $"模式：{versionTag} · 原游戏目录始终只读";
+        WorkspaceModeStatusText.Text = $"模式：{versionTag} · 原游戏只读";
         StatusText.Text = $"当前工作区：{layout.GameDirectoryName}（{versionTag}）· 字典目录：{layout.DictionaryDirectory}";
         return true;
     }
@@ -253,7 +253,7 @@ public partial class MainWindow : Window
             }
             else
             {
-                StatusText.Text = "解析与输出设置已保存；下一次提取或应用译文时生效。";
+                StatusText.Text = "设置已保存，将在下次提取或生成副本时生效";
             }
         }
     }
@@ -269,9 +269,10 @@ public partial class MainWindow : Window
             _editor.SaveCurrentDictionary();
     }
 
-    private void SetBusy(bool busy)
+    private void SetBusy(bool busy, string? busyTitle = null, string? busyDescription = null)
     {
         _isProcessing = busy;
+        BusyProgressBar.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
         TogglePathsButton.IsEnabled = !busy;
         BrowseGameDirectoryButton.IsEnabled = !busy;
         BrowseOutputDirectoryButton.IsEnabled = !busy;
@@ -280,6 +281,14 @@ public partial class MainWindow : Window
         SaveCurrentDictionaryButton.IsEnabled = !busy && _editor.CanSaveCurrentDictionary;
         SettingsMenuButton.IsEnabled = !busy;
         _editor.IsEnabled = !busy;
+        if (busy && !string.IsNullOrWhiteSpace(busyTitle))
+        {
+            _editor.ShowBusyState(busyTitle, busyDescription ?? string.Empty);
+        }
+        else if (!busy)
+        {
+            _editor.ClearBusyProgress();
+        }
     }
 
     private async void Extract_Click(object sender, RoutedEventArgs e)
@@ -295,8 +304,8 @@ public partial class MainWindow : Window
         string dictionaryDirectory = layout.DictionaryDirectory;
         string? selectedRelativePath = _editor.CurrentFileRelativePath ??
                                        _settings.LastDictionaryFileRelativePath;
-        SetBusy(true);
-        StatusText.Text = "正在提取字典；原游戏目录保持只读……";
+        SetBusy(true, "正在提取字典", "正在扫描游戏脚本并生成字典文件，请稍候…");
+        StatusText.Text = "正在提取字典，请稍候…";
 
         try
         {
@@ -316,11 +325,11 @@ public partial class MainWindow : Window
                 var dialog = new EncodingIssuesWindow(preflight!.Issues, "提取字典") { Owner = this };
                 if (dialog.ShowDialog() != true || !dialog.IgnoreAndContinue)
                 {
-                    StatusText.Text = "字典提取已取消；请先在外部文本编辑器中确认并转换问题文件编码。";
+                    StatusText.Text = "已取消提取，请先处理异常编码的文件";
                     return;
                 }
 
-                StatusText.Text = $"正在忽略 {preflight.Issues.Count} 个编码异常文件并继续提取字典……";
+                StatusText.Text = $"正在忽略 {preflight.Issues.Count} 个编码异常文件并继续提取…";
                 result = await Task.Run(() => extractor.Extract(
                     gameDirectory,
                     dictionaryDirectory,
@@ -379,8 +388,8 @@ public partial class MainWindow : Window
             return;
         }
 
-        SetBusy(true);
-        StatusText.Text = "正在完整复制原游戏到“游戏副本”并应用已保存译文；原游戏目录不会被修改……";
+        SetBusy(true, "正在生成汉化副本", "正在复制原游戏并写入已保存译文，请稍候…");
+        StatusText.Text = "正在生成汉化副本，请稍候…";
 
         try
         {
@@ -401,11 +410,11 @@ public partial class MainWindow : Window
                 var dialog = new EncodingIssuesWindow(preflight!.Issues, "生成游戏副本并应用译文") { Owner = this };
                 if (dialog.ShowDialog() != true || !dialog.IgnoreAndContinue)
                 {
-                    StatusText.Text = "副本处理已取消；原游戏目录保持不变。";
+                    StatusText.Text = "已取消生成副本";
                     return;
                 }
 
-                StatusText.Text = $"正在忽略 {preflight.Issues.Count} 个编码异常文件（将原样复制）并继续生成游戏副本……";
+                StatusText.Text = $"正在忽略 {preflight.Issues.Count} 个编码异常文件并继续生成副本…";
                 result = await Task.Run(() => applier.Apply(
                     gameDirectory,
                     dictionaryDirectory,

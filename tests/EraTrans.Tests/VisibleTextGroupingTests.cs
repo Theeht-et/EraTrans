@@ -28,7 +28,7 @@ public sealed class VisibleTextGroupingTests
                 new EraParserOptions { WriteContext = false });
 
             string dictionaryPath = Path.Combine(dictionaryRoot, "ERB", "talk.json");
-            string groupingPath = Path.Combine(root, "out", "AI上下文", "ERB", "talk.groups.json");
+            string groupingPath = Path.Combine(root, "out", "辅助数据", "ERB", "talk.groups.json");
             Assert.True(File.Exists(groupingPath));
 
             var document = new DictionaryEditorService().Load(dictionaryPath);

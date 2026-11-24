@@ -1,4 +1,5 @@
 using EraTrans.Core;
+using EraTrans.Core.VisibleText;
 using EraTrans.Core.WriteBack;
 using System.ComponentModel;
 using System.IO;
@@ -29,9 +30,12 @@ public partial class DictionaryEditorControl : UserControl
     private string? _groupingFallbackReason;
     private Dictionary<string, ErbTranslationGroupEntry>? _groupLinksByKey;
     private Dictionary<string, ErbTranslationGroup>? _groupsById;
+    private Dictionary<string, IReadOnlyList<string>>? _screenEntryKeysByScope;
     private SpanCatalog? _spanCatalog;
     private string? _spanCatalogDirectory;
     private Dictionary<string, DictionaryEditorEntry>? _entriesByKey;
+    private IReadOnlyList<DictionaryEditorFile> _allDictionaryFiles = Array.Empty<DictionaryEditorFile>();
+    private string? _coverageReportPath;
     private readonly AiTranslationLogStore _translationLogStore = new();
     private readonly AiTranslationService _translationService;
     private readonly Dictionary<string, TreeViewItem> _fileTreeItems = new(StringComparer.OrdinalIgnoreCase);
@@ -226,15 +230,21 @@ public partial class DictionaryEditorControl : UserControl
         _groupingFallbackReason = null;
         _groupLinksByKey = null;
         _groupsById = null;
+        _screenEntryKeysByScope = null;
         _spanCatalog = null;
         _spanCatalogDirectory = null;
         _entriesByKey = null;
+        _allDictionaryFiles = Array.Empty<DictionaryEditorFile>();
         EntriesDataGrid.ItemsSource = null;
         EntrySearchTextBox.Text = string.Empty;
+        FileTreeSearchTextBox.Text = string.Empty;
+        EntryFilterComboBox.SelectedIndex = 0;
         EntryGroupTextBox.Text = string.Empty;
         EntryContextTextBox.Text = string.Empty;
         EntryGroupLabelTextBlock.Text = "同组条目";
+        ScreenPreviewCheckBox.Visibility = Visibility.Collapsed;
         SelectedFileTextBlock.Text = "请选择左侧字典文件";
+        UpdateCoverageReportButton();
         UpdateDocumentStatus();
         UpdateTranslationButtons();
 
@@ -254,6 +264,7 @@ public partial class DictionaryEditorControl : UserControl
             }
 
             DictionaryDirectoryTextBlock.Text = _dictionaryDirectory;
+            UpdateCoverageReportButton();
             if (!Directory.Exists(_dictionaryDirectory))
             {
                 StatusTextBlock.Text = "字典目录尚未创建；可以先提取字典。";
@@ -263,7 +274,8 @@ public partial class DictionaryEditorControl : UserControl
             }
 
             IReadOnlyList<DictionaryEditorFile> files = _service.ListDictionaryFiles(_dictionaryDirectory);
-            BuildDictionaryTree(files);
+            _allDictionaryFiles = files;
+            BuildDictionaryTree(files, expandAll: false);
             if (files.Count == 0)
             {
                 StatusTextBlock.Text = "此目录及其子目录中没有找到 JSON 字典文件。";
@@ -296,6 +308,82 @@ public partial class DictionaryEditorControl : UserControl
             SetEmptyState("读取字典目录失败", "请检查输出目录是否存在，以及当前用户是否具有读取权限。");
             CurrentFileChanged?.Invoke(null);
             MessageBox.Show(OwnerWindow, ex.Message, "读取失败", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            _changingFileSelection = false;
+        }
+    }
+
+    private void UpdateCoverageReportButton()
+    {
+        _coverageReportPath = null;
+        if (!string.IsNullOrWhiteSpace(_dictionaryDirectory))
+        {
+            string outputRoot = string.Equals(
+                Path.GetFileName(Path.TrimEndingDirectorySeparator(_dictionaryDirectory)),
+                "字典",
+                StringComparison.OrdinalIgnoreCase)
+                ? Directory.GetParent(_dictionaryDirectory)?.FullName ?? _dictionaryDirectory
+                : _dictionaryDirectory;
+
+            string primary = Path.Combine(outputRoot, "辅助数据", "visibletext-report.json");
+            string legacy = Path.Combine(outputRoot, "AI上下文", "visibletext-report.json");
+            if (File.Exists(primary))
+            {
+                _coverageReportPath = primary;
+            }
+            else if (File.Exists(legacy))
+            {
+                _coverageReportPath = legacy;
+            }
+        }
+
+        CoverageReportButton.Visibility = _coverageReportPath is null
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+    }
+
+    private void CoverageReportButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(_coverageReportPath) || !File.Exists(_coverageReportPath))
+        {
+            UpdateCoverageReportButton();
+            return;
+        }
+
+        var window = new VisibleTextReportWindow(_coverageReportPath) { Owner = OwnerWindow };
+        window.ShowDialog();
+    }
+
+    private void FileTreeSearchTextBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        string filter = FileTreeSearchTextBox.Text.Trim();
+        FileTreeSearchPlaceholder.Visibility = filter.Length == 0
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+        if (_allDictionaryFiles.Count == 0)
+        {
+            return;
+        }
+
+        IReadOnlyList<DictionaryEditorFile> visibleFiles = filter.Length == 0
+            ? _allDictionaryFiles
+            : _allDictionaryFiles
+                .Where(file => file.RelativePath.Contains(filter, StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+
+        _changingFileSelection = true;
+        try
+        {
+            BuildDictionaryTree(visibleFiles, expandAll: filter.Length > 0);
+            if (_currentFile is not null &&
+                _fileTreeItems.TryGetValue(_currentFile.FullPath, out TreeViewItem? currentNode))
+            {
+                currentNode.IsSelected = true;
+                ExpandParentFolders(currentNode);
+            }
         }
         finally
         {
@@ -352,7 +440,7 @@ public partial class DictionaryEditorControl : UserControl
         };
     }
 
-    private void BuildDictionaryTree(IReadOnlyList<DictionaryEditorFile> files)
+    private void BuildDictionaryTree(IReadOnlyList<DictionaryEditorFile> files, bool expandAll)
     {
         DictionaryFilesTreeView.Items.Clear();
         _fileTreeItems.Clear();
@@ -385,7 +473,7 @@ public partial class DictionaryEditorControl : UserControl
                     folderNode = new TreeViewItem
                     {
                         Header = CreateTreeHeader(segments[index], currentFolder),
-                        IsExpanded = false,
+                        IsExpanded = expandAll,
                         FontWeight = FontWeights.SemiBold
                     };
                     folderChildren[currentFolder] = folderNode.Items;
@@ -434,6 +522,7 @@ public partial class DictionaryEditorControl : UserControl
             _groupingFallbackReason = null;
             _groupLinksByKey = null;
             _groupsById = null;
+            _screenEntryKeysByScope = null;
 
             EnsureSpanCatalog();
             string outputRoot = Directory.GetParent(_dictionaryDirectory)?.FullName ?? _dictionaryDirectory;
@@ -470,11 +559,23 @@ public partial class DictionaryEditorControl : UserControl
                         "分组文件不可用，本文件将使用现有翻译方式。";
                 }
             }
+
+            ApplyEntryMetadataAndValidation(file, document.Entries);
+
+            bool isScreenPacked = string.Equals(
+                _activeGroupingIndex?.Packing,
+                VisibleTextGrouping.ScreenPacking,
+                StringComparison.OrdinalIgnoreCase);
+            ScreenPreviewCheckBox.Visibility = isScreenPacked
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+
             SelectedFileTextBlock.Text = file.RelativePath;
             _entriesView = CollectionViewSource.GetDefaultView(document.Entries);
             _entriesView.Filter = FilterEntry;
             EntriesDataGrid.ItemsSource = _entriesView;
             EntrySearchTextBox.Text = string.Empty;
+            EntryFilterComboBox.SelectedIndex = 0;
             if (document.Entries.Count > 0)
             {
                 EntriesDataGrid.SelectedIndex = 0;
@@ -503,10 +604,12 @@ public partial class DictionaryEditorControl : UserControl
             _entriesByKey = null;
             _groupLinksByKey = null;
             _groupsById = null;
+            _screenEntryKeysByScope = null;
             EntriesDataGrid.ItemsSource = null;
             EntryContextTextBox.Text = string.Empty;
             EntryGroupTextBox.Text = string.Empty;
             EntryGroupLabelTextBlock.Text = "同组条目";
+            ScreenPreviewCheckBox.Visibility = Visibility.Collapsed;
             SelectedFileTextBlock.Text = file.RelativePath;
             SummaryTextBlock.Text = "无法加载此字典";
             SaveAvailabilityChanged?.Invoke(false);
@@ -519,8 +622,49 @@ public partial class DictionaryEditorControl : UserControl
         }
     }
 
+    private void ApplyEntryMetadataAndValidation(
+        DictionaryEditorFile file,
+        IReadOnlyList<DictionaryEditorEntry> entries)
+    {
+        string normalizedRelative = file.RelativePath.Replace('\\', '/');
+        bool isScriptFolder =
+            normalizedRelative.StartsWith("ERB/", StringComparison.OrdinalIgnoreCase) ||
+            normalizedRelative.StartsWith("ERH/", StringComparison.OrdinalIgnoreCase);
+
+        foreach (DictionaryEditorEntry entry in entries)
+        {
+            string? kind = null;
+            string? command = null;
+            bool hasSpan = false;
+
+            if (_spanCatalog is not null &&
+                _spanCatalog.FileCount > 0 &&
+                _spanCatalog.TryGetInfo(file.RelativePath, entry.Key, out SpanInfo spanInfo))
+            {
+                hasSpan = true;
+                kind = spanInfo.Kind;
+                command = spanInfo.Command;
+            }
+
+            if ((string.IsNullOrEmpty(kind) || string.IsNullOrEmpty(command)) &&
+                _groupLinksByKey is not null &&
+                _groupLinksByKey.TryGetValue(entry.Key, out ErbTranslationGroupEntry? link))
+            {
+                if (string.IsNullOrEmpty(kind))
+                    kind = link.Kind;
+                if (string.IsNullOrEmpty(command))
+                    command = string.IsNullOrEmpty(link.Command) ? link.OutputType : link.Command;
+            }
+
+            string typeLabel = TranslationPreValidator.DescribeEntryType(kind, command);
+            bool isScriptEntry = hasSpan ||
+                (isScriptFolder && entry.Key.StartsWith("文本", StringComparison.Ordinal));
+            entry.SetEntryMetadata(typeLabel, isScriptEntry);
+        }
+    }
+
     /// <summary>
-    /// Builds the lookups used by the on-demand group preview once per file.
+    /// Builds the lookups used by the on-demand group/screen preview once per file.
     /// </summary>
     private void PrepareGroupLookup(
         ErbTranslationGroupingIndex index,
@@ -532,20 +676,65 @@ public partial class DictionaryEditorControl : UserControl
             group => group.Id, StringComparer.Ordinal);
         _entriesByKey = entries.ToDictionary(
             entry => entry.Key, StringComparer.Ordinal);
+
+        if (string.Equals(index.Packing, VisibleTextGrouping.ScreenPacking, StringComparison.OrdinalIgnoreCase))
+        {
+            var byScope = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+            foreach (ErbTranslationGroupEntry groupEntry in index.Entries.OrderBy(e => e.Sequence))
+            {
+                string scope = groupEntry.ControlScopeId ?? string.Empty;
+                if (!byScope.TryGetValue(scope, out List<string>? keys))
+                {
+                    keys = new List<string>();
+                    byScope[scope] = keys;
+                }
+
+                keys.Add(groupEntry.Key);
+            }
+
+            _screenEntryKeysByScope = byScope.ToDictionary(
+                pair => pair.Key,
+                pair => (IReadOnlyList<string>)pair.Value,
+                StringComparer.Ordinal);
+        }
     }
 
     /// <summary>
-    /// Sets only the group label. The member preview is built on demand, because
-    /// pre-building it for every group of a large file dominated file switching.
+    /// Sets the screen/group label. In V2 (screen packing), displays "屏 01 · 对白";
+    /// in V1, keeps "对白 #000001".
     /// </summary>
     private static void ApplySemanticGroupDisplay(
         IReadOnlyList<DictionaryEditorEntry> dictionaryEntries,
         ErbTranslationGroupingIndex index)
     {
         var entriesByKey = dictionaryEntries.ToDictionary(entry => entry.Key, StringComparer.Ordinal);
+        bool isScreenPacked = string.Equals(
+            index.Packing,
+            VisibleTextGrouping.ScreenPacking,
+            StringComparison.OrdinalIgnoreCase);
+
+        var screenOrdinals = new Dictionary<string, int>(StringComparer.Ordinal);
+        if (isScreenPacked)
+        {
+            int nextOrdinal = 1;
+            foreach (ErbTranslationGroupEntry entry in index.Entries.OrderBy(e => e.Sequence))
+            {
+                string scope = entry.ControlScopeId ?? string.Empty;
+                if (!screenOrdinals.ContainsKey(scope))
+                {
+                    screenOrdinals[scope] = nextOrdinal++;
+                }
+            }
+        }
+
         foreach (ErbTranslationGroup group in index.Groups)
         {
-            string label = $"{DescribeGroupType(group.Type)} {group.Id.Replace("group_", "#", StringComparison.Ordinal)}";
+            string typeText = DescribeGroupType(group.Type);
+            string label = isScreenPacked &&
+                screenOrdinals.TryGetValue(group.ControlScopeId ?? string.Empty, out int screenNumber)
+                ? $"屏 {screenNumber:D2} · {typeText}"
+                : $"{typeText} {group.Id.Replace("group_", "#", StringComparison.Ordinal)}";
+
             foreach (string key in group.EntryKeys)
             {
                 if (entriesByKey.TryGetValue(key, out DictionaryEditorEntry? entry))
@@ -564,23 +753,37 @@ public partial class DictionaryEditorControl : UserControl
         _ => "语义"
     };
 
-    /// <summary>Preview of the selected entry's group, built only when asked for.</summary>
-    private string BuildGroupPreview(string key)
+    /// <summary>Preview of the selected entry's group or full screen, built only when asked for.</summary>
+    private string BuildGroupPreview(string key, bool wholeScreen)
     {
         if (_groupsById is null || _groupLinksByKey is null)
             return string.Empty;
         if (!_groupLinksByKey.TryGetValue(key, out ErbTranslationGroupEntry? link))
             return string.Empty;
-        if (!_groupsById.TryGetValue(link.GroupId, out ErbTranslationGroup? group))
+
+        IReadOnlyList<string> memberKeys;
+        if (wholeScreen &&
+            _screenEntryKeysByScope is not null &&
+            _screenEntryKeysByScope.TryGetValue(link.ControlScopeId ?? string.Empty, out IReadOnlyList<string>? screenKeys))
+        {
+            memberKeys = screenKeys;
+        }
+        else if (_groupsById.TryGetValue(link.GroupId, out ErbTranslationGroup? group))
+        {
+            memberKeys = group.EntryKeys;
+        }
+        else
+        {
             return string.Empty;
+        }
 
         var builder = new System.Text.StringBuilder();
         int written = 0;
-        foreach (string memberKey in group.EntryKeys)
+        foreach (string memberKey in memberKeys)
         {
             if (written >= GroupPreviewMaxLines)
             {
-                builder.AppendLine("……（本组还有更多行）");
+                builder.AppendLine(wholeScreen ? "……（本屏还有更多行）" : "……（本组还有更多行）");
                 break;
             }
 
@@ -595,18 +798,47 @@ public partial class DictionaryEditorControl : UserControl
                 : member.Original;
             if (builder.Length > 0)
                 builder.AppendLine();
-            builder.Append(memberKey).Append("  ").Append(original);
+
+            string marker = string.Equals(memberKey, key, StringComparison.Ordinal) ? "▶ " : "  ";
+            builder.Append(marker)
+                .Append('[')
+                .Append(member.DisplayKey)
+                .Append("] ")
+                .Append(original);
             written++;
         }
 
         return builder.ToString();
     }
 
+    private string SelectedFilterTag =>
+        (EntryFilterComboBox.SelectedItem as ComboBoxItem)?.Tag as string ?? "all";
+
     private bool FilterEntry(object item)
     {
         if (item is not DictionaryEditorEntry entry)
         {
             return false;
+        }
+
+        switch (SelectedFilterTag)
+        {
+            case "pending":
+                if (!entry.IsEditable || entry.Stage != 0)
+                    return false;
+                break;
+            case "translated":
+                if (entry.Stage <= 0)
+                    return false;
+                break;
+            case "warning":
+                if (!entry.HasValidationWarning)
+                    return false;
+                break;
+            case "ui":
+                if (entry.EntryTypeLabel is not ("按钮" or "界面" or "悬停提示"))
+                    return false;
+                break;
         }
 
         string search = EntrySearchTextBox.Text.Trim();
@@ -618,15 +850,31 @@ public partial class DictionaryEditorControl : UserControl
         return Contains(entry.Key, search) ||
                Contains(entry.Original, search) ||
                Contains(entry.Translation, search) ||
-               Contains(entry.Context, search);
+               Contains(entry.Context, search) ||
+               Contains(entry.SemanticGroupLabel, search) ||
+               Contains(entry.EntryTypeLabel, search);
     }
 
     private static bool Contains(string source, string search) =>
         source.Contains(search, StringComparison.OrdinalIgnoreCase);
 
-    private void EntrySearchTextBox_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
+    private void EntrySearchTextBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        EntrySearchPlaceholder.Visibility = EntrySearchTextBox.Text.Length == 0
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        _entriesView?.Refresh();
+        UpdateContextPreview();
+    }
+
+    private void EntryFilterComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         _entriesView?.Refresh();
+        UpdateContextPreview();
+    }
+
+    private void ScreenPreviewCheckBox_Changed(object sender, RoutedEventArgs e)
+    {
         UpdateContextPreview();
     }
 
@@ -655,7 +903,11 @@ public partial class DictionaryEditorControl : UserControl
             return;
         }
 
-        var dialog = new TranslationEditWindow(entry.Key, entry.Original, entry.Translation)
+        var dialog = new TranslationEditWindow(
+            entry.Key,
+            entry.Original,
+            entry.Translation,
+            entry.IsScriptEntry)
         {
             Owner = OwnerWindow
         };
@@ -721,16 +973,20 @@ public partial class DictionaryEditorControl : UserControl
                 .OfType<DictionaryEditorEntry>()
                 .FirstOrDefault();
 
+        bool wholeScreen = ScreenPreviewCheckBox.Visibility == Visibility.Visible &&
+                           ScreenPreviewCheckBox.IsChecked == true;
+        string scopeTitle = wholeScreen ? "同屏条目" : "同组条目";
+
         string sourceLabel = entry is null ? string.Empty : BuildEntrySourceLabel(entry);
         EntryGroupLabelTextBlock.Text = entry is null
-            ? "同组条目"
+            ? scopeTitle
             : string.IsNullOrWhiteSpace(entry.SemanticGroupLabel)
-                ? sourceLabel.Length == 0 ? "同组条目" : $"同组条目 · {sourceLabel}"
+                ? sourceLabel.Length == 0 ? scopeTitle : $"{scopeTitle} · {sourceLabel}"
                 : sourceLabel.Length == 0
-                    ? $"同组条目 · {entry.SemanticGroupLabel}"
-                    : $"同组条目 · {entry.SemanticGroupLabel} · {sourceLabel}";
+                    ? $"{scopeTitle} · {entry.SemanticGroupLabel}"
+                    : $"{scopeTitle} · {entry.SemanticGroupLabel} · {sourceLabel}";
 
-        string groupPreview = entry is null ? string.Empty : BuildGroupPreview(entry.Key);
+        string groupPreview = entry is null ? string.Empty : BuildGroupPreview(entry.Key, wholeScreen);
         EntryGroupTextBox.Text = string.IsNullOrWhiteSpace(groupPreview)
             ? "当前词条没有可用的 ERB 语义分组信息。"
             : groupPreview;
@@ -912,6 +1168,7 @@ public partial class DictionaryEditorControl : UserControl
     private void SetTranslationControlsEnabled(bool enabled)
     {
         DictionaryFilesTreeView.IsEnabled = enabled;
+        FileTreeSearchTextBox.IsEnabled = enabled;
         EntriesDataGrid.IsEnabled = enabled;
         AiSettingsButton.IsEnabled = enabled;
         TranslateSelectedButton.IsEnabled = enabled && _document is not null;

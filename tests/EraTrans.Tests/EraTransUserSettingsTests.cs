@@ -1,4 +1,5 @@
 using EraTrans.Core;
+using EraTrans.Core.VisibleText;
 using System.Text;
 using Xunit;
 
@@ -26,6 +27,8 @@ public sealed class EraTransUserSettingsTests
         EraTransUserSettings settings = EraTransUserSettings.CreateDefault();
 
         Assert.Equal("932", settings.FileEncodingId);
+        Assert.Equal("lexer", settings.ErbExtractionMode);
+        Assert.Equal(ExtractionMode.Lexer, settings.ToParserOptions().ExtractionMode);
         Assert.True(settings.AutoOpenFolder);
         Assert.True(settings.EnableVariableAutoCorrection);
         Assert.True(settings.HideEnglishText);
@@ -36,7 +39,7 @@ public sealed class EraTransUserSettingsTests
         Assert.True(settings.ExtractHtmlTitle);
         Assert.True(settings.ExtractPrintDataEntries);
         Assert.True(settings.SkipNonJapaneseEntries);
-        Assert.False(settings.EnableErbSemanticGroupingTranslation);
+        Assert.True(settings.EnableErbSemanticGroupingTranslation);
         Assert.Equal(string.Empty, settings.LastGameDirectory);
         Assert.Equal(string.Empty, settings.LastOutputRootDirectory);
         Assert.Equal(string.Empty, settings.LastDictionaryFileRelativePath);
@@ -68,7 +71,7 @@ public sealed class EraTransUserSettingsTests
         settings.HideVariableEntries = false;
         settings.MergeConcatenatedStrings = false;
         settings.WriteContext = false;
-        settings.EnableErbSemanticGroupingTranslation = true;
+        settings.EnableErbSemanticGroupingTranslation = false;
         settings.LastGameDirectory = @"D:\Games\Sample";
         settings.LastOutputRootDirectory = @"E:\EraTransOutput";
         settings.LastDictionaryFileRelativePath = @"ERB\EVENT.JSON";
@@ -123,7 +126,8 @@ public sealed class EraTransUserSettingsTests
         EraTransUserSettings settings = new EraTransUserSettingsStore(path).Load();
 
         Assert.False(File.Exists(path));
-        Assert.False(settings.EnableErbSemanticGroupingTranslation);
+        Assert.Equal("lexer", settings.ErbExtractionMode);
+        Assert.True(settings.EnableErbSemanticGroupingTranslation);
         Assert.True(settings.HideVariableEntries);
     }
 

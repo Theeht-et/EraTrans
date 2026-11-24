@@ -52,6 +52,7 @@ public partial class DictionaryEditorControl : UserControl
         _settings = settings;
 
         InitializeComponent();
+        EntryFilterComboBox.SelectedIndex = 0;
         _translationService = new AiTranslationService(logStore: _translationLogStore);
         UpdateProviderStatus();
         SetEmptyState(
@@ -359,9 +360,12 @@ public partial class DictionaryEditorControl : UserControl
     private void FileTreeSearchTextBox_TextChanged(object sender, TextChangedEventArgs e)
     {
         string filter = FileTreeSearchTextBox.Text.Trim();
-        FileTreeSearchPlaceholder.Visibility = filter.Length == 0
-            ? Visibility.Visible
-            : Visibility.Collapsed;
+        if (FileTreeSearchPlaceholder is not null)
+        {
+            FileTreeSearchPlaceholder.Visibility = filter.Length == 0
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+        }
 
         if (_allDictionaryFiles.Count == 0)
         {
@@ -860,21 +864,31 @@ public partial class DictionaryEditorControl : UserControl
 
     private void EntrySearchTextBox_TextChanged(object sender, TextChangedEventArgs e)
     {
-        EntrySearchPlaceholder.Visibility = EntrySearchTextBox.Text.Length == 0
-            ? Visibility.Visible
-            : Visibility.Collapsed;
+        if (EntrySearchPlaceholder is not null)
+        {
+            EntrySearchPlaceholder.Visibility = EntrySearchTextBox.Text.Length == 0
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+        }
+
+        if (EntriesDataGrid is null)
+            return;
         _entriesView?.Refresh();
         UpdateContextPreview();
     }
 
     private void EntryFilterComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        if (EntriesDataGrid is null)
+            return;
         _entriesView?.Refresh();
         UpdateContextPreview();
     }
 
     private void ScreenPreviewCheckBox_Changed(object sender, RoutedEventArgs e)
     {
+        if (EntriesDataGrid is null)
+            return;
         UpdateContextPreview();
     }
 
@@ -962,6 +976,14 @@ public partial class DictionaryEditorControl : UserControl
 
     private void UpdateContextPreview()
     {
+        if (EntriesDataGrid is null ||
+            EntryGroupLabelTextBlock is null ||
+            EntryGroupTextBox is null ||
+            EntryContextTextBox is null)
+        {
+            return;
+        }
+
         // CurrentCell tracks the entry the user is actively viewing. SelectedCells can
         // contain cells from a previous multi-selection, so preferring its first item
         // can leave the preview showing stale or empty context after navigation.

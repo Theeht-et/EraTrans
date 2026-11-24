@@ -41,6 +41,13 @@ public partial class TranslationEditWindow : Window
 
     private void UpdateValidationBanner()
     {
+        if (ValidationWarningBorder is null ||
+            ValidationWarningTextBlock is null ||
+            TranslationTextBox is null)
+        {
+            return;
+        }
+
         string warning = TranslationPreValidator.Validate(_original, TranslationTextBox.Text, _isScriptTarget);
         if (warning.Length == 0)
         {

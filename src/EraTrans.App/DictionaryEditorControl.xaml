@@ -124,7 +124,7 @@
                                   FontSize="12"
                                   ToolTip="按翻译状态、校验告警或文本类型筛选当前字典词条"
                                   SelectionChanged="EntryFilterComboBox_SelectionChanged">
-                            <ComboBoxItem Content="全部词条" Tag="all" IsSelected="True" />
+                            <ComboBoxItem Content="全部词条" Tag="all" />
                             <ComboBoxItem Content="未翻译" Tag="pending" />
                             <ComboBoxItem Content="已翻译" Tag="translated" />
                             <ComboBoxItem Content="有校验告警" Tag="warning" />

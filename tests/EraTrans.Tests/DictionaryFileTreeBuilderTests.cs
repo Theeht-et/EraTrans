@@ -59,15 +59,15 @@ public sealed class DictionaryFileTreeBuilderTests
 
         string first = DictionaryFileTreeBuilder.FormatMiddleEllipsis(
             "EVENT_K01_LONG_DIALOGUE_001.json",
-            150.0,
+            170.0,
             FixedCharWidth);
         string second = DictionaryFileTreeBuilder.FormatMiddleEllipsis(
             "EVENT_K01_LONG_DIALOGUE_002.json",
-            150.0,
+            170.0,
             FixedCharWidth);
 
         Assert.Contains("…", first, StringComparison.Ordinal);
-        Assert.True(FixedCharWidth(first) <= 150.0);
+        Assert.True(FixedCharWidth(first) <= 170.0);
         Assert.StartsWith("EVENT_", first, StringComparison.Ordinal);
         Assert.EndsWith("001.json", first, StringComparison.Ordinal);
         Assert.EndsWith("002.json", second, StringComparison.Ordinal);

@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EraTrans 汉化路线图 UI 构思原型</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 24px;
+      font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+      background: #eef1f5;
+      color: #20242a;
+    }
+    .window {
+      max-width: 1080px;
+      margin: 0 auto;
+      background: #f5f6f8;
+      border: 1px solid #d5dae0;
+      border-radius: 10px;
+      box-shadow: 0 12px 32px rgba(16, 24, 40, 0.08);
+      padding: 20px;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 14px;
+    }
+    .header h1 {
+      margin: 0;
+      font-size: 19px;
+      font-weight: 600;
+    }
+    .header .sub {
+      margin-top: 4px;
+      font-size: 12px;
+      color: #68717d;
+    }
+    .flow-row {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .stage-card {
+      background: #ffffff;
+      border: 1px solid #e3e6ea;
+      border-radius: 8px;
+      padding: 10px 12px;
+      cursor: pointer;
+      position: relative;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .stage-card.active {
+      border-color: #1971c2;
+      box-shadow: 0 0 0 2px rgba(25, 113, 194, 0.14);
+      background: #f8fbff;
+    }
+    .stage-num {
+      font-size: 11px;
+      font-weight: 600;
+      color: #1971c2;
+    }
+    .stage-title {
+      font-size: 13px;
+      font-weight: 600;
+      margin: 3px 0 2px;
+    }
+    .stage-hook {
+      font-size: 11px;
+      color: #68717d;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .stage-meta {
+      margin-top: 8px;
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: #495057;
+    }
+    .bar {
+      height: 6px;
+      background: #e9ecef;
+      border-radius: 3px;
+      margin-top: 5px;
+      overflow: hidden;
+    }
+    .bar > span {
+      display: block;
+      height: 100%;
+      background: #2b8a3e;
+      border-radius: 3px;
+    }
+    .toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      background: #ffffff;
+      border: 1px solid #e3e6ea;
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-bottom: 12px;
+      font-size: 12px;
+    }
+    .toolbar .hint {
+      color: #39414a;
+      font-weight: 600;
+    }
+    .toolbar .controls {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .input, .select {
+      height: 28px;
+      border: 1px solid #cfd6de;
+      border-radius: 5px;
+      padding: 0 8px;
+      font-size: 12px;
+      background: #fff;
+    }
+    .table-wrap {
+      background: #ffffff;
+      border: 1px solid #e3e6ea;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12.5px;
+    }
+    thead th {
+      background: #f8f9fa;
+      color: #39414a;
+      font-weight: 600;
+      text-align: center;
+      padding: 9px 10px;
+      border-bottom: 1px solid #e3e6ea;
+    }
+    tbody td {
+      padding: 9px 10px;
+      border-bottom: 1px solid #eff2f5;
+    }
+    tbody tr:hover { background: #f4f8fd; }
+    .center { text-align: center; }
+    .badge {
+      display: inline-block;
+      padding: 2px 7px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .badge-hook { background: #e7f5ff; color: #1971c2; }
+    .status-done { color: #2b8a3e; font-weight: 600; }
+    .status-prog { color: #1971c2; font-weight: 600; }
+    .status-todo { color: #68717d; font-weight: 600; }
+    .footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 12px;
+      font-size: 12px;
+      color: #68717d;
+    }
+    .btn {
+      height: 32px;
+      padding: 0 14px;
+      border-radius: 6px;
+      border: 1px solid #cfd6de;
+      background: #fff;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .btn-primary {
+      background: #1971c2;
+      border-color: #1971c2;
+      color: #fff;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div class="window">
+    <div class="header">
+      <div>
+        <h1>游戏流程汉化路线图（概念原型）</h1>
+        <div class="sub">示例工作区：eraFGOK / V2 / 字典 · 已静态分析 2,496 个 ERB（耗时 ~310 ms）· 仅展示含待翻词条的文件</div>
+      </div>
+      <button class="btn">重新分析</button>
+    </div>
+
+    <div class="flow-row">
+      <div class="stage-card">
+        <div class="stage-num">阶段 0</div>
+        <div class="stage-title">基础词表</div>
+        <div class="stage-hook">CSV / ERD / XML</div>
+        <div class="stage-meta"><span>12 / 48 文件</span><span>25%</span></div>
+        <div class="bar"><span style="width:25%"></span></div>
+      </div>
+      <div class="stage-card active">
+        <div class="stage-num">阶段 1 · 推荐优先</div>
+        <div class="stage-title">启动与开局</div>
+        <div class="stage-hook">@SYSTEM_TITLE / @EVENTFIRST</div>
+        <div class="stage-meta"><span>8 / 12 文件</span><span>67%</span></div>
+        <div class="bar"><span style="width:67%"></span></div>
+      </div>
+      <div class="stage-card">
+        <div class="stage-num">阶段 2</div>
+        <div class="stage-title">主界面 / 日常</div>
+        <div class="stage-hook">@SHOW_SHOP / @USERSHOP</div>
+        <div class="stage-meta"><span>15 / 36 文件</span><span>42%</span></div>
+        <div class="bar"><span style="width:42%"></span></div>
+      </div>
+      <div class="stage-card">
+        <div class="stage-num">阶段 3</div>
+        <div class="stage-title">核心循环</div>
+        <div class="stage-hook">@EVENTTRAIN / @USERCOM</div>
+        <div class="stage-meta"><span>4 / 52 文件</span><span>8%</span></div>
+        <div class="bar"><span style="width:8%"></span></div>
+      </div>
+      <div class="stage-card">
+        <div class="stage-num">阶段 4</div>
+        <div class="stage-title">动态分支内容</div>
+        <div class="stage-hook">CALLFORM（口上/指令/技能）</div>
+        <div class="stage-meta"><span>120 / 1,800</span><span>6%</span></div>
+        <div class="bar"><span style="width:6%"></span></div>
+      </div>
+      <div class="stage-card">
+        <div class="stage-num">阶段 5</div>
+        <div class="stage-title">其他 / 未触达</div>
+        <div class="stage-hook">独立或未静态引用文件</div>
+        <div class="stage-meta"><span>0 / 90 文件</span><span>0%</span></div>
+        <div class="bar"><span style="width:0%"></span></div>
+      </div>
+    </div>
+
+    <div class="toolbar">
+      <div class="hint">当前阶段：1. 启动与开局 — 汉化完成后，进游戏标题、开场、捏人与读档界面将全中文</div>
+      <div class="controls">
+        <input class="input" placeholder="筛选文件路径…" />
+        <select class="select">
+          <option>全部状态</option>
+          <option>仅看未完成</option>
+          <option>未翻译</option>
+          <option>翻译中</option>
+          <option>已完成</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:52px">顺序</th>
+            <th>字典文件</th>
+            <th style="width:190px">入口来源 / 调用深度</th>
+            <th style="width:68px">待翻</th>
+            <th style="width:68px">已翻</th>
+            <th style="width:76px">完成度</th>
+            <th style="width:76px">状态</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="center">1</td>
+            <td>ERB\SYSTEM\NEWGAME.json</td>
+            <td class="center"><span class="badge badge-hook">@SYSTEM_TITLE · 0跳</span></td>
+            <td class="center">12</td>
+            <td class="center">28</td>
+            <td class="center">70.0%</td>
+            <td class="center status-prog">翻译中</td>
+          </tr>
+          <tr>
+            <td class="center">2</td>
+            <td>ERB\SYSTEM\NEWLOOP.json</td>
+            <td class="center"><span class="badge badge-hook">@EVENTFIRST · 1跳</span></td>
+            <td class="center">180</td>
+            <td class="center">47</td>
+            <td class="center">20.7%</td>
+            <td class="center status-prog">翻译中</td>
+          </tr>
+          <tr>
+            <td class="center">3</td>
+            <td>ERB\SYSTEM\SAVELOAD.json</td>
+            <td class="center"><span class="badge badge-hook">@EVENTLOAD · 0跳</span></td>
+            <td class="center">0</td>
+            <td class="center">14</td>
+            <td class="center">100.0%</td>
+            <td class="center status-done">已完成</td>
+          </tr>
+          <tr>
+            <td class="center">4</td>
+            <td>ERB\SYSTEM\CUSTOM_CHARA\CUSTOM_CHARA.json</td>
+            <td class="center"><span class="badge badge-hook">@EVENTFIRST · 1跳</span></td>
+            <td class="center">9</td>
+            <td class="center">0</td>
+            <td class="center">0.0%</td>
+            <td class="center status-todo">未翻译</td>
+          </tr>
+          <tr>
+            <td class="center">5</td>
+            <td>ERB\UPDATE.json</td>
+            <td class="center"><span class="badge badge-hook">@EVENTFIRST · 2跳</span></td>
+            <td class="center">187</td>
+            <td class="center">0</td>
+            <td class="center">0.0%</td>
+            <td class="center status-todo">未翻译</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="footer">
+      <div>提示：双击任意文件行直接跳转到编辑器开始汉化；无待翻词条的纯逻辑初始化文件已自动过滤。</div>
+      <div>
+        <button class="btn btn-primary">跳转到选中文件</button>
+        <button class="btn">关闭</button>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

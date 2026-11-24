@@ -54,8 +54,103 @@
                               SelectedItemChanged="DictionaryFilesTreeView_SelectedItemChanged"
                               ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                         <TreeView.Resources>
+                            <Style x:Key="CompactTreeExpanderToggleStyle" TargetType="{x:Type ToggleButton}">
+                                <Setter Property="Focusable" Value="False" />
+                                <Setter Property="Width" Value="14" />
+                                <Setter Property="Height" Value="18" />
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="{x:Type ToggleButton}">
+                                            <Border Background="Transparent" Padding="3,4,2,4">
+                                                <Path x:Name="ExpandPath"
+                                                      Data="M 0 0 L 4 4 L 0 8 Z"
+                                                      Fill="#68717D"
+                                                      HorizontalAlignment="Center"
+                                                      VerticalAlignment="Center" />
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsChecked" Value="True">
+                                                    <Setter TargetName="ExpandPath" Property="Data" Value="M 0 2 L 8 2 L 4 6 Z" />
+                                                </Trigger>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="ExpandPath" Property="Fill" Value="#20242A" />
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
                             <Style TargetType="{x:Type TreeViewItem}">
                                 <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                <Setter Property="Background" Value="Transparent" />
+                                <Setter Property="Foreground" Value="#20242A" />
+                                <Setter Property="Padding" Value="4,2" />
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="{x:Type TreeViewItem}">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="14" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto" />
+                                                    <RowDefinition Height="Auto" />
+                                                </Grid.RowDefinitions>
+                                                <ToggleButton x:Name="Expander"
+                                                              Grid.Row="0"
+                                                              Grid.Column="0"
+                                                              ClickMode="Press"
+                                                              IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}}"
+                                                              Style="{StaticResource CompactTreeExpanderToggleStyle}" />
+                                                <Border x:Name="Bd"
+                                                        Grid.Row="0"
+                                                        Grid.Column="1"
+                                                        Background="{TemplateBinding Background}"
+                                                        Padding="{TemplateBinding Padding}"
+                                                        CornerRadius="4"
+                                                        SnapsToDevicePixels="True">
+                                                    <ContentPresenter x:Name="PART_Header"
+                                                                      ContentSource="Header"
+                                                                      HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                                      VerticalAlignment="Center"
+                                                                      SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" />
+                                                </Border>
+                                                <ItemsPresenter x:Name="ItemsHost"
+                                                                Grid.Row="1"
+                                                                Grid.Column="0"
+                                                                Grid.ColumnSpan="2"
+                                                                Margin="10,0,0,0" />
+                                            </Grid>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsExpanded" Value="False">
+                                                    <Setter TargetName="ItemsHost" Property="Visibility" Value="Collapsed" />
+                                                </Trigger>
+                                                <Trigger Property="HasItems" Value="False">
+                                                    <Setter TargetName="Expander" Property="Visibility" Value="Hidden" />
+                                                </Trigger>
+                                                <Trigger SourceName="Bd" Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="Bd" Property="Background" Value="#F0F2F5" />
+                                                </Trigger>
+                                                <Trigger Property="IsSelected" Value="True">
+                                                    <Setter TargetName="Bd" Property="Background" Value="#DCEBFA" />
+                                                    <Setter Property="Foreground" Value="#132F4C" />
+                                                </Trigger>
+                                                <MultiTrigger>
+                                                    <MultiTrigger.Conditions>
+                                                        <Condition Property="IsSelected" Value="True" />
+                                                        <Condition Property="IsSelectionActive" Value="False" />
+                                                    </MultiTrigger.Conditions>
+                                                    <Setter TargetName="Bd" Property="Background" Value="#E8ECF0" />
+                                                    <Setter Property="Foreground" Value="#20242A" />
+                                                </MultiTrigger>
+                                                <Trigger Property="IsEnabled" Value="False">
+                                                    <Setter Property="Foreground" Value="#9AA3AE" />
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
                             </Style>
                         </TreeView.Resources>
                     </TreeView>

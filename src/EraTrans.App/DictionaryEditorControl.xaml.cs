@@ -2,11 +2,13 @@ using EraTrans.Core;
 using EraTrans.Core.VisibleText;
 using EraTrans.Core.WriteBack;
 using System.ComponentModel;
+using System.Globalization;
 using System.IO;
 using System.Windows;
 using System.Windows.Data;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 
 namespace EraTrans.App;
 
@@ -431,17 +433,64 @@ public partial class DictionaryEditorControl : UserControl
         LoadDictionary(selectedFile);
     }
 
-    private static TextBlock CreateTreeHeader(string text, string toolTip)
+    private static TextBlock CreateTreeHeader(string text, string toolTip, bool useMiddleEllipsis = false)
     {
-        return new TextBlock
+        var textBlock = new TextBlock
         {
             Text = text,
-            TextTrimming = TextTrimming.CharacterEllipsis,
+            TextTrimming = useMiddleEllipsis ? TextTrimming.None : TextTrimming.CharacterEllipsis,
             TextWrapping = TextWrapping.NoWrap,
             HorizontalAlignment = HorizontalAlignment.Stretch,
             VerticalAlignment = VerticalAlignment.Center,
             ToolTip = toolTip
         };
+
+        if (useMiddleEllipsis)
+        {
+            void UpdateEllipsis()
+            {
+                double availableWidth = textBlock.ActualWidth - 2.0;
+                if (availableWidth <= 0)
+                {
+                    return;
+                }
+
+                var typeface = new Typeface(
+                    textBlock.FontFamily,
+                    textBlock.FontStyle,
+                    textBlock.FontWeight,
+                    textBlock.FontStretch);
+                double pixelsPerDip = VisualTreeHelper.GetDpi(textBlock).PixelsPerDip;
+
+                string formatted = DictionaryFileTreeBuilder.FormatMiddleEllipsis(
+                    text,
+                    availableWidth,
+                    candidate => new FormattedText(
+                        candidate,
+                        CultureInfo.CurrentUICulture,
+                        FlowDirection.LeftToRight,
+                        typeface,
+                        textBlock.FontSize,
+                        Brushes.Black,
+                        pixelsPerDip).WidthIncludingTrailingWhitespace);
+
+                if (!string.Equals(textBlock.Text, formatted, StringComparison.Ordinal))
+                {
+                    textBlock.Text = formatted;
+                }
+            }
+
+            textBlock.Loaded += (_, _) => UpdateEllipsis();
+            textBlock.SizeChanged += (_, e) =>
+            {
+                if (e.WidthChanged)
+                {
+                    UpdateEllipsis();
+                }
+            };
+        }
+
+        return textBlock;
     }
 
     private void BuildDictionaryTree(IReadOnlyList<DictionaryEditorFile> files, bool expandAll)
@@ -449,62 +498,39 @@ public partial class DictionaryEditorControl : UserControl
         DictionaryFilesTreeView.Items.Clear();
         _fileTreeItems.Clear();
 
-        var folders = new Dictionary<string, TreeViewItem>(StringComparer.OrdinalIgnoreCase);
-        var folderChildren = new Dictionary<string, ItemCollection>(StringComparer.OrdinalIgnoreCase)
-        {
-            [string.Empty] = DictionaryFilesTreeView.Items
-        };
+        DictionaryFileTreeFolder root = DictionaryFileTreeBuilder.Build(files);
+        PopulateTreeItems(DictionaryFilesTreeView.Items, root, expandAll);
+    }
 
-        // Create every folder first. This guarantees folders appear before files at
-        // every level, regardless of the relative names in the extracted dictionary.
-        foreach (DictionaryEditorFile file in files)
+    private void PopulateTreeItems(
+        ItemCollection targetItems,
+        DictionaryFileTreeFolder folder,
+        bool expandAll)
+    {
+        // Folders always appear before files at every level, with single-child folder
+        // chains compacted into one node by DictionaryFileTreeBuilder.
+        foreach (DictionaryFileTreeFolder subFolder in folder.Folders)
         {
-            string relativePath = file.RelativePath
-                .Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
-            string[] segments = relativePath.Split(
-                Path.DirectorySeparatorChar,
-                StringSplitOptions.RemoveEmptyEntries);
-
-            string currentFolder = string.Empty;
-            for (int index = 0; index < segments.Length - 1; index++)
+            var folderNode = new TreeViewItem
             {
-                currentFolder = currentFolder.Length == 0
-                    ? segments[index]
-                    : Path.Combine(currentFolder, segments[index]);
-
-                if (!folders.TryGetValue(currentFolder, out TreeViewItem? folderNode))
-                {
-                    folderNode = new TreeViewItem
-                    {
-                        Header = CreateTreeHeader(segments[index], currentFolder),
-                        IsExpanded = expandAll,
-                        FontWeight = FontWeights.SemiBold
-                    };
-                    folderChildren[currentFolder] = folderNode.Items;
-                    folderChildren[Path.GetDirectoryName(currentFolder) ?? string.Empty]
-                        .Add(folderNode);
-                    folders.Add(currentFolder, folderNode);
-                }
-            }
+                Header = CreateTreeHeader(subFolder.DisplayName, subFolder.FullRelativePath),
+                IsExpanded = expandAll,
+                FontWeight = FontWeights.SemiBold
+            };
+            targetItems.Add(folderNode);
+            PopulateTreeItems(folderNode.Items, subFolder, expandAll);
         }
 
-        // Add files only after the complete folder hierarchy has been created.
-        foreach (DictionaryEditorFile file in files)
+        foreach (DictionaryEditorFile file in folder.Files)
         {
-            string relativePath = file.RelativePath
-                .Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
-            string[] segments = relativePath.Split(
-                Path.DirectorySeparatorChar,
-                StringSplitOptions.RemoveEmptyEntries);
-            string parentFolder = segments.Length > 1
-                ? Path.Combine(segments[..^1])
-                : string.Empty;
+            string fileName = Path.GetFileName(
+                file.RelativePath.Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar));
             var fileNode = new TreeViewItem
             {
-                Header = CreateTreeHeader(segments[^1], file.RelativePath),
+                Header = CreateTreeHeader(fileName, file.RelativePath, useMiddleEllipsis: true),
                 Tag = file
             };
-            folderChildren[parentFolder].Add(fileNode);
+            targetItems.Add(fileNode);
             _fileTreeItems[file.FullPath] = fileNode;
         }
     }

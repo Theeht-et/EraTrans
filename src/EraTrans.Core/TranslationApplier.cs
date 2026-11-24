@@ -311,7 +311,8 @@ public sealed class TranslationApplier
             }
 
             // AI sidecars (grouping/locate files) share the output tree but are not dictionaries.
-            if (normalizedRelativePath.StartsWith("AI上下文/", StringComparison.OrdinalIgnoreCase) ||
+            if (normalizedRelativePath.StartsWith("辅助数据/", StringComparison.OrdinalIgnoreCase) ||
+                normalizedRelativePath.StartsWith("AI上下文/", StringComparison.OrdinalIgnoreCase) ||
                 normalizedRelativePath.EndsWith(".spans.json", StringComparison.OrdinalIgnoreCase) ||
                 normalizedRelativePath.EndsWith(".groups.json", StringComparison.OrdinalIgnoreCase) ||
                 normalizedRelativePath.Equals("extractor.json", StringComparison.OrdinalIgnoreCase))

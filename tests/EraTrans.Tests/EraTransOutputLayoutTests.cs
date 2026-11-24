@@ -1,4 +1,5 @@
 using EraTrans.Core;
+using EraTrans.Core.VisibleText;
 using Xunit;
 
 namespace EraTrans.Tests;
@@ -17,9 +18,14 @@ public sealed class EraTransOutputLayoutTests
 
         string gameOutputRoot = Path.Combine(outputRoot, "ExampleGame");
         Assert.Equal(gameOutputRoot, layout.GameOutputRoot);
-        Assert.Equal(Path.Combine(gameOutputRoot, "字典"), layout.DictionaryDirectory);
-        Assert.Equal(Path.Combine(gameOutputRoot, "AI上下文"), layout.AiContextDirectory);
+        Assert.Equal(Path.Combine(gameOutputRoot, "V1", "字典"), layout.DictionaryDirectory);
+        Assert.Equal(Path.Combine(gameOutputRoot, "V1", "辅助数据"), layout.AiContextDirectory);
         Assert.Equal(Path.Combine(gameOutputRoot, "游戏副本"), layout.GameCopyDirectory);
+
+        EraTransOutputLayout v2Layout = EraTransOutputLayout.Create(outputRoot, gameDirectory, ExtractionMode.Lexer);
+        Assert.Equal(Path.Combine(gameOutputRoot, "V2", "字典"), v2Layout.DictionaryDirectory);
+        Assert.Equal(Path.Combine(gameOutputRoot, "V2", "辅助数据"), v2Layout.AiContextDirectory);
+        Assert.Equal(Path.Combine(gameOutputRoot, "游戏副本"), v2Layout.GameCopyDirectory);
     }
 
     [Fact]

@@ -253,8 +253,16 @@ public sealed class ErbTranslationGroupingService
         }
         if (!File.Exists(sidecarPath))
         {
-            reason = "没有找到分组文件。请重新提取当前游戏文件的字典。";
-            return false;
+            string legacySidecarPath = GetSidecarPath(dictionaryDirectory, dictionaryFilePath, "AI上下文");
+            if (File.Exists(legacySidecarPath))
+            {
+                sidecarPath = legacySidecarPath;
+            }
+            else
+            {
+                reason = "没有找到分组文件。请重新提取当前游戏文件的字典。";
+                return false;
+            }
         }
 
         try
@@ -762,7 +770,10 @@ public sealed class ErbTranslationGroupingService
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(builder.ToString())));
     }
 
-    private static string GetSidecarPath(string dictionaryDirectory, string dictionaryFilePath)
+    private static string GetSidecarPath(
+        string dictionaryDirectory,
+        string dictionaryFilePath,
+        string sidecarDirectoryName = "辅助数据")
     {
         string root = Path.GetFullPath(dictionaryDirectory);
         string relative = GetSafeRelativePath(root, dictionaryFilePath);
@@ -775,7 +786,7 @@ public sealed class ErbTranslationGroupingService
             : root;
 
         string sidecarRelative = Path.ChangeExtension(relative, ".groups.json");
-        return Path.GetFullPath(Path.Combine(outputRoot, "AI上下文", sidecarRelative));
+        return Path.GetFullPath(Path.Combine(outputRoot, sidecarDirectoryName, sidecarRelative));
     }
 
     private static string GetSafeRelativePath(string root, string path)

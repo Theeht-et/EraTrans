@@ -54,6 +54,7 @@ public sealed class DictionaryExtractorTests
         Assert.True(File.Exists(sidecarPath));
         Assert.Contains(sidecarPath, result.UpdatedGroupingFiles ?? Array.Empty<string>());
         Assert.False(Directory.Exists(Path.Combine(output, "字典")));
+        Assert.False(Directory.Exists(Path.Combine(output, "辅助数据")));
         Assert.False(Directory.Exists(Path.Combine(output, "AI上下文")));
     }
 
@@ -483,7 +484,7 @@ public sealed class DictionaryExtractorTests
         new DictionaryExtractor().Extract(game, output);
 
         JObject sidecar = JObject.Parse(File.ReadAllText(
-            Path.Combine(output, "AI上下文", "ERB", "flow.groups.json")));
+            Path.Combine(output, "辅助数据", "ERB", "flow.groups.json")));
         JArray entries = Assert.IsType<JArray>(sidecar["entries"]);
 
         string GroupFor(string original) =>

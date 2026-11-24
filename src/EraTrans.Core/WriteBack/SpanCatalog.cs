@@ -21,7 +21,8 @@ namespace EraTrans.Core.WriteBack;
 /// </summary>
 public sealed class SpanCatalog
 {
-    private const string SidecarDirectoryName = "AI上下文";
+    private const string SidecarDirectoryName = "辅助数据";
+    private const string LegacySidecarDirectoryName = "AI上下文";
     private const string SidecarSuffix = ".spans.json";
 
     private readonly Dictionary<string, Dictionary<string, SpanInfo>> _byFile;
@@ -273,7 +274,11 @@ public sealed class SpanCatalog
         string outputRoot = string.Equals(Path.GetFileName(root), "字典", StringComparison.OrdinalIgnoreCase)
             ? Directory.GetParent(root)?.FullName ?? root
             : root;
-        return Path.Combine(outputRoot, SidecarDirectoryName);
+        string primary = Path.Combine(outputRoot, SidecarDirectoryName);
+        if (Directory.Exists(primary))
+            return primary;
+        string legacy = Path.Combine(outputRoot, LegacySidecarDirectoryName);
+        return Directory.Exists(legacy) ? legacy : primary;
     }
 }
 

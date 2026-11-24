@@ -73,7 +73,7 @@ public sealed class VisibleTextDiagnosticsTests
             Assert.Equal(1, result.EntryCount);
             Assert.Equal(1, result.Diagnostics.UnknownCommands["FOO"]);
             Assert.Contains(result.Warnings, warning => warning.StartsWith("覆盖率自检：", StringComparison.Ordinal));
-            Assert.True(File.Exists(Path.Combine(root, "AI上下文", "visibletext-report.json")));
+            Assert.True(File.Exists(Path.Combine(root, "辅助数据", "visibletext-report.json")));
         }
         finally
         {

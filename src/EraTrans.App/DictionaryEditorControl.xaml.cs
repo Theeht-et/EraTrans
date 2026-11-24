@@ -75,10 +75,37 @@ public partial class DictionaryEditorControl : UserControl
         UpdateProviderStatus();
         SetEmptyState(
             "尚未打开工作区",
-            "选择原游戏目录和统一输出目录，然后打开工作区或提取字典。");
+            "请先在上方选择原游戏目录和输出目录。");
     }
 
-    public void OpenAiSettings() => AiSettingsButton_Click(this, new RoutedEventArgs());
+    public void OpenAiSettings()
+    {
+        if (_isTranslating)
+        {
+            MessageBox.Show(
+                OwnerWindow,
+                "AI 翻译正在进行中，请等待完成或取消后再修改 AI 服务设置。",
+                "翻译进行中",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
+
+        AiSettingsButton_Click(this, new RoutedEventArgs());
+    }
+
+    public void ShowBusyState(string title, string description)
+    {
+        if (EmptyStateBorder.Visibility == Visibility.Visible)
+        {
+            SetEmptyState(title, description, showProgress: true);
+        }
+    }
+
+    public void ClearBusyProgress()
+    {
+        EmptyStateProgressBar.Visibility = Visibility.Collapsed;
+    }
 
     private static SolidColorBrush CreateFrozenBrush(string hex)
     {
@@ -237,10 +264,11 @@ public partial class DictionaryEditorControl : UserControl
         EntriesDataGrid.CommitEdit(DataGridEditingUnit.Cell, true) &&
         EntriesDataGrid.CommitEdit(DataGridEditingUnit.Row, true);
 
-    private void SetEmptyState(string title, string description)
+    private void SetEmptyState(string title, string description, bool showProgress = false)
     {
         EmptyStateTitleTextBlock.Text = title;
         EmptyStateDescriptionTextBlock.Text = description;
+        EmptyStateProgressBar.Visibility = showProgress ? Visibility.Visible : Visibility.Collapsed;
         EmptyStateBorder.Visibility = Visibility.Visible;
     }
 
@@ -306,7 +334,7 @@ public partial class DictionaryEditorControl : UserControl
             {
                 DictionaryDirectoryTextBlock.Text = "尚未设置字典目录";
                 StatusTextBlock.Text = "请先选择原游戏目录和统一输出目录。";
-                SetEmptyState("尚未打开工作区", "选择原游戏目录和统一输出目录，然后打开工作区或提取字典。");
+                SetEmptyState("尚未打开工作区", "请先在上方选择原游戏目录和输出目录。");
                 CurrentFileChanged?.Invoke(null);
                 return;
             }
@@ -316,7 +344,7 @@ public partial class DictionaryEditorControl : UserControl
             if (!Directory.Exists(_dictionaryDirectory))
             {
                 StatusTextBlock.Text = "字典目录尚未创建；可以先提取字典。";
-                SetEmptyState("尚未提取字典", "当前工作区还没有字典文件。点击主窗口的“提取/更新字典”开始提取。");
+                SetEmptyState("尚未提取字典", "还没有字典文件，点击上方「提取/更新字典」开始提取。");
                 CurrentFileChanged?.Invoke(null);
                 return;
             }
@@ -327,7 +355,7 @@ public partial class DictionaryEditorControl : UserControl
             if (files.Count == 0)
             {
                 StatusTextBlock.Text = "此目录及其子目录中没有找到 JSON 字典文件。";
-                SetEmptyState("尚未找到字典文件", "此工作区目前没有 JSON 字典。可以从主窗口提取字典，提取后文件会自动出现在这里。");
+                SetEmptyState("尚未找到字典文件", "目录中没有 JSON 字典，请点击上方「提取/更新字典」。");
                 CurrentFileChanged?.Invoke(null);
                 return;
             }
@@ -1023,7 +1051,7 @@ public partial class DictionaryEditorControl : UserControl
                 EntryGroupLabelTextBlock.Text = "同组条目";
             }
             StatusTextBlock.Text = string.IsNullOrWhiteSpace(_groupingFallbackReason)
-                ? "字典已加载（右键词条或按 Ctrl+E 可打开完整译文编辑窗口）。"
+                ? "已加载 · 右键词条或按 Ctrl+E 可打开大窗口编辑"
                 : $"字典已加载；分组文件不可用：{_groupingFallbackReason}";
             UpdateDocumentStatus();
             UpdateCurrentFileProgressFromDocument();
@@ -1491,7 +1519,6 @@ public partial class DictionaryEditorControl : UserControl
     private void UpdateTranslationButtons()
     {
         bool hasDocument = _document is not null;
-        AiSettingsMenuItem.IsEnabled = !_isTranslating;
         ProgressStatsMenuItem.IsEnabled = !_isTranslating && _allDictionaryFiles.Count > 0;
         TranslateSelectedButton.IsEnabled = hasDocument && !_isTranslating;
         TranslatePendingButton.IsEnabled = hasDocument && !_isTranslating;
@@ -1641,7 +1668,6 @@ public partial class DictionaryEditorControl : UserControl
         FileTreeSearchTextBox.IsEnabled = enabled;
         FileTreeStatusFilterComboBox.IsEnabled = enabled;
         EntriesDataGrid.IsEnabled = enabled;
-        AiSettingsMenuItem.IsEnabled = enabled;
         ProgressStatsMenuItem.IsEnabled = enabled && _allDictionaryFiles.Count > 0;
         TranslateSelectedButton.IsEnabled = enabled && _document is not null;
         TranslatePendingButton.IsEnabled = enabled && _document is not null;

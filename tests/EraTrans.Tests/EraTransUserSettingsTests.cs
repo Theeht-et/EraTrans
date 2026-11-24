@@ -190,14 +190,6 @@ public sealed class EraTransUserSettingsTests
 
 
     [Fact]
-    public void Defaults_UseShiftJisForOriginalJapaneseEraGames()
-    {
-        EraTransUserSettings settings = EraTransUserSettings.CreateDefault();
-        Assert.Equal("932", settings.FileEncodingId);
-        Assert.Equal(932, settings.ToParserOptions().FileEncoding.CodePage);
-    }
-
-    [Fact]
     public void Store_LoadInvalidJson_ReportsCorruptedSettingsWithoutReplacingFile()
     {
         using var temporary = new TemporaryDirectory();

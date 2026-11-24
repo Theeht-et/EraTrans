@@ -208,6 +208,16 @@ public sealed class FullGameWorkspaceCopyTests
         Assert.False(Directory.Exists(Path.Combine(game.Path, "Output")));
     }
 
+    [Fact]
+    public void CopyForModification_RejectsPathTraversal()
+    {
+        using var game = new TemporaryDirectory();
+        using var output = new TemporaryDirectory();
+
+        Assert.Throws<ArgumentException>(() =>
+            GameFileWorkspace.CopyForModification(game.Path, output.Path, "../outside.txt"));
+    }
+
     private sealed class TemporaryDirectory : IDisposable
     {
         public string Path { get; } = System.IO.Path.Combine(

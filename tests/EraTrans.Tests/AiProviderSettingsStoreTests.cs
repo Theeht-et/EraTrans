@@ -169,44 +169,6 @@ public sealed class AiProviderSettingsPortablePersistenceTests
 
 
     [Fact]
-    public void Store_MigratesLegacyNativeProtocolNumbersToOpenAiCompatibleAndFlagsEndpoint()
-    {
-        using var temporary = new TemporaryDirectory();
-        string path = Path.Combine(temporary.Path, "Config", "ai-providers.json");
-        var store = new AiProviderSettingsStore(path);
-        store.Save(new AiProviderSettings
-        {
-            ActiveProviderId = "legacy-native",
-            Providers =
-            [
-                new AiProviderProfile
-                {
-                    Id = "legacy-native",
-                    Name = "Legacy Gemini",
-                    BaseUrl = "https://generativelanguage.googleapis.com/v1beta",
-                    Model = "gemini-model",
-                    ApiKey = "legacy-secret"
-                }
-            ]
-        });
-
-        JsonObject root = JsonNode.Parse(File.ReadAllText(path))!.AsObject();
-        root["Providers"]![0]!.AsObject()["Protocol"] = 1;
-        File.WriteAllText(path, root.ToJsonString());
-
-        AiProviderProfile loaded = Assert.Single(store.Load().Providers);
-        Assert.Equal(AiProviderProtocol.OpenAiCompatible, loaded.Protocol);
-        Assert.True(loaded.RequiresEndpointReview);
-        Assert.Equal("legacy-secret", loaded.ApiKey);
-
-        store.Save(store.Load());
-        JsonObject saved = JsonNode.Parse(File.ReadAllText(path))!.AsObject();
-        Assert.Equal(0, (int)saved["Providers"]![0]!["Protocol"]!);
-        Assert.True((bool)saved["Providers"]![0]!["RequiresEndpointReview"]!);
-        Assert.True(Assert.Single(store.Load().Providers).RequiresEndpointReview);
-    }
-
-    [Fact]
     public void Store_AllowsSavingMultipleIncompleteProviderProfiles()
     {
         using var temporary = new TemporaryDirectory();
@@ -266,44 +228,6 @@ public sealed class AiProviderSettingsPortablePersistenceTests
         Assert.False(custom.IsBuiltIn);
         Assert.True(custom.IsEnabled);
         Assert.Null(loaded.ActiveProvider);
-    }
-
-    [Fact]
-    public void Store_LoadAppliesDefaultDisableMigrationUntilTheUserSavesTheirChoice()
-    {
-        using var temporary = new TemporaryDirectory();
-        string path = Path.Combine(temporary.Path, "Config", "ai-providers.json");
-        var store = new AiProviderSettingsStore(path);
-
-        store.Save(new AiProviderSettings
-        {
-            ActiveProviderId = "legacy-openai",
-            Providers =
-            [
-                new AiProviderProfile
-                {
-                    Id = "legacy-openai",
-                    Name = "OpenAI",
-                    BaseUrl = "https://api.openai.com/v1",
-                    Model = "model",
-                    ApiKey = "legacy-key",
-                    IsBuiltIn = true,
-                    IsEnabled = true
-                }
-            ]
-        });
-
-        AiProviderSettings migrated = store.Load();
-        AiProviderProfile provider = Assert.Single(migrated.Providers);
-        Assert.False(provider.IsEnabled);
-        Assert.True(migrated.BuiltInDefaultDisableMigrationApplied);
-
-        provider.IsEnabled = true;
-        migrated.ActiveProviderId = provider.Id;
-        store.Save(migrated);
-
-        AiProviderSettings reopened = store.Load();
-        Assert.True(Assert.Single(reopened.Providers).IsEnabled);
     }
 
     [Fact]
@@ -473,31 +397,6 @@ public sealed class AiProviderSettingsPortablePersistenceTests
     }
 
     [Fact]
-    public void EnsureBuiltInProviders_DisablesPreviouslyEnabledBuiltInsOnlyOnce()
-    {
-        var explicitlyEnabled = new AiProviderProfile
-        {
-            Id = "explicit-openai",
-            Name = "OpenAI",
-            BaseUrl = "https://api.openai.com/v1",
-            IsBuiltIn = true,
-            IsEnabled = true
-        };
-        var settings = new AiProviderSettings { Providers = [explicitlyEnabled] };
-
-        settings.EnsureBuiltInProviders();
-
-        Assert.False(explicitlyEnabled.IsEnabled);
-        Assert.True(settings.BuiltInDefaultDisableMigrationApplied);
-        Assert.All(settings.Providers.Where(provider => provider.Id != explicitlyEnabled.Id),
-            provider => Assert.False(provider.IsEnabled));
-
-        explicitlyEnabled.IsEnabled = true;
-        settings.EnsureBuiltInProviders();
-        Assert.True(explicitlyEnabled.IsEnabled);
-    }
-
-    [Fact]
     public void ApiPaths_DefaultToChatCompletionsAndModelsAndRejectUnsafeValues()
     {
         var profile = new AiProviderProfile();
@@ -546,6 +445,22 @@ public sealed class AiProviderSettingsPortablePersistenceTests
         File.WriteAllText(path,
             """{"Providers":[{"Id":"same","Name":"A"},{"Id":"same","Name":"B"}]}""");
         Assert.Throws<InvalidDataException>(() => store.Load());
+    }
+
+    [Fact]
+    public void Presets_OfferOnlyOpenAiCompatibleProvidersWithPlainNames()
+    {
+        string[] names = AiProviderPresets.All.Select(preset => preset.Name).ToArray();
+
+        // Native Gemini / Claude protocols are not supported, so they must not
+        // be offered as built-in services.
+        Assert.DoesNotContain(names, name => name.Contains("Gemini", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(names, name => name.Contains("Claude", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(names, name => name.Contains('（') || name.Contains('('));
+
+        Assert.Equal(
+            "https://api.deepseek.com",
+            Assert.Single(AiProviderPresets.All, item => item.Name == "DeepSeek").BaseUrl);
     }
 
     private sealed class TemporaryDirectory : IDisposable

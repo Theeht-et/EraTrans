@@ -128,28 +128,24 @@ public sealed class DisplayNameTranslationInjectorTests : IDisposable
     }
 
     [Fact]
-    public void EraAnalyzerService_ParsesSummaryAndDiagnostics()
+    public void EraAnalyzerService_ResolvesBuiltInDllPathInToolsAnalyzerFolder()
     {
-        const string sampleOutput = """
-            projectRoot : C:\Games\TestCopy
-            target      : (full project)
-            files       : 2497
-            success     : False
-            elapsedMs   : 460
-            diagnostics : 2
-              [warning] ERB\SOURCE.ERB:6507  未定義の識別子です: 恭顺
-              [error] ERB\TEST.ERB:12  対応する"ENDIF"の無い"IF"文です
-            """;
+        string fakeBase = Path.Combine(_tempRoot, "AppBase");
+        string analyzerDir = Path.Combine(fakeBase, "tools", "analyzer");
+        Directory.CreateDirectory(analyzerDir);
+        string dllPath = Path.Combine(analyzerDir, "Emuera.Core.dll");
+        File.WriteAllText(dllPath, "stub", Encoding.UTF8);
 
-        EraAnalyzeReport report = EraAnalyzerService.ParseOutput(@"C:\Games\TestCopy", sampleOutput);
+        string? resolved = EraAnalyzerService.ResolveBuiltInCoreDllPath(fakeBase);
 
-        Assert.False(report.Success);
-        Assert.Equal(2497, report.FileCount);
-        Assert.Equal(460, report.ElapsedMilliseconds);
-        Assert.Equal(2, report.Diagnostics.Count);
-        Assert.Equal("warning", report.Diagnostics[0].Severity);
-        Assert.Equal(@"ERB\SOURCE.ERB", report.Diagnostics[0].File);
-        Assert.Equal(6507, report.Diagnostics[0].Line);
-        Assert.Contains("恭顺", report.Diagnostics[0].Message, StringComparison.Ordinal);
+        Assert.Equal(Path.GetFullPath(dllPath), resolved);
+    }
+
+    [Fact]
+    public async Task EraAnalyzerService_ThrowsWhenGameCopyDirectoryDoesNotExist()
+    {
+        var service = new EraAnalyzerService();
+        await Assert.ThrowsAsync<DirectoryNotFoundException>(() =>
+            service.AnalyzeAsync(Path.Combine(_tempRoot, "MissingCopy")));
     }
 }

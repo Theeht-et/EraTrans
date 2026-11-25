@@ -93,7 +93,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        var window = new EraAnalyzeReportWindow(layout.GameCopyDirectory, _settings, _settingsStore)
+        var window = new EraAnalyzeReportWindow(layout.GameCopyDirectory)
         {
             Owner = this
         };

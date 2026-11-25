@@ -3,17 +3,17 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="汉化副本引擎体检"
         Width="860"
-        Height="580"
+        Height="560"
         MinWidth="680"
-        MinHeight="460"
+        MinHeight="440"
         ResizeMode="CanResize"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
         Background="#F5F6F8"
+        Loaded="Window_Loaded"
         Closing="Window_Closing">
     <Grid Margin="18">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
@@ -26,78 +26,33 @@
                        FontWeight="SemiBold"
                        Foreground="#20242A" />
             <TextBlock Margin="0,4,0,0"
-                       Text="调用无头 Emuera 分析工具（era-analyze）对游戏副本进行只读静态编译检查，不运行游戏、不改动存档。"
+                       Text="使用内置无头 Emuera 分析引擎对当前汉化副本执行只读静态编译检查，不运行游戏、不改动存档。"
                        FontSize="12"
                        Foreground="#68717D"
                        TextWrapping="Wrap" />
         </StackPanel>
 
-        <Border Grid.Row="1"
-                Padding="12"
-                Margin="0,0,0,10"
-                Background="White"
-                BorderBrush="#E3E6EA"
-                BorderThickness="1"
-                CornerRadius="8">
-            <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="8" />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="108" />
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-
-                <TextBlock Grid.Row="0" Grid.Column="0"
-                           Text="目标游戏副本"
-                           VerticalAlignment="Center"
-                           FontSize="12"
-                           FontWeight="SemiBold"
-                           Foreground="#39414A" />
-                <TextBox x:Name="GameCopyPathTextBox"
-                         Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="2"
-                         Height="30"
-                         IsReadOnly="True"
-                         VerticalContentAlignment="Center"
-                         Padding="8,0"
-                         Background="#FAFBFC" />
-
-                <TextBlock Grid.Row="2" Grid.Column="0"
-                           Text="era-analyze 路径"
-                           VerticalAlignment="Center"
-                           FontSize="12"
-                           FontWeight="SemiBold"
-                           Foreground="#39414A" />
-                <TextBox x:Name="AnalyzerPathTextBox"
-                         Grid.Row="2" Grid.Column="1"
-                         Height="30"
-                         VerticalContentAlignment="Center"
-                         Padding="8,0"
-                         Margin="0,0,8,0"
-                         ToolTip="可选择从 passed1999/era_mcp Releases 下载的 era-analyze.exe" />
-                <Button x:Name="BrowseAnalyzerButton"
-                        Grid.Row="2" Grid.Column="2"
-                        Content="浏览"
-                        Width="68"
-                        Height="30"
-                        Style="{StaticResource SecondaryButtonStyle}"
-                        Click="BrowseAnalyzerButton_Click" />
-            </Grid>
-        </Border>
-
-        <DockPanel Grid.Row="2" Margin="0,0,0,8">
+        <DockPanel Grid.Row="1" Margin="0,0,0,10">
+            <ProgressBar x:Name="AnalyzeProgressBar"
+                         DockPanel.Dock="Left"
+                         Width="110"
+                         Height="6"
+                         Margin="0,0,10,0"
+                         VerticalAlignment="Center"
+                         IsIndeterminate="True"
+                         Foreground="#1971C2"
+                         Background="#E9ECEF"
+                         BorderThickness="0"
+                         Visibility="Collapsed" />
             <TextBlock x:Name="SummaryTextBlock"
                        VerticalAlignment="Center"
-                       FontSize="12"
+                       FontSize="12.5"
                        FontWeight="SemiBold"
                        Foreground="#39414A"
-                       Text="请选择 era-analyze.exe 并点击「开始体检」。" />
+                       Text="正在准备引擎体检…" />
         </DockPanel>
 
-        <Border Grid.Row="3"
+        <Border Grid.Row="2"
                 Padding="1"
                 Background="White"
                 BorderBrush="#E3E6EA"
@@ -146,23 +101,15 @@
             </DataGrid>
         </Border>
 
-        <DockPanel Grid.Row="4" Margin="0,12,0,0" LastChildFill="False">
+        <DockPanel Grid.Row="3" Margin="0,12,0,0" LastChildFill="False">
             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
                 <Button x:Name="RunAnalyzeButton"
-                        Content="开始体检"
+                        Content="重新体检"
                         Height="34"
                         Padding="16,0"
                         Margin="0,0,8,0"
                         Style="{StaticResource PrimaryButtonStyle}"
                         Click="RunAnalyzeButton_Click" />
-                <Button x:Name="CancelAnalyzeButton"
-                        Content="取消"
-                        Height="34"
-                        Padding="14,0"
-                        Margin="0,0,8,0"
-                        Visibility="Collapsed"
-                        Style="{StaticResource DangerButtonStyle}"
-                        Click="CancelAnalyzeButton_Click" />
                 <Button Content="关闭"
                         Width="78"
                         Height="34"

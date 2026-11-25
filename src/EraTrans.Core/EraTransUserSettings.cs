@@ -38,11 +38,6 @@ public sealed class EraTransUserSettings
     public bool EnableDisplayNameTranslationInjection { get; set; } = true;
 
     /// <summary>
-    /// Optional path to the external headless Emuera static analyzer (<c>era-analyze.exe</c>).
-    /// </summary>
-    public string EraAnalyzeExecutablePath { get; set; } = string.Empty;
-
-    /// <summary>
     /// Extractor used for the ERB branch: "lexer" (V2 visible text, default) or "legacy" (V1).
     /// The CSV/RES/XML/ERD branches always use the legacy parsers.
     /// </summary>

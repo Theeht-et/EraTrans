@@ -7,7 +7,7 @@
         MinWidth="760"
         MinHeight="560"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
-        Background="#F4F6F8">
+        Background="#F5F6F8">
     <Grid Margin="18">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -111,6 +111,7 @@
                         Height="36"
                         Margin="0,0,8,0"
                         IsEnabled="False"
+                        Style="{StaticResource PrimaryButtonStyle}"
                         Click="UseModel_Click" />
                 <Button Content="取消"
                         Width="82"

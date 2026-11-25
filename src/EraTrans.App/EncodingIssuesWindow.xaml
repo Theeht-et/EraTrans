@@ -101,12 +101,14 @@
                         Height="34"
                         Padding="14,0"
                         Margin="0,0,10,0"
+                        Style="{StaticResource DangerOutlineButtonStyle}"
                         Click="IgnoreAndContinue_Click" />
                 <Button Content="取消（去手动转码）"
                         Height="34"
                         Padding="16,0"
                         IsDefault="True"
-                        IsCancel="True" />
+                        IsCancel="True"
+                        Style="{StaticResource PrimaryButtonStyle}" />
             </StackPanel>
         </Grid>
     </Grid>

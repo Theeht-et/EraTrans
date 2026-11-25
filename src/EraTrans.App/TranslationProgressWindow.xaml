@@ -218,6 +218,7 @@
                         Height="34"
                         Margin="0,0,8,0"
                         IsEnabled="False"
+                        Style="{StaticResource PrimaryButtonStyle}"
                         Click="OpenSelectedButton_Click" />
                 <Button Content="关闭"
                         Width="84"

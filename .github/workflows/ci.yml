@@ -16,12 +16,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Checkout built-in headless analyzer (era_mcp)
-        uses: actions/checkout@v4
-        with:
-          repository: passed1999/era_mcp
-          ref: c088b3f
-          path: .tmp-era-mcp
+      - name: Download built-in headless analyzer source (era_mcp)
+        shell: pwsh
+        run: |
+          Remove-Item -LiteralPath ".tmp-era-mcp" -Recurse -Force -ErrorAction SilentlyContinue
+          git clone --depth 1 --branch v0.1.0 https://github.com/passed1999/era_mcp.git .tmp-era-mcp
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4

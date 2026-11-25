@@ -31,6 +31,18 @@ public sealed class EraTransUserSettings
     public bool EnableErbSemanticGroupingTranslation { get; set; } = true;
 
     /// <summary>
+    /// When enabled and <c>辅助数据/variable-glossary.json</c> contains translated terms,
+    /// injects <c>ERB/_ERATRANS_TR_NAME.ERB</c> and safely wraps display-only
+    /// <c>%XXXNAME:...%</c> tokens in the generated game copy without modifying CSVs.
+    /// </summary>
+    public bool EnableDisplayNameTranslationInjection { get; set; } = true;
+
+    /// <summary>
+    /// Optional path to the external headless Emuera static analyzer (<c>era-analyze.exe</c>).
+    /// </summary>
+    public string EraAnalyzeExecutablePath { get; set; } = string.Empty;
+
+    /// <summary>
     /// Extractor used for the ERB branch: "lexer" (V2 visible text, default) or "legacy" (V1).
     /// The CSV/RES/XML/ERD branches always use the legacy parsers.
     /// </summary>

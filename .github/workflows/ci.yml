@@ -16,6 +16,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Checkout built-in headless analyzer (era_mcp)
+        uses: actions/checkout@v4
+        with:
+          repository: passed1999/era_mcp
+          ref: c088b3f
+          path: .tmp-era-mcp
+
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
@@ -60,6 +67,9 @@ jobs:
       - name: Publish single-file Windows x64 application
         run: dotnet publish src/EraTrans.App/EraTrans.App.csproj --configuration Release --runtime win-x64 --self-contained true --output publish/win-x64 -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugSymbols=false -p:DebugType=None
 
+      - name: Publish built-in Emuera.Core analyzer library (shared .NET 10 runtime)
+        run: dotnet publish .tmp-era-mcp/Emuera.Core/Emuera.Core.csproj --configuration Release --runtime win-x64 --no-self-contained --output publish/win-x64/tools/analyzer -p:DebugSymbols=false -p:DebugType=None
+
       - name: Prepare portable folder layout
         shell: pwsh
         run: |
@@ -68,6 +78,15 @@ jobs:
           if (-not (Test-Path -LiteralPath $exePath -PathType Leaf)) {
             throw "Single-file publish did not produce EraTrans.App.exe."
           }
+
+          $analyzerDll = Join-Path $publishDirectory "tools/analyzer/Emuera.Core.dll"
+          if (-not (Test-Path -LiteralPath $analyzerDll -PathType Leaf)) {
+            throw "Built-in analyzer publish did not produce tools/analyzer/Emuera.Core.dll."
+          }
+
+          # Strip XML docs and debug symbols from analyzer folder to keep the package lean.
+          Get-ChildItem -LiteralPath (Join-Path $publishDirectory "tools/analyzer") -Recurse -Include *.pdb,*.xml -File |
+            Remove-Item -Force -ErrorAction SilentlyContinue
 
           $rootFiles = @(Get-ChildItem -LiteralPath $publishDirectory -File)
           $unexpectedRootFiles = @($rootFiles | Where-Object { $_.Name -ne "EraTrans.App.exe" })
@@ -100,13 +119,17 @@ jobs:
 
           This is a self-contained single-file Windows x64 build. A separately installed .NET runtime is not required.
           The EXE is kept in the package root. Configuration files are stored in the Config folder.
-          Keep the Config and Docs folders beside the EXE. Do not run the EXE from inside the downloaded ZIP preview.
+          The built-in headless Emuera analyzer library (from passed1999/era_mcp, based on EvilMask/emuera.em) is stored in tools/analyzer and shares the embedded .NET 10 runtime.
+          Keep the Config, Docs, and tools folders beside the EXE. Do not run the EXE from inside the downloaded ZIP preview.
           '@ | Set-Content -LiteralPath (Join-Path $docsDirectory "Getting-Started.txt") -Encoding utf8
 
           Copy-Item -LiteralPath "README.md" -Destination (Join-Path $docsDirectory "README.md")
+          if (Test-Path -LiteralPath ".tmp-era-mcp/README.md" -PathType Leaf) {
+            Copy-Item -LiteralPath ".tmp-era-mcp/README.md" -Destination (Join-Path $docsDirectory "ThirdParty-era_mcp-README.md")
+          }
 
           $rootDirectories = @(Get-ChildItem -LiteralPath $publishDirectory -Directory | Select-Object -ExpandProperty Name | Sort-Object)
-          $expectedDirectories = @("Config", "Docs")
+          $expectedDirectories = @("Config", "Docs", "tools")
           if (Compare-Object -ReferenceObject $expectedDirectories -DifferenceObject $rootDirectories) {
             throw "Unexpected folders in release root: $($rootDirectories -join ', ')"
           }

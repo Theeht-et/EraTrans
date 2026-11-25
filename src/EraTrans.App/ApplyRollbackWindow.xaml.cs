@@ -111,7 +111,7 @@ public partial class ApplyRollbackWindow : Window
 
         if (sb.Length == 0)
         {
-            sb.AppendLine("该快照未记录具体改动文件（可能是首次生成副本前的快照或未完成写入）。");
+            sb.AppendLine("该快照未记录具体改动文件。");
         }
 
         ChangedFilesTextBox.Text = sb.ToString();
@@ -128,7 +128,7 @@ public partial class ApplyRollbackWindow : Window
         {
             MessageBox.Show(
                 this,
-                "该快照是首次生成副本前创建的，不含游戏副本备份。如需回退字典，请勾选「同时将字典回退到该快照时的版本」。",
+                "该快照不含游戏副本备份。如需回退字典，请勾选「同时将字典回退到该快照时的版本」。",
                 "无游戏副本备份",
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);

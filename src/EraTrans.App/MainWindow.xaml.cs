@@ -474,16 +474,13 @@ public partial class MainWindow : Window
             return;
         }
 
-        SetBusy(true, "正在生成汉化副本", "正在备份当前状态并写入已保存译文，请稍候…");
-        StatusText.Text = "正在备份当前状态并生成汉化副本，请稍候…";
+        SetBusy(true, "正在生成汉化副本", "正在更新游戏副本并写入已保存译文，请稍候…");
+        StatusText.Text = "正在生成汉化副本，请稍候…";
 
-        ApplySnapshotInfo? preApplySnapshot = null;
-        bool applyCompleted = false;
         try
         {
             var applier = new TranslationApplier();
             EraParserOptions options = _settings.ToParserOptions();
-            preApplySnapshot = await Task.Run(() => _snapshotService.CreatePreApplySnapshot(layout, options, pruneOldSnapshots: false));
 
             TranslationApplyResult result;
             try
@@ -493,7 +490,8 @@ public partial class MainWindow : Window
                     dictionaryDirectory,
                     workingCopyDirectory,
                     options,
-                    ignoreEncodingIssueFiles: false));
+                    ignoreEncodingIssueFiles: false,
+                    allowUpdateExisting: true));
             }
             catch (InvalidDataException ex) when (GameFileEncodingPreflightException.TryExtract(ex, out GameFileEncodingPreflightException? preflight))
             {
@@ -510,18 +508,11 @@ public partial class MainWindow : Window
                     dictionaryDirectory,
                     workingCopyDirectory,
                     options,
-                    ignoreEncodingIssueFiles: true));
+                    ignoreEncodingIssueFiles: true,
+                    allowUpdateExisting: true));
             }
 
-            applyCompleted = true;
-            if (preApplySnapshot is not null)
-            {
-                await Task.Run(() =>
-                {
-                    _snapshotService.RecordApplyResult(preApplySnapshot, layout, result);
-                    _snapshotService.PruneOldSnapshots(layout);
-                });
-            }
+            await Task.Run(() => _snapshotService.CreatePostApplySnapshot(layout, result, options));
 
             StatusText.Text =
                 $"副本处理完成：完整复制 {result.CopiedFiles.Count} 个游戏文件，应用译文 {result.ModifiedFiles.Count} 个"
@@ -552,18 +543,6 @@ public partial class MainWindow : Window
         }
         finally
         {
-            if (!applyCompleted && preApplySnapshot is not null)
-            {
-                try
-                {
-                    _snapshotService.DeleteSnapshot(preApplySnapshot);
-                }
-                catch
-                {
-                    // Ignore cleanup errors for cancelled/failed runs.
-                }
-            }
-
             SetBusy(false);
         }
     }

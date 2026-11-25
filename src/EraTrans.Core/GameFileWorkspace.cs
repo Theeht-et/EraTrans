@@ -137,6 +137,125 @@ public static class GameFileWorkspace
     }
 
     /// <summary>
+    /// Refreshes a single file from the read-only original game directory into an existing
+    /// working copy, applying the same UTF-8 BOM transcoding and safety checks as a full copy.
+    /// Untouched files in the working copy (such as saves, assets, or unchanged scripts) are never modified.
+    /// </summary>
+    public static string CopySingleFileForModification(
+        string gameDirectory,
+        string outputDirectory,
+        string relativePath,
+        Encoding? fallbackEncoding,
+        IReadOnlyList<string>? targetFileExtensions,
+        bool ignoreEncodingIssueFiles = true,
+        ICollection<GameFileEncodingIssue>? skippedEncodingIssues = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(gameDirectory);
+        ArgumentException.ThrowIfNullOrWhiteSpace(outputDirectory);
+        ArgumentException.ThrowIfNullOrWhiteSpace(relativePath);
+
+        string gameRoot = Path.GetFullPath(gameDirectory);
+        string outputRoot = Path.GetFullPath(outputDirectory);
+
+        if (!Directory.Exists(gameRoot))
+        {
+            throw new DirectoryNotFoundException($"Game directory does not exist: {gameRoot}");
+        }
+        if ((File.GetAttributes(gameRoot) & FileAttributes.ReparsePoint) != 0)
+        {
+            throw new IOException($"原游戏目录本身是符号链接或其他 Reparse Point，不能安全地执行复制：{gameRoot}");
+        }
+
+        EnsureDirectoriesAreDisjoint(
+            gameRoot,
+            outputRoot,
+            "The complete game-copy directory must not overlap the original game directory.");
+
+        string sourcePath = Path.GetFullPath(Path.Combine(gameRoot, relativePath));
+        if (Path.IsPathRooted(relativePath) || !IsInside(gameRoot, sourcePath) || sourcePath == gameRoot)
+        {
+            throw new ArgumentException("The requested file path must be relative to the game directory.", nameof(relativePath));
+        }
+        if (!File.Exists(sourcePath))
+        {
+            throw new FileNotFoundException("Game file was not found.", sourcePath);
+        }
+
+        FileAttributes attributes = File.GetAttributes(sourcePath);
+        if ((attributes & FileAttributes.ReparsePoint) != 0)
+        {
+            throw new IOException($"游戏文件是符号链接或其他 Reparse Point，出于安全考虑不能复制：{sourcePath}");
+        }
+
+        string destinationPath = Path.GetFullPath(Path.Combine(outputRoot, relativePath));
+        if (!IsInside(outputRoot, destinationPath) || destinationPath == outputRoot)
+        {
+            throw new ArgumentException("The requested relative path escapes the output directory.", nameof(relativePath));
+        }
+
+        HashSet<string> textExtensions = GameFileEncodingValidator.CreateTextExtensions(targetFileExtensions);
+        bool skipTranscoding = false;
+        if (fallbackEncoding is not null && IsGameTextFile(sourcePath, textExtensions))
+        {
+            IReadOnlyList<GameFileEncodingIssue> issues =
+                GameFileEncodingValidator.FindFileIssues([sourcePath], fallbackEncoding, gameRoot);
+            if (issues.Count > 0)
+            {
+                if (!ignoreEncodingIssueFiles)
+                {
+                    throw GameFileEncodingValidator.CreatePreflightException(issues);
+                }
+
+                foreach (GameFileEncodingIssue issue in issues)
+                {
+                    skippedEncodingIssues?.Add(issue);
+                }
+
+                skipTranscoding = true;
+            }
+        }
+
+        Directory.CreateDirectory(Path.GetDirectoryName(destinationPath)!);
+        if (File.Exists(destinationPath))
+        {
+            FileAttributes existingAttrs = File.GetAttributes(destinationPath);
+            if ((existingAttrs & FileAttributes.ReadOnly) != 0)
+            {
+                File.SetAttributes(destinationPath, existingAttrs & ~FileAttributes.ReadOnly);
+            }
+        }
+
+        if (fallbackEncoding is not null &&
+            IsGameTextFile(sourcePath, textExtensions) &&
+            !skipTranscoding)
+        {
+            string text = GameFileText.Read(sourcePath, fallbackEncoding).Text;
+            if (Path.GetExtension(sourcePath).Equals(".xml", StringComparison.OrdinalIgnoreCase))
+            {
+                text = NormalizeXmlEncodingDeclaration(text);
+            }
+
+            try
+            {
+                File.WriteAllText(destinationPath, text, Utf8WithBomAndStrictEncoder);
+            }
+            catch (EncoderFallbackException)
+            {
+                File.Copy(sourcePath, destinationPath, overwrite: true);
+            }
+        }
+        else
+        {
+            File.Copy(sourcePath, destinationPath, overwrite: true);
+        }
+
+        FileAttributes writableAttributes = attributes & ~FileAttributes.ReadOnly;
+        File.SetAttributes(destinationPath, writableAttributes);
+        File.SetLastWriteTimeUtc(destinationPath, File.GetLastWriteTimeUtc(sourcePath));
+        return destinationPath;
+    }
+
+    /// <summary>
     /// Copies a single file to a workspace. Kept for narrowly scoped tools; game-wide
     /// operations should use <see cref="CopyDirectoryForModification"/>.
     /// </summary>

@@ -1,7 +1,8 @@
 <Window x:Class="EraTrans.App.AiModelPickerWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="选择 AI 模型"
+        Title="选择模型"
+        UseLayoutRounding="True"
         Width="920"
         Height="720"
         MinWidth="760"
@@ -21,7 +22,7 @@
                 <ColumnDefinition Width="320" />
             </Grid.ColumnDefinitions>
             <StackPanel>
-                <TextBlock Text="可用模型列表"
+                <TextBlock Text="选择模型"
                            FontSize="21"
                            FontWeight="SemiBold"
                            Foreground="#20242A" />

@@ -43,6 +43,7 @@ public partial class ParserSettingsWindow : Window
         ExtractPrintDataEntriesCheckBox.IsChecked = settings.ExtractPrintDataEntries;
         SkipNonJapaneseEntriesCheckBox.IsChecked = settings.SkipNonJapaneseEntries;
         AutoOpenFolderCheckBox.IsChecked = settings.AutoOpenFolder;
+        EnableDisplayNameTranslationInjectionCheckBox.IsChecked = settings.EnableDisplayNameTranslationInjection;
         EnableVariableAutoCorrectionCheckBox.IsChecked = settings.EnableVariableAutoCorrection;
         HideEnglishTextCheckBox.IsChecked = settings.HideEnglishText;
         MergeDuplicateEntriesCheckBox.IsChecked = settings.MergeDuplicateEntries;
@@ -145,6 +146,7 @@ public partial class ParserSettingsWindow : Window
                 ExtractPrintDataEntries = ExtractPrintDataEntriesCheckBox.IsChecked == true,
                 SkipNonJapaneseEntries = SkipNonJapaneseEntriesCheckBox.IsChecked == true,
                 AutoOpenFolder = AutoOpenFolderCheckBox.IsChecked == true,
+                EnableDisplayNameTranslationInjection = EnableDisplayNameTranslationInjectionCheckBox.IsChecked == true,
                 EnableVariableAutoCorrection = EnableVariableAutoCorrectionCheckBox.IsChecked == true,
                 HideEnglishText = HideEnglishTextCheckBox.IsChecked == true,
                 MergeDuplicateEntries = MergeDuplicateEntriesCheckBox.IsChecked == true,

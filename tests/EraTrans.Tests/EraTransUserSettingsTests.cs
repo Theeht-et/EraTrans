@@ -30,7 +30,7 @@ public sealed class EraTransUserSettingsTests
         Assert.Equal("lexer", settings.ErbExtractionMode);
         Assert.Equal(ExtractionMode.Lexer, settings.ToParserOptions().ExtractionMode);
         Assert.True(settings.AutoOpenFolder);
-        Assert.True(settings.EnableVariableAutoCorrection);
+        Assert.False(settings.EnableVariableAutoCorrection);
         Assert.True(settings.HideEnglishText);
         Assert.False(settings.MergeDuplicateEntries);
         Assert.True(settings.HideVariableEntries);
@@ -65,7 +65,7 @@ public sealed class EraTransUserSettingsTests
         var settings = EraTransUserSettings.CreateDefault();
         settings.FileEncodingId = "932";
         settings.AutoOpenFolder = false;
-        settings.EnableVariableAutoCorrection = false;
+        settings.EnableVariableAutoCorrection = true;
         settings.HideEnglishText = false;
         settings.MergeDuplicateEntries = true;
         settings.HideVariableEntries = false;

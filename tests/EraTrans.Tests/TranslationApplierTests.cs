@@ -346,6 +346,81 @@ public sealed class TranslationApplierTests
         File.WriteAllText(path, contents, new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
     }
 
+    [Fact]
+    public void Apply_IncrementalUpdate_RefreshesOnlyChangedFilesAndPreservesSavesAndUntouchedFiles()
+    {
+        string root = CreateTempDirectory();
+        string game = Path.Combine(root, "Game");
+        string dictionaries = Path.Combine(root, "Dictionaries");
+        string aux = Path.Combine(root, "AuxData");
+        string output = Path.Combine(root, "WorkingCopy");
+
+        Write(game, "ERB/first.erb", "PRINTFORM 你好\n");
+        Write(game, "ERB/second.erb", "PRINTFORM 世界\n");
+        Write(game, "Graphics/title.bin", "original-binary");
+        WriteJson(dictionaries, "ERB/first.json", [Entry("你好", "你好_第一版", 1)]);
+        WriteJson(dictionaries, "ERB/second.json", [Entry("世界", "", 0)]);
+
+        var applier = new TranslationApplier();
+
+        // Run 1: full copy
+        TranslationApplyResult firstRun = applier.Apply(
+            game, dictionaries, output,
+            updateExistingCopy: true,
+            auxiliaryDataDirectory: aux);
+
+        Assert.False(firstRun.IsIncrementalUpdate);
+        Assert.Equal("PRINTFORM 你好_第一版\n", File.ReadAllText(Path.Combine(output, "ERB", "first.erb")));
+        Assert.Equal("PRINTFORM 世界\n", File.ReadAllText(Path.Combine(output, "ERB", "second.erb")));
+
+        // Player plays the copy and creates a save file + custom font.
+        Write(output, "sav/save00.dat", "PLAYER_SAVE_DATA");
+        string untouchedBinPath = Path.Combine(output, "Graphics", "title.bin");
+        DateTime binTimestamp = new(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        File.SetLastWriteTimeUtc(untouchedBinPath, binTimestamp);
+
+        // Player translates second.erb and edits first.erb's translation.
+        WriteJson(dictionaries, "ERB/first.json", [Entry("你好", "你好_第二版", 1)]);
+        WriteJson(dictionaries, "ERB/second.json", [Entry("世界", "新世界", 1)]);
+
+        // Run 2: incremental update
+        TranslationApplyResult secondRun = applier.Apply(
+            game, dictionaries, output,
+            updateExistingCopy: true,
+            auxiliaryDataDirectory: aux);
+
+        Assert.True(secondRun.IsIncrementalUpdate);
+        Assert.Equal(2, secondRun.CopiedFiles.Count);
+        Assert.Equal(2, secondRun.ModifiedFiles.Count);
+        Assert.Equal("PRINTFORM 你好_第二版\n", File.ReadAllText(Path.Combine(output, "ERB", "first.erb")));
+        Assert.Equal("PRINTFORM 新世界\n", File.ReadAllText(Path.Combine(output, "ERB", "second.erb")));
+        Assert.Equal("PLAYER_SAVE_DATA", File.ReadAllText(Path.Combine(output, "sav", "save00.dat")));
+        Assert.Equal(binTimestamp, File.GetLastWriteTimeUtc(untouchedBinPath));
+
+        // Run 3: nothing changed -> 0 files copied/modified
+        TranslationApplyResult thirdRun = applier.Apply(
+            game, dictionaries, output,
+            updateExistingCopy: true,
+            auxiliaryDataDirectory: aux);
+
+        Assert.True(thirdRun.IsIncrementalUpdate);
+        Assert.Empty(thirdRun.CopiedFiles);
+        Assert.Empty(thirdRun.ModifiedFiles);
+
+        // Run 4: clear first.erb's translation -> restores original clean file without touching second.erb or saves
+        WriteJson(dictionaries, "ERB/first.json", [Entry("你好", "", 0)]);
+        TranslationApplyResult fourthRun = applier.Apply(
+            game, dictionaries, output,
+            updateExistingCopy: true,
+            auxiliaryDataDirectory: aux);
+
+        Assert.True(fourthRun.IsIncrementalUpdate);
+        Assert.Equal(1, fourthRun.RestoredFileCount);
+        Assert.Equal("PRINTFORM 你好\n", File.ReadAllText(Path.Combine(output, "ERB", "first.erb")));
+        Assert.Equal("PRINTFORM 新世界\n", File.ReadAllText(Path.Combine(output, "ERB", "second.erb")));
+        Assert.Equal("PLAYER_SAVE_DATA", File.ReadAllText(Path.Combine(output, "sav", "save00.dat")));
+    }
+
     private static string CreateTempDirectory()
     {
         string path = Path.Combine(Path.GetTempPath(), "EraTransApplyTests", Guid.NewGuid().ToString("N"));

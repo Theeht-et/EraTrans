@@ -22,7 +22,7 @@ public sealed class EraTransUserSettings
 
     public string FileEncodingId { get; set; } = "932";
     public bool AutoOpenFolder { get; set; } = true;
-    public bool EnableVariableAutoCorrection { get; set; } = true;
+    public bool EnableVariableAutoCorrection { get; set; } = false;
     public bool HideEnglishText { get; set; } = true;
     public bool MergeDuplicateEntries { get; set; } = false;
     public bool HideVariableEntries { get; set; } = true;

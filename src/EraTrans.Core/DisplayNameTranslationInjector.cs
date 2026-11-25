@@ -53,17 +53,26 @@ public static class DisplayNameTranslationInjector
             return new DisplayNameInjectionResult(0, 0, 0, null);
         }
 
+        string? erbDirectory = FindErbDirectory(gameCopyDirectory);
+        if (erbDirectory is null)
+        {
+            return new DisplayNameInjectionResult(0, 0, 0, null);
+        }
+
+        string helperPath = Path.Combine(erbDirectory, HelperFileName);
+
         // Only keep valid, distinct mappings where translation differs from original
         // and contains no raw quotes or newlines that could break ERB CASE literals.
         Dictionary<string, string> mappings = BuildSafeMappings(glossaryEntries);
         if (mappings.Count == 0)
         {
-            return new DisplayNameInjectionResult(0, 0, 0, null);
-        }
+            // Keep an existing helper valid as a pass-through so already-wrapped ERBs never break.
+            if (File.Exists(helperPath))
+            {
+                File.WriteAllText(helperPath, BuildHelperErbSource(mappings), Utf8WithBom);
+                return new DisplayNameInjectionResult(0, 0, 0, helperPath);
+            }
 
-        string? erbDirectory = FindErbDirectory(gameCopyDirectory);
-        if (erbDirectory is null)
-        {
             return new DisplayNameInjectionResult(0, 0, 0, null);
         }
 
@@ -95,12 +104,11 @@ public static class DisplayNameTranslationInjector
             }
         }
 
-        if (wrappedTokens == 0)
+        if (wrappedTokens == 0 && !File.Exists(helperPath))
         {
             return new DisplayNameInjectionResult(mappings.Count, 0, 0, null);
         }
 
-        string helperPath = Path.Combine(erbDirectory, HelperFileName);
         File.WriteAllText(helperPath, BuildHelperErbSource(mappings), Utf8WithBom);
 
         return new DisplayNameInjectionResult(mappings.Count, modifiedFiles, wrappedTokens, helperPath);

@@ -48,7 +48,7 @@ public sealed class EraParserOptions
     /// <summary>
     /// Controls automatic variable correction when applying translations.
     /// </summary>
-    public bool EnableVariableAutoCorrection { get; init; } = true;
+    public bool EnableVariableAutoCorrection { get; init; } = false;
 
     /// <summary>
     /// Top-level CSV dictionary names used for variable auto-correction,

@@ -45,7 +45,7 @@ public partial class DictionaryEditorControl
         AiProviderProfile? profile = TryGetEditingProvider();
         if (profile is null)
         {
-            StatusTextBlock.Text = "推理设置没有保存：当前没有任何 AI 服务商，请先在“AI 服务设置”里添加一个。";
+            StatusTextBlock.Text = "推理设置没有保存：当前没有任何 AI 服务商，请先在“AI 设置”里添加一个。";
             SyncReasoningSelection();
             return;
         }

@@ -1,4 +1,6 @@
 using System.Collections.Concurrent;
+using System.Security.Cryptography;
+using System.Text.Json;
 using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -27,6 +29,12 @@ public sealed record TranslationApplyResult(
 
     /// <summary>Script translations skipped because they contained a line break.</summary>
     public int SkippedByNewLineCount { get; init; }
+
+    /// <summary>True when an existing working copy was updated incrementally instead of rebuilt.</summary>
+    public bool IsIncrementalUpdate { get; init; }
+
+    /// <summary>Previously translated files restored cleanly from the original game because their translations were cleared.</summary>
+    public int RestoredFileCount { get; init; }
 }
 
 /// <summary>
@@ -35,13 +43,17 @@ public sealed record TranslationApplyResult(
 /// </summary>
 public sealed class TranslationApplier
 {
+    public const string ApplyStateFileName = "apply-state.json";
+
     public TranslationApplyResult Apply(
         string gameDirectory,
         string dictionaryDirectory,
         string outputDirectory,
         EraParserOptions? options = null,
         SpanCatalog? spanCatalog = null,
-        bool ignoreEncodingIssueFiles = true)
+        bool ignoreEncodingIssueFiles = true,
+        bool updateExistingCopy = false,
+        string? auxiliaryDataDirectory = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(gameDirectory);
         ArgumentException.ThrowIfNullOrWhiteSpace(dictionaryDirectory);
@@ -70,19 +82,125 @@ public sealed class TranslationApplier
         ValidateExtensions(parserOptions.TargetFileExtensions);
         ValidateAutoReplaceReferenceFiles(parserOptions.AutoReplaceReferenceFiles);
 
-        // Create a complete game workspace before applying any edits. The workspace
-        // creator refuses an existing destination so repeated runs cannot overwrite user
-        // changes or apply translations on top of an earlier translated copy.
-        var skippedEncodingIssues = new List<GameFileEncodingIssue>();
-        IReadOnlyList<string> copiedDestinationFiles =
-            GameFileWorkspace.CopyDirectoryForModification(
-                gameRoot,
-                outputRoot,
-                parserOptions,
-                ignoreEncodingIssueFiles,
-                skippedEncodingIssues);
-
         var warnings = new ConcurrentBag<string>();
+        var spanCatalogResolved = spanCatalog ?? SpanCatalog.LoadFromSidecar(dictionaryRoot, warnings.Add);
+        var operations = BuildOperations(gameRoot, dictionaryRoot, outputRoot, parserOptions, spanCatalogResolved, warnings);
+
+        bool isIncrementalUpdate = updateExistingCopy && Directory.Exists(outputRoot);
+        var skippedEncodingIssues = new List<GameFileEncodingIssue>();
+        var copiedBySource = new ConcurrentDictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var operationsToRun = new List<FileApplyOperation>(operations.Count);
+        var nextState = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        int restoredFileCount = 0;
+
+        if (!isIncrementalUpdate)
+        {
+            // First run (or strict non-overwrite mode): create a complete game workspace before
+            // applying any edits. The workspace creator refuses an existing destination when
+            // updateExistingCopy is false.
+            IReadOnlyList<string> copiedDestinationFiles =
+                GameFileWorkspace.CopyDirectoryForModification(
+                    gameRoot,
+                    outputRoot,
+                    parserOptions,
+                    ignoreEncodingIssueFiles,
+                    skippedEncodingIssues);
+
+            foreach (string destinationPath in copiedDestinationFiles)
+            {
+                string relativePath = Path.GetRelativePath(outputRoot, destinationPath);
+                string sourcePath = ResolveWithinRoot(gameRoot, relativePath);
+                copiedBySource[sourcePath] = destinationPath;
+            }
+
+            foreach (FileApplyOperation operation in operations)
+            {
+                operationsToRun.Add(operation);
+                if (operation.HasActiveTranslations)
+                {
+                    string normalizedPath = operation.RelativePath.Replace('\\', '/');
+                    nextState[normalizedPath] = ComputeOperationFingerprint(operation.DictionaryFilePath, parserOptions);
+                }
+            }
+        }
+        else
+        {
+            // Incremental update: keep saves, assets, fonts, and untouched scripts completely intact.
+            // Only refresh files whose translations were added, edited, or cleared cleanly from the
+            // read-only original game directory before re-applying exact spans.
+            Dictionary<string, string> previousState = LoadApplyState(auxiliaryDataDirectory);
+            var activePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (FileApplyOperation operation in operations)
+            {
+                string normalizedPath = operation.RelativePath.Replace('\\', '/');
+                if (operation.HasActiveTranslations)
+                {
+                    activePaths.Add(normalizedPath);
+                    string currentFingerprint = ComputeOperationFingerprint(operation.DictionaryFilePath, parserOptions);
+                    nextState[normalizedPath] = currentFingerprint;
+
+                    bool needsRefresh =
+                        !File.Exists(operation.DestinationPath) ||
+                        !previousState.TryGetValue(normalizedPath, out string? previousFingerprint) ||
+                        !string.Equals(previousFingerprint, currentFingerprint, StringComparison.Ordinal);
+
+                    if (needsRefresh)
+                    {
+                        string refreshedDestination = GameFileWorkspace.CopySingleFileForModification(
+                            gameRoot,
+                            outputRoot,
+                            operation.RelativePath,
+                            parserOptions.FileEncoding,
+                            parserOptions.TargetFileExtensions,
+                            ignoreEncodingIssueFiles,
+                            skippedEncodingIssues);
+                        copiedBySource[operation.SourcePath] = refreshedDestination;
+                        operationsToRun.Add(operation);
+                    }
+                }
+                else if (previousState.ContainsKey(normalizedPath))
+                {
+                    // Previously translated file now has 0 active translations: restore cleanly from original.
+                    string restoredDestination = GameFileWorkspace.CopySingleFileForModification(
+                        gameRoot,
+                        outputRoot,
+                        operation.RelativePath,
+                        parserOptions.FileEncoding,
+                        parserOptions.TargetFileExtensions,
+                        ignoreEncodingIssueFiles,
+                        skippedEncodingIssues);
+                    copiedBySource[operation.SourcePath] = restoredDestination;
+                    restoredFileCount++;
+                }
+            }
+
+            // Restore any previously translated file whose dictionary file was deleted altogether.
+            foreach (string previousRelativePath in previousState.Keys)
+            {
+                if (activePaths.Contains(previousRelativePath) ||
+                    operations.Any(op => op.RelativePath.Replace('\\', '/').Equals(previousRelativePath, StringComparison.OrdinalIgnoreCase)))
+                {
+                    continue;
+                }
+
+                string sourceCandidate = Path.GetFullPath(Path.Combine(gameRoot, previousRelativePath));
+                if (File.Exists(sourceCandidate))
+                {
+                    string restoredDestination = GameFileWorkspace.CopySingleFileForModification(
+                        gameRoot,
+                        outputRoot,
+                        previousRelativePath,
+                        parserOptions.FileEncoding,
+                        parserOptions.TargetFileExtensions,
+                        ignoreEncodingIssueFiles,
+                        skippedEncodingIssues);
+                    copiedBySource[sourceCandidate] = restoredDestination;
+                    restoredFileCount++;
+                }
+            }
+        }
+
         var ignoredSourcePaths = new HashSet<string>(
             skippedEncodingIssues.Select(issue => Path.GetFullPath(issue.FullPath)),
             StringComparer.OrdinalIgnoreCase);
@@ -91,23 +209,14 @@ public sealed class TranslationApplier
             warnings.Add(
                 $"已忽略编码异常文件（已原样复制到游戏副本，未转码且未应用译文）：{issue.RelativePath}");
         }
-        var spanCatalogResolved = spanCatalog ?? SpanCatalog.LoadFromSidecar(dictionaryRoot, warnings.Add);
-        var copiedBySource = new ConcurrentDictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (string destinationPath in copiedDestinationFiles)
-        {
-            string relativePath = Path.GetRelativePath(outputRoot, destinationPath);
-            string sourcePath = ResolveWithinRoot(gameRoot, relativePath);
-            copiedBySource[sourcePath] = destinationPath;
-        }
 
         var modifiedFiles = new ConcurrentBag<string>();
-        var operations = BuildOperations(gameRoot, dictionaryRoot, outputRoot, parserOptions, spanCatalogResolved, warnings);
         int spanReplaced = 0;
         int skippedByEncoding = 0;
         int skippedByNewLine = 0;
         int fallbackReplaced = 0;
 
-        Parallel.ForEach(operations, operation =>
+        Parallel.ForEach(operationsToRun, operation =>
         {
             if (ignoredSourcePaths.Contains(Path.GetFullPath(operation.SourcePath)))
             {
@@ -259,6 +368,8 @@ public sealed class TranslationApplier
             item => item.NewPath,
             StringComparer.OrdinalIgnoreCase);
 
+        SaveApplyState(auxiliaryDataDirectory, nextState);
+
         return new TranslationApplyResult(
             copiedBySource.Values
                 .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -279,7 +390,9 @@ public sealed class TranslationApplier
             SpanReplacedCount = spanReplaced,
             FallbackReplacedCount = fallbackReplaced,
             SkippedByEncodingCount = skippedByEncoding,
-            SkippedByNewLineCount = skippedByNewLine
+            SkippedByNewLineCount = skippedByNewLine,
+            IsIncrementalUpdate = isIncrementalUpdate,
+            RestoredFileCount = restoredFileCount
         };
     }
 
@@ -418,6 +531,7 @@ public sealed class TranslationApplier
                     relativeGamePath,
                     sourcePath,
                     destinationPath,
+                    dictionaryFile,
                     isResourceCsv,
                     replacementPlan,
                     resourceReplacements,
@@ -976,16 +1090,72 @@ public sealed class TranslationApplier
         }
     }
 
+    private static string ComputeOperationFingerprint(string dictionaryFilePath, EraParserOptions options)
+    {
+        byte[] dictBytes = File.ReadAllBytes(dictionaryFilePath);
+        byte[] metaBytes = Encoding.UTF8.GetBytes($"|{options.ExtractionMode}|{options.FileEncoding.CodePage}");
+        byte[] combined = new byte[dictBytes.Length + metaBytes.Length];
+        Buffer.BlockCopy(dictBytes, 0, combined, 0, dictBytes.Length);
+        Buffer.BlockCopy(metaBytes, 0, combined, dictBytes.Length, metaBytes.Length);
+        return Convert.ToHexString(SHA256.HashData(combined));
+    }
+
+    private static Dictionary<string, string> LoadApplyState(string? auxiliaryDataDirectory)
+    {
+        if (string.IsNullOrWhiteSpace(auxiliaryDataDirectory))
+        {
+            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        string statePath = Path.Combine(auxiliaryDataDirectory, ApplyStateFileName);
+        if (!File.Exists(statePath))
+        {
+            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        try
+        {
+            var parsed = JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(statePath));
+            return parsed is not null
+                ? new Dictionary<string, string>(parsed, StringComparer.OrdinalIgnoreCase)
+                : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        }
+    }
+
+    private static void SaveApplyState(string? auxiliaryDataDirectory, Dictionary<string, string> state)
+    {
+        if (string.IsNullOrWhiteSpace(auxiliaryDataDirectory))
+        {
+            return;
+        }
+
+        Directory.CreateDirectory(auxiliaryDataDirectory);
+        string statePath = Path.Combine(auxiliaryDataDirectory, ApplyStateFileName);
+        string json = JsonSerializer.Serialize(state, new JsonSerializerOptions { WriteIndented = true });
+        File.WriteAllText(statePath, json, Encoding.UTF8);
+    }
+
     private sealed record FileApplyOperation(
         string RelativePath,
         string SourcePath,
         string DestinationPath,
+        string DictionaryFilePath,
         bool IsResourceCsv,
         RegexReplacePlan? ReplacementPlan,
         IReadOnlyDictionary<string, string>? ResourceReplacements,
         IReadOnlyList<SpanSeed>? SpanSeeds,
         int FallbackEntryCount,
-        string? SpanFileHash);
+        string? SpanFileHash)
+    {
+        public bool HasActiveTranslations =>
+            (SpanSeeds is { Count: > 0 }) ||
+            (IsResourceCsv && ResourceReplacements is { Count: > 0 }) ||
+            (!IsResourceCsv && SpanSeeds is null && ReplacementPlan is not null);
+    }
 
     private sealed record SpanSeed(string Key, TextSpan Span, string Original, string Translation);
 

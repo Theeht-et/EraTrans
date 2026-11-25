@@ -79,7 +79,11 @@
                               BorderThickness="0"
                               Background="Transparent"
                               SelectedItemChanged="DictionaryFilesTreeView_SelectedItemChanged"
-                              ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                              ScrollViewer.CanContentScroll="True"
+                              VirtualizingPanel.IsVirtualizing="True"
+                              VirtualizingPanel.VirtualizationMode="Recycling"
+                              VirtualizingPanel.ScrollUnit="Pixel">
                         <TreeView.Resources>
                             <Style x:Key="CompactTreeExpanderToggleStyle" TargetType="{x:Type ToggleButton}">
                                 <Setter Property="Focusable" Value="False" />
@@ -108,6 +112,9 @@
                                 </Setter>
                             </Style>
                             <Style TargetType="{x:Type TreeViewItem}">
+                                <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
+                                <Setter Property="IsSelected" Value="{Binding IsSelected, Mode=TwoWay}" />
+                                <EventSetter Event="Selected" Handler="TreeViewItem_Selected" />
                                 <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                                 <Setter Property="Background" Value="Transparent" />
                                 <Setter Property="Foreground" Value="#20242A" />
@@ -180,6 +187,30 @@
                                 </Setter>
                             </Style>
                         </TreeView.Resources>
+                        <TreeView.ItemTemplate>
+                            <HierarchicalDataTemplate ItemsSource="{Binding Children}">
+                                <Grid HorizontalAlignment="Stretch"
+                                      ToolTip="{Binding ToolTipText}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Ellipse Grid.Column="0"
+                                             Width="6"
+                                             Height="6"
+                                             Margin="0,0,5,0"
+                                             VerticalAlignment="Center"
+                                             Fill="{Binding StatusBrush}" />
+                                    <TextBlock Grid.Column="1"
+                                               Text="{Binding DisplayName}"
+                                               FontWeight="{Binding LabelFontWeight}"
+                                               TextTrimming="CharacterEllipsis"
+                                               TextWrapping="NoWrap"
+                                               HorizontalAlignment="Stretch"
+                                               VerticalAlignment="Center" />
+                                </Grid>
+                            </HierarchicalDataTemplate>
+                        </TreeView.ItemTemplate>
                     </TreeView>
                 </DockPanel>
             </Border>

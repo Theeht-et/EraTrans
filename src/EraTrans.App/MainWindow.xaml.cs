@@ -13,6 +13,7 @@ namespace EraTrans.App;
 public partial class MainWindow : Window
 {
     private readonly EraTransUserSettingsStore _settingsStore = new();
+    private readonly ApplySnapshotService _snapshotService = new();
     private EraTransUserSettings _settings;
     private readonly DictionaryEditorControl _editor;
     private EraTransOutputLayout? _activeLayout;
@@ -80,6 +81,91 @@ public partial class MainWindow : Window
     {
         if (!_isProcessing && TryGetGameOutputLayout(out EraTransOutputLayout layout))
             ActivateWorkspace(layout);
+    }
+
+    private async void RollbackAndRestoreMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (_isProcessing || !TryGetGameOutputLayout(out EraTransOutputLayout layout))
+            return;
+
+        IReadOnlyList<ApplySnapshotInfo> snapshots = _snapshotService.ListSnapshots(layout);
+        bool hasGameCopy = Directory.Exists(layout.GameCopyDirectory);
+        var window = new ApplyRollbackWindow(snapshots, hasGameCopy) { Owner = this };
+        if (window.ShowDialog() != true)
+            return;
+
+        if (window.RequestedAction == RollbackActionKind.RestoreSnapshot && window.SelectedSnapshot is not null)
+        {
+            bool restoreDict = window.RestoreDictionary;
+            if (restoreDict && !_editor.TryPrepareForDiskOperation("回退字典"))
+                return;
+
+            string? selectedRelativePath = _editor.CurrentFileRelativePath ??
+                                           _settings.LastDictionaryFileRelativePath;
+            SetBusy(true, "正在恢复快照", "正在还原所选快照文件，请稍候…");
+            StatusText.Text = "正在恢复历史快照，请稍候…";
+            try
+            {
+                ApplySnapshotInfo targetSnapshot = window.SelectedSnapshot;
+                ApplyRollbackResult result = await Task.Run(() =>
+                    _snapshotService.RestoreSnapshot(layout, targetSnapshot, restoreDict));
+
+                if (restoreDict)
+                {
+                    _editor.RefreshFiles(selectedRelativePath);
+                }
+
+                StatusText.Text =
+                    $"快照恢复完成：还原副本 {result.RestoredGameFiles} 个文件，清理重命名 {result.RemovedRenamedFiles} 个"
+                    + (restoreDict ? $"，回退字典 {result.RestoredDictionaryFiles} 个文件。" : "（字典保持不变）。");
+                MessageBox.Show(
+                    this,
+                    $"已恢复到所选快照：\n还原游戏副本文件：{result.RestoredGameFiles}\n清理重命名文件：{result.RemovedRenamedFiles}"
+                    + (restoreDict ? $"\n回退字典文件：{result.RestoredDictionaryFiles}" : "\n字典保持不变")
+                    + "\nsav/ 存档与配置未受影响。",
+                    "恢复完成",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                StatusText.Text = "快照恢复失败。";
+                MessageBox.Show(this, ex.Message, "恢复失败", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            finally
+            {
+                SetBusy(false);
+            }
+        }
+        else if (window.RequestedAction == RollbackActionKind.RestoreOriginal)
+        {
+            SetBusy(true, "正在恢复原版日文", "正在从原游戏目录还原脚本与数据文本，请稍候…");
+            StatusText.Text = "正在将游戏副本恢复为原版日文，请稍候…";
+            try
+            {
+                EraParserOptions options = _settings.ToParserOptions();
+                RestoreOriginalCopyResult result = await Task.Run(() =>
+                    _snapshotService.RestoreGameCopyToOriginal(layout, options));
+
+                StatusText.Text =
+                    $"已恢复副本为原版日文：还原 {result.RestoredGameFiles} 个文本文件，清理 {result.RemovedRenamedErdFiles} 个汉化 ERD。";
+                MessageBox.Show(
+                    this,
+                    $"游戏副本已恢复为原版日文：\n还原脚本与数据文件：{result.RestoredGameFiles}\n清理汉化重命名 ERD：{result.RemovedRenamedErdFiles}\nsav/ 存档、配置与图片音频均已保留。",
+                    "恢复完成",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                StatusText.Text = "恢复原版日文失败。";
+                MessageBox.Show(this, ex.Message, "恢复失败", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            finally
+            {
+                SetBusy(false);
+            }
+        }
     }
 
     private void RestoreLastWorkspace()
@@ -388,13 +474,17 @@ public partial class MainWindow : Window
             return;
         }
 
-        SetBusy(true, "正在生成汉化副本", "正在复制原游戏并写入已保存译文，请稍候…");
-        StatusText.Text = "正在生成汉化副本，请稍候…";
+        SetBusy(true, "正在生成汉化副本", "正在备份当前状态并写入已保存译文，请稍候…");
+        StatusText.Text = "正在备份当前状态并生成汉化副本，请稍候…";
 
+        ApplySnapshotInfo? preApplySnapshot = null;
+        bool applyCompleted = false;
         try
         {
             var applier = new TranslationApplier();
             EraParserOptions options = _settings.ToParserOptions();
+            preApplySnapshot = await Task.Run(() => _snapshotService.CreatePreApplySnapshot(layout, options, pruneOldSnapshots: false));
+
             TranslationApplyResult result;
             try
             {
@@ -421,6 +511,16 @@ public partial class MainWindow : Window
                     workingCopyDirectory,
                     options,
                     ignoreEncodingIssueFiles: true));
+            }
+
+            applyCompleted = true;
+            if (preApplySnapshot is not null)
+            {
+                await Task.Run(() =>
+                {
+                    _snapshotService.RecordApplyResult(preApplySnapshot, layout, result);
+                    _snapshotService.PruneOldSnapshots(layout);
+                });
             }
 
             StatusText.Text =
@@ -452,6 +552,18 @@ public partial class MainWindow : Window
         }
         finally
         {
+            if (!applyCompleted && preApplySnapshot is not null)
+            {
+                try
+                {
+                    _snapshotService.DeleteSnapshot(preApplySnapshot);
+                }
+                catch
+                {
+                    // Ignore cleanup errors for cancelled/failed runs.
+                }
+            }
+
             SetBusy(false);
         }
     }

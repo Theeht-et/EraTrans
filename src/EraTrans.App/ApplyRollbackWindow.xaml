@@ -1,0 +1,207 @@
+<Window x:Class="EraTrans.App.ApplyRollbackWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="撤回与恢复"
+        Width="860"
+        Height="580"
+        MinWidth="700"
+        MinHeight="460"
+        ResizeMode="CanResize"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        Background="#F5F6F8">
+    <Grid Margin="18">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Margin="0,0,0,12">
+            <TextBlock Text="撤回与恢复"
+                       FontSize="20"
+                       FontWeight="SemiBold"
+                       Foreground="#20242A" />
+            <TextBlock Margin="0,4,0,0"
+                       Text="恢复历史应用快照，或将游戏副本一键还原为原版日文（始终保留 sav/ 存档、配置与图片音频）。"
+                       FontSize="12"
+                       Foreground="#68717D"
+                       TextWrapping="Wrap" />
+        </StackPanel>
+
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="320" MinWidth="240" />
+                <ColumnDefinition Width="12" />
+                <ColumnDefinition Width="*" MinWidth="320" />
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0"
+                    Padding="12"
+                    Background="White"
+                    BorderBrush="#E3E6EA"
+                    BorderThickness="1"
+                    CornerRadius="8">
+                <DockPanel LastChildFill="True">
+                    <TextBlock DockPanel.Dock="Top"
+                               Text="最近快照（最多保留 5 次）"
+                               FontSize="13"
+                               FontWeight="SemiBold"
+                               Foreground="#303740"
+                               Margin="2,0,0,8" />
+                    <Grid>
+                        <ListBox x:Name="SnapshotsListBox"
+                                 BorderThickness="0"
+                                 Background="Transparent"
+                                 SelectionMode="Single"
+                                 SelectionChanged="SnapshotsListBox_SelectionChanged"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                            <ListBox.ItemContainerStyle>
+                                <Style TargetType="{x:Type ListBoxItem}">
+                                    <Setter Property="Padding" Value="10,8" />
+                                    <Setter Property="Margin" Value="0,0,0,6" />
+                                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                    <Setter Property="Background" Value="Transparent" />
+                                    <Setter Property="BorderBrush" Value="Transparent" />
+                                    <Setter Property="BorderThickness" Value="1" />
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="{x:Type ListBoxItem}">
+                                                <Border x:Name="ItemBd"
+                                                        Background="{TemplateBinding Background}"
+                                                        BorderBrush="{TemplateBinding BorderBrush}"
+                                                        BorderThickness="{TemplateBinding BorderThickness}"
+                                                        CornerRadius="6"
+                                                        Padding="{TemplateBinding Padding}">
+                                                    <ContentPresenter />
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="ItemBd" Property="Background" Value="#F3F6FA" />
+                                                    </Trigger>
+                                                    <Trigger Property="IsSelected" Value="True">
+                                                        <Setter TargetName="ItemBd" Property="Background" Value="#DCEBFA" />
+                                                        <Setter TargetName="ItemBd" Property="BorderBrush" Value="#B9D7F5" />
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </ListBox.ItemContainerStyle>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel>
+                                        <DockPanel>
+                                            <TextBlock DockPanel.Dock="Right"
+                                                       Text="{Binding ModeLabel}"
+                                                       FontSize="11"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="#1971C2"
+                                                       VerticalAlignment="Center" />
+                                            <TextBlock Text="{Binding TimeText}"
+                                                       FontSize="13"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="#20242A" />
+                                        </DockPanel>
+                                        <TextBlock Text="{Binding SummaryText}"
+                                                   Margin="0,4,0,0"
+                                                   FontSize="11"
+                                                   Foreground="#59636F"
+                                                   TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                        <TextBlock x:Name="EmptySnapshotsTextBlock"
+                                   Text="暂无历史快照。每次生成汉化副本前会自动创建备份。"
+                                   FontSize="12"
+                                   Foreground="#87909B"
+                                   TextWrapping="Wrap"
+                                   TextAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   Margin="12"
+                                   Visibility="Collapsed" />
+                    </Grid>
+                </DockPanel>
+            </Border>
+
+            <Border Grid.Column="2"
+                    Padding="14"
+                    Background="White"
+                    BorderBrush="#E3E6EA"
+                    BorderThickness="1"
+                    CornerRadius="8">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock x:Name="DetailTitleTextBlock"
+                               Text="变更文件清单"
+                               FontSize="13"
+                               FontWeight="SemiBold"
+                               Foreground="#303740" />
+                    <TextBlock x:Name="DetailMetaTextBlock"
+                               Grid.Row="1"
+                               Margin="0,4,0,10"
+                               FontSize="11.5"
+                               Foreground="#68717D"
+                               TextWrapping="Wrap"
+                               Text="选择左侧快照可查看本轮改动的文件列表。" />
+                    <TextBox x:Name="ChangedFilesTextBox"
+                             Grid.Row="2"
+                             IsReadOnly="True"
+                             AcceptsReturn="True"
+                             TextWrapping="NoWrap"
+                             VerticalScrollBarVisibility="Auto"
+                             HorizontalScrollBarVisibility="Auto"
+                             FontFamily="Consolas"
+                             FontSize="12"
+                             Padding="10"
+                             Background="#FAFBFC"
+                             BorderBrush="#E3E6EA"
+                             BorderThickness="1" />
+                </Grid>
+            </Border>
+        </Grid>
+
+        <Grid Grid.Row="2" Margin="0,14,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <CheckBox x:Name="RestoreDictionaryCheckBox"
+                      Content="同时将字典回退到该快照时的版本"
+                      VerticalAlignment="Center"
+                      IsEnabled="False"
+                      ToolTip="不勾选时仅恢复游戏副本，保留当前字典方便继续修改" />
+
+            <StackPanel Grid.Column="2" Orientation="Horizontal">
+                <Button x:Name="RestoreOriginalButton"
+                        Content="恢复副本为原版日文"
+                        Height="34"
+                        Padding="14,0"
+                        Margin="0,0,8,0"
+                        Style="{StaticResource DangerOutlineButtonStyle}"
+                        Click="RestoreOriginalButton_Click" />
+                <Button x:Name="RestoreSnapshotButton"
+                        Content="恢复选中快照"
+                        Height="34"
+                        Padding="16,0"
+                        Margin="0,0,8,0"
+                        IsEnabled="False"
+                        Style="{StaticResource PrimaryButtonStyle}"
+                        Click="RestoreSnapshotButton_Click" />
+                <Button Content="关闭"
+                        Width="78"
+                        Height="34"
+                        IsCancel="True" />
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Window>

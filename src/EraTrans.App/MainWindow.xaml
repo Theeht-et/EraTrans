@@ -58,6 +58,7 @@
                                 <MenuItem Header="解析与提取设置" Click="Settings_Click" />
                                 <MenuItem Header="AI 服务设置" Click="AiSettingsMenuItem_Click" />
                                 <Separator />
+                                <MenuItem Header="撤回与恢复" Click="RollbackAndRestoreMenuItem_Click" />
                                 <MenuItem Header="重新加载工作区" Click="ReloadWorkspaceMenuItem_Click" />
                             </ContextMenu>
                         </Button.ContextMenu>

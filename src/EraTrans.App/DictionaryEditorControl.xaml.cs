@@ -10,7 +10,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
-using Ellipse = System.Windows.Shapes.Ellipse;
+using System.Windows.Threading;
 
 namespace EraTrans.App;
 
@@ -18,15 +18,14 @@ public partial class DictionaryEditorControl : UserControl
 {
     private const int GroupPreviewMaxLines = 60;
     private const int GroupPreviewMaxLineLength = 240;
+    private const int FileTreeAutoExpandFileLimit = 120;
+    private const int FileTreeSearchDebounceMilliseconds = 180;
 
     private static readonly SolidColorBrush StatusCompletedBrush = CreateFrozenBrush("#2B8A3E");
     private static readonly SolidColorBrush StatusInProgressBrush = CreateFrozenBrush("#1971C2");
     private static readonly SolidColorBrush StatusNotStartedBrush = CreateFrozenBrush("#ADB5BD");
     private static readonly SolidColorBrush StatusEmptyBrush = CreateFrozenBrush("#CED4DA");
     private static readonly SolidColorBrush StatusPendingScanBrush = CreateFrozenBrush("#DEE2E6");
-
-    private sealed record FileTreeVisual(Ellipse StatusDot, FrameworkElement HeaderContainer, DictionaryEditorFile File);
-    private sealed record FolderTreeVisual(Ellipse StatusDot, FrameworkElement HeaderContainer, DictionaryFileTreeFolder Folder);
 
     private string _dictionaryDirectory = string.Empty;
     private string _gameDirectory = string.Empty;
@@ -49,18 +48,19 @@ public partial class DictionaryEditorControl : UserControl
     private Dictionary<string, DictionaryEditorEntry>? _entriesByKey;
     private IReadOnlyList<DictionaryEditorFile> _allDictionaryFiles = Array.Empty<DictionaryEditorFile>();
     private readonly Dictionary<string, DictionaryFileProgress> _progressByFullPath = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, FileTreeVisual> _fileTreeVisuals = new(StringComparer.OrdinalIgnoreCase);
-    private readonly List<FolderTreeVisual> _folderTreeVisuals = new();
+    private IReadOnlyList<FileTreeNodeViewModel> _treeRootNodes = Array.Empty<FileTreeNodeViewModel>();
+    private readonly Dictionary<string, FileTreeNodeViewModel> _fileTreeNodes = new(StringComparer.OrdinalIgnoreCase);
+    private readonly DispatcherTimer _fileTreeSearchDebounceTimer;
     private CancellationTokenSource? _progressScanCancellation;
     private string? _coverageReportPath;
     private readonly AiTranslationLogStore _translationLogStore = new();
     private readonly AiTranslationService _translationService;
-    private readonly Dictionary<string, TreeViewItem> _fileTreeItems = new(StringComparer.OrdinalIgnoreCase);
     private DictionaryEditorDocument? _document;
     private DictionaryEditorFile? _currentFile;
     private ICollectionView? _entriesView;
     private CancellationTokenSource? _translationCancellation;
     private bool _changingFileSelection;
+    private bool _suppressFileTreeFilterEvents;
     private bool _isTranslating;
 
     public DictionaryEditorControl(EraTransUserSettings settings)
@@ -69,8 +69,15 @@ public partial class DictionaryEditorControl : UserControl
         _settings = settings;
 
         InitializeComponent();
+        _fileTreeSearchDebounceTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(FileTreeSearchDebounceMilliseconds)
+        };
+        _fileTreeSearchDebounceTimer.Tick += FileTreeSearchDebounceTimer_Tick;
         EntryFilterComboBox.SelectedIndex = 0;
+        _suppressFileTreeFilterEvents = true;
         FileTreeStatusFilterComboBox.SelectedIndex = 0;
+        _suppressFileTreeFilterEvents = false;
         _translationService = new AiTranslationService(logStore: _translationLogStore);
         UpdateProviderStatus();
         SetEmptyState(
@@ -289,14 +296,24 @@ public partial class DictionaryEditorControl : UserControl
         _spanCatalog = null;
         _spanCatalogDirectory = null;
         _entriesByKey = null;
+        _fileTreeSearchDebounceTimer.Stop();
         _allDictionaryFiles = Array.Empty<DictionaryEditorFile>();
         _progressByFullPath.Clear();
-        _fileTreeVisuals.Clear();
-        _folderTreeVisuals.Clear();
+        _treeRootNodes = Array.Empty<FileTreeNodeViewModel>();
+        _fileTreeNodes.Clear();
         EntriesDataGrid.ItemsSource = null;
         EntrySearchTextBox.Text = string.Empty;
-        FileTreeSearchTextBox.Text = string.Empty;
-        FileTreeStatusFilterComboBox.SelectedIndex = 0;
+        _suppressFileTreeFilterEvents = true;
+        try
+        {
+            FileTreeSearchTextBox.Text = string.Empty;
+            FileTreeStatusFilterComboBox.SelectedIndex = 0;
+            FileTreeSearchPlaceholder.Visibility = Visibility.Visible;
+        }
+        finally
+        {
+            _suppressFileTreeFilterEvents = false;
+        }
         EntryFilterComboBox.SelectedIndex = 0;
         EntryGroupTextBox.Text = string.Empty;
         EntryContextTextBox.Text = string.Empty;
@@ -311,8 +328,7 @@ public partial class DictionaryEditorControl : UserControl
         UpdateTranslationButtons();
 
         _changingFileSelection = true;
-        DictionaryFilesTreeView.Items.Clear();
-        _fileTreeItems.Clear();
+        DictionaryFilesTreeView.ItemsSource = null;
 
         try
         {
@@ -354,12 +370,7 @@ public partial class DictionaryEditorControl : UserControl
                     StringComparison.OrdinalIgnoreCase));
             selectedFile ??= files[0];
 
-            if (_fileTreeItems.TryGetValue(selectedFile.FullPath, out TreeViewItem? selectedNode))
-            {
-                selectedNode.IsSelected = true;
-                ExpandParentFolders(selectedNode);
-                selectedNode.BringIntoView();
-            }
+            SelectFileNode(selectedFile.FullPath);
 
             _changingFileSelection = false;
             LoadDictionary(selectedFile);
@@ -455,7 +466,7 @@ public partial class DictionaryEditorControl : UserControl
         {
             ProgressStatsMenuItem.IsEnabled = !_isTranslating;
             UpdateWorkspaceProgressSummary();
-            RefreshTreeProgressIndicators();
+            UpdateSingleFileNodeProgress(_currentFile);
         }
     }
 
@@ -496,34 +507,108 @@ public partial class DictionaryEditorControl : UserControl
 
     private void RefreshTreeProgressIndicators()
     {
-        foreach (FileTreeVisual visual in _fileTreeVisuals.Values)
+        bool hasProgress = _progressByFullPath.Count > 0;
+        foreach (FileTreeNodeViewModel rootNode in _treeRootNodes)
         {
-            if (_progressByFullPath.TryGetValue(visual.File.FullPath, out DictionaryFileProgress? progress))
+            RefreshNodeProgressRecursive(rootNode, hasProgress);
+        }
+    }
+
+    private FolderProgressAccumulator RefreshNodeProgressRecursive(
+        FileTreeNodeViewModel node,
+        bool hasProgress)
+    {
+        if (!node.IsFolder && node.File is not null)
+        {
+            if (hasProgress && _progressByFullPath.TryGetValue(node.File.FullPath, out DictionaryFileProgress? progress))
             {
-                visual.StatusDot.Fill = GetStatusBrush(progress.Status);
-                visual.HeaderContainer.ToolTip = FormatFileToolTip(visual.File, progress);
+                node.StatusBrush = GetStatusBrush(progress.Status);
+                node.ToolTipText = FormatFileToolTip(node.File, progress);
+                return FolderProgressAccumulator.FromFile(progress);
+            }
+
+            node.StatusBrush = StatusPendingScanBrush;
+            node.ToolTipText = node.File.RelativePath;
+            return default;
+        }
+
+        FolderProgressAccumulator acc = default;
+        foreach (FileTreeNodeViewModel child in node.Children)
+        {
+            acc = acc.Add(RefreshNodeProgressRecursive(child, hasProgress));
+        }
+
+        if (node.Folder is not null)
+        {
+            if (hasProgress)
+            {
+                DictionaryFolderProgress folderProgress = acc.ToFolderProgress();
+                node.StatusBrush = GetStatusBrush(folderProgress.Status);
+                node.ToolTipText = FormatFolderToolTip(node.Folder, folderProgress);
             }
             else
             {
-                visual.StatusDot.Fill = StatusPendingScanBrush;
-                visual.HeaderContainer.ToolTip = visual.File.RelativePath;
+                node.StatusBrush = StatusPendingScanBrush;
+                node.ToolTipText = node.Folder.FullRelativePath;
             }
         }
 
-        foreach (FolderTreeVisual visual in _folderTreeVisuals)
+        return acc;
+    }
+
+    private void UpdateSingleFileNodeProgress(DictionaryEditorFile file)
+    {
+        if (!_fileTreeNodes.TryGetValue(file.FullPath, out FileTreeNodeViewModel? fileNode))
         {
-            if (_progressByFullPath.Count == 0)
+            return;
+        }
+
+        if (_progressByFullPath.TryGetValue(file.FullPath, out DictionaryFileProgress? progress))
+        {
+            fileNode.StatusBrush = GetStatusBrush(progress.Status);
+            fileNode.ToolTipText = FormatFileToolTip(file, progress);
+        }
+
+        FileTreeNodeViewModel? ancestor = fileNode.Parent;
+        while (ancestor is not null)
+        {
+            if (ancestor.Folder is not null)
             {
-                visual.StatusDot.Fill = StatusPendingScanBrush;
-                visual.HeaderContainer.ToolTip = visual.Folder.FullRelativePath;
-                continue;
+                DictionaryFolderProgress folderProgress =
+                    DictionaryProgressScanner.AggregateFolder(ancestor.Folder, _progressByFullPath);
+                ancestor.StatusBrush = GetStatusBrush(folderProgress.Status);
+                ancestor.ToolTipText = FormatFolderToolTip(ancestor.Folder, folderProgress);
             }
 
-            DictionaryFolderProgress folderProgress =
-                DictionaryProgressScanner.AggregateFolder(visual.Folder, _progressByFullPath);
-            visual.StatusDot.Fill = GetStatusBrush(folderProgress.Status);
-            visual.HeaderContainer.ToolTip = FormatFolderToolTip(visual.Folder, folderProgress);
+            ancestor = ancestor.Parent;
         }
+    }
+
+    private readonly record struct FolderProgressAccumulator(
+        int TotalFiles,
+        int CompletedFiles,
+        int ActiveCount,
+        int TranslatedCount,
+        int PendingCount)
+    {
+        public static FolderProgressAccumulator FromFile(DictionaryFileProgress progress) =>
+            new(
+                TotalFiles: 1,
+                CompletedFiles: progress.Status == DictionaryProgressStatus.Completed ? 1 : 0,
+                ActiveCount: progress.ActiveCount,
+                TranslatedCount: progress.TranslatedCount,
+                PendingCount: progress.PendingCount);
+
+        public FolderProgressAccumulator Add(FolderProgressAccumulator other) =>
+            new(
+                TotalFiles + other.TotalFiles,
+                CompletedFiles + other.CompletedFiles,
+                ActiveCount + other.ActiveCount,
+                TranslatedCount + other.TranslatedCount,
+                PendingCount + other.PendingCount);
+
+        public DictionaryFolderProgress ToFolderProgress() =>
+            new(TotalFiles, CompletedFiles, ActiveCount, TranslatedCount, PendingCount);
     }
 
     private static SolidColorBrush GetStatusBrush(DictionaryProgressStatus? status) => status switch
@@ -598,12 +683,7 @@ public partial class DictionaryEditorControl : UserControl
 
         if (_currentFile is not null && PathsEqual(_currentFile.FullPath, target.FullPath))
         {
-            if (_fileTreeItems.TryGetValue(target.FullPath, out TreeViewItem? currentNode))
-            {
-                currentNode.IsSelected = true;
-                ExpandParentFolders(currentNode);
-                currentNode.BringIntoView();
-            }
+            SelectFileNode(target.FullPath);
             return;
         }
 
@@ -612,17 +692,21 @@ public partial class DictionaryEditorControl : UserControl
             return;
         }
 
-        if (!_fileTreeItems.ContainsKey(target.FullPath))
+        if (!_fileTreeNodes.ContainsKey(target.FullPath))
         {
+            _fileTreeSearchDebounceTimer.Stop();
             _changingFileSelection = true;
+            _suppressFileTreeFilterEvents = true;
             try
             {
                 FileTreeSearchTextBox.Text = string.Empty;
                 FileTreeStatusFilterComboBox.SelectedIndex = 0;
+                FileTreeSearchPlaceholder.Visibility = Visibility.Visible;
                 BuildDictionaryTree(_allDictionaryFiles, expandAll: false);
             }
             finally
             {
+                _suppressFileTreeFilterEvents = false;
                 _changingFileSelection = false;
             }
         }
@@ -630,12 +714,7 @@ public partial class DictionaryEditorControl : UserControl
         _changingFileSelection = true;
         try
         {
-            if (_fileTreeItems.TryGetValue(target.FullPath, out TreeViewItem? targetNode))
-            {
-                targetNode.IsSelected = true;
-                ExpandParentFolders(targetNode);
-                targetNode.BringIntoView();
-            }
+            SelectFileNode(target.FullPath);
         }
         finally
         {
@@ -699,6 +778,18 @@ public partial class DictionaryEditorControl : UserControl
                 : Visibility.Collapsed;
         }
 
+        if (_suppressFileTreeFilterEvents || _allDictionaryFiles.Count == 0)
+        {
+            return;
+        }
+
+        _fileTreeSearchDebounceTimer.Stop();
+        _fileTreeSearchDebounceTimer.Start();
+    }
+
+    private void FileTreeSearchDebounceTimer_Tick(object? sender, EventArgs e)
+    {
+        _fileTreeSearchDebounceTimer.Stop();
         if (_allDictionaryFiles.Count == 0)
         {
             return;
@@ -709,11 +800,12 @@ public partial class DictionaryEditorControl : UserControl
 
     private void FileTreeStatusFilterComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (DictionaryFilesTreeView is null || _allDictionaryFiles.Count == 0)
+        if (_suppressFileTreeFilterEvents || DictionaryFilesTreeView is null || _allDictionaryFiles.Count == 0)
         {
             return;
         }
 
+        _fileTreeSearchDebounceTimer.Stop();
         ApplyFileTreeFilters();
     }
 
@@ -749,17 +841,16 @@ public partial class DictionaryEditorControl : UserControl
         }
 
         IReadOnlyList<DictionaryEditorFile> visibleFiles = query.ToArray();
-        bool expandAll = keyword.Length > 0 || !string.Equals(statusTag, "all", StringComparison.Ordinal);
+        bool isFiltering = keyword.Length > 0 || !string.Equals(statusTag, "all", StringComparison.Ordinal);
+        bool expandAll = isFiltering && visibleFiles.Count <= FileTreeAutoExpandFileLimit;
 
         _changingFileSelection = true;
         try
         {
             BuildDictionaryTree(visibleFiles, expandAll);
-            if (_currentFile is not null &&
-                _fileTreeItems.TryGetValue(_currentFile.FullPath, out TreeViewItem? currentNode))
+            if (_currentFile is not null)
             {
-                currentNode.IsSelected = true;
-                ExpandParentFolders(currentNode);
+                SelectFileNode(_currentFile.FullPath);
             }
         }
         finally
@@ -773,13 +864,30 @@ public partial class DictionaryEditorControl : UserControl
             .Replace('/', Path.DirectorySeparatorChar)
             .Replace('\\', Path.DirectorySeparatorChar);
 
-    private static void ExpandParentFolders(TreeViewItem item)
+    private static void ExpandParentFolders(FileTreeNodeViewModel node)
     {
-        ItemsControl? parent = ItemsControl.ItemsControlFromItemContainer(item);
-        while (parent is TreeViewItem folder)
+        FileTreeNodeViewModel? parent = node.Parent;
+        while (parent is not null)
         {
-            folder.IsExpanded = true;
-            parent = ItemsControl.ItemsControlFromItemContainer(folder);
+            parent.IsExpanded = true;
+            parent = parent.Parent;
+        }
+    }
+
+    private void SelectFileNode(string fullPath)
+    {
+        if (_fileTreeNodes.TryGetValue(fullPath, out FileTreeNodeViewModel? targetNode))
+        {
+            ExpandParentFolders(targetNode);
+            targetNode.IsSelected = true;
+        }
+    }
+
+    private void TreeViewItem_Selected(object sender, RoutedEventArgs e)
+    {
+        if (ReferenceEquals(sender, e.OriginalSource) && sender is TreeViewItem item)
+        {
+            item.BringIntoView();
         }
     }
 
@@ -789,8 +897,8 @@ public partial class DictionaryEditorControl : UserControl
     {
         if (_changingFileSelection ||
             _isTranslating ||
-            e.NewValue is not TreeViewItem selectedNode ||
-            selectedNode.Tag is not DictionaryEditorFile selectedFile)
+            e.NewValue is not FileTreeNodeViewModel selectedNode ||
+            selectedNode.File is not { } selectedFile)
         {
             return;
         }
@@ -804,154 +912,95 @@ public partial class DictionaryEditorControl : UserControl
         LoadDictionary(selectedFile);
     }
 
-    private static (Grid Container, Ellipse StatusDot) CreateTreeHeader(
-        string text,
-        string toolTip,
-        DictionaryProgressStatus? status,
-        bool useMiddleEllipsis = false)
-    {
-        var container = new Grid
-        {
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            ToolTip = toolTip
-        };
-        container.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        container.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-
-        var dot = new Ellipse
-        {
-            Width = 6,
-            Height = 6,
-            Margin = new Thickness(0, 0, 5, 0),
-            VerticalAlignment = VerticalAlignment.Center,
-            Fill = GetStatusBrush(status)
-        };
-        Grid.SetColumn(dot, 0);
-        container.Children.Add(dot);
-
-        var textBlock = new TextBlock
-        {
-            Text = text,
-            TextTrimming = useMiddleEllipsis ? TextTrimming.None : TextTrimming.CharacterEllipsis,
-            TextWrapping = TextWrapping.NoWrap,
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            VerticalAlignment = VerticalAlignment.Center
-        };
-        Grid.SetColumn(textBlock, 1);
-        container.Children.Add(textBlock);
-
-        if (useMiddleEllipsis)
-        {
-            void UpdateEllipsis()
-            {
-                double availableWidth = textBlock.ActualWidth - 2.0;
-                if (availableWidth <= 0)
-                {
-                    return;
-                }
-
-                var typeface = new Typeface(
-                    textBlock.FontFamily,
-                    textBlock.FontStyle,
-                    textBlock.FontWeight,
-                    textBlock.FontStretch);
-                double pixelsPerDip = VisualTreeHelper.GetDpi(textBlock).PixelsPerDip;
-
-                string formatted = DictionaryFileTreeBuilder.FormatMiddleEllipsis(
-                    text,
-                    availableWidth,
-                    candidate => new FormattedText(
-                        candidate,
-                        CultureInfo.CurrentUICulture,
-                        FlowDirection.LeftToRight,
-                        typeface,
-                        textBlock.FontSize,
-                        Brushes.Black,
-                        pixelsPerDip).WidthIncludingTrailingWhitespace);
-
-                if (!string.Equals(textBlock.Text, formatted, StringComparison.Ordinal))
-                {
-                    textBlock.Text = formatted;
-                }
-            }
-
-            textBlock.Loaded += (_, _) => UpdateEllipsis();
-            textBlock.SizeChanged += (_, e) =>
-            {
-                if (e.WidthChanged)
-                {
-                    UpdateEllipsis();
-                }
-            };
-        }
-
-        return (container, dot);
-    }
-
     private void BuildDictionaryTree(IReadOnlyList<DictionaryEditorFile> files, bool expandAll)
     {
-        DictionaryFilesTreeView.Items.Clear();
-        _fileTreeItems.Clear();
-        _fileTreeVisuals.Clear();
-        _folderTreeVisuals.Clear();
+        _fileTreeNodes.Clear();
 
         DictionaryFileTreeFolder root = DictionaryFileTreeBuilder.Build(files);
-        PopulateTreeItems(DictionaryFilesTreeView.Items, root, expandAll);
+        bool hasProgress = _progressByFullPath.Count > 0;
+        List<FileTreeNodeViewModel> rootNodes = BuildNodeChildren(root, parent: null, expandAll, hasProgress, out _);
+
+        if (!expandAll && rootNodes.Count == 1 && rootNodes[0].IsFolder)
+        {
+            rootNodes[0].IsExpanded = true;
+        }
+
+        _treeRootNodes = rootNodes;
+        DictionaryFilesTreeView.ItemsSource = _treeRootNodes;
     }
 
-    private void PopulateTreeItems(
-        ItemCollection targetItems,
+    private List<FileTreeNodeViewModel> BuildNodeChildren(
         DictionaryFileTreeFolder folder,
-        bool expandAll)
+        FileTreeNodeViewModel? parent,
+        bool expandAll,
+        bool hasProgress,
+        out FolderProgressAccumulator totalProgress)
     {
         // Folders always appear before files at every level, with single-child folder
         // chains compacted into one node by DictionaryFileTreeBuilder.
+        var nodes = new List<FileTreeNodeViewModel>(folder.Folders.Count + folder.Files.Count);
+        FolderProgressAccumulator acc = default;
+
         foreach (DictionaryFileTreeFolder subFolder in folder.Folders)
         {
-            DictionaryProgressStatus? folderStatus = null;
-            string folderToolTip = subFolder.FullRelativePath;
-            if (_progressByFullPath.Count > 0)
+            var childList = new List<FileTreeNodeViewModel>(subFolder.Folders.Count + subFolder.Files.Count);
+            var folderNode = new FileTreeNodeViewModel(
+                displayName: subFolder.DisplayName,
+                toolTipText: subFolder.FullRelativePath,
+                statusBrush: StatusPendingScanBrush,
+                isFolder: true,
+                parent: parent,
+                children: childList,
+                folder: subFolder,
+                isExpanded: expandAll);
+
+            List<FileTreeNodeViewModel> builtChildren = BuildNodeChildren(
+                subFolder,
+                folderNode,
+                expandAll,
+                hasProgress,
+                out FolderProgressAccumulator subProgress);
+            childList.AddRange(builtChildren);
+
+            if (hasProgress)
             {
-                DictionaryFolderProgress folderProgress =
-                    DictionaryProgressScanner.AggregateFolder(subFolder, _progressByFullPath);
-                folderStatus = folderProgress.Status;
-                folderToolTip = FormatFolderToolTip(subFolder, folderProgress);
+                DictionaryFolderProgress folderProgress = subProgress.ToFolderProgress();
+                folderNode.StatusBrush = GetStatusBrush(folderProgress.Status);
+                folderNode.ToolTipText = FormatFolderToolTip(subFolder, folderProgress);
             }
 
-            (Grid header, Ellipse dot) = CreateTreeHeader(
-                subFolder.DisplayName,
-                folderToolTip,
-                folderStatus);
-            var folderNode = new TreeViewItem
-            {
-                Header = header,
-                IsExpanded = expandAll,
-                FontWeight = FontWeights.SemiBold
-            };
-            targetItems.Add(folderNode);
-            _folderTreeVisuals.Add(new FolderTreeVisual(dot, header, subFolder));
-            PopulateTreeItems(folderNode.Items, subFolder, expandAll);
+            acc = acc.Add(subProgress);
+            nodes.Add(folderNode);
         }
 
         foreach (DictionaryEditorFile file in folder.Files)
         {
             string fileName = Path.GetFileName(
                 file.RelativePath.Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar));
-            _progressByFullPath.TryGetValue(file.FullPath, out DictionaryFileProgress? fileProgress);
-            (Grid header, Ellipse dot) = CreateTreeHeader(
-                fileName,
-                FormatFileToolTip(file, fileProgress),
-                fileProgress?.Status,
-                useMiddleEllipsis: true);
-            var fileNode = new TreeViewItem
+            Brush statusBrush = StatusPendingScanBrush;
+            string toolTip = file.RelativePath;
+            if (hasProgress && _progressByFullPath.TryGetValue(file.FullPath, out DictionaryFileProgress? fileProgress))
             {
-                Header = header,
-                Tag = file
-            };
-            targetItems.Add(fileNode);
-            _fileTreeItems[file.FullPath] = fileNode;
-            _fileTreeVisuals[file.FullPath] = new FileTreeVisual(dot, header, file);
+                statusBrush = GetStatusBrush(fileProgress.Status);
+                toolTip = FormatFileToolTip(file, fileProgress);
+                acc = acc.Add(FolderProgressAccumulator.FromFile(fileProgress));
+            }
+
+            var fileNode = new FileTreeNodeViewModel(
+                displayName: fileName,
+                toolTipText: toolTip,
+                statusBrush: statusBrush,
+                isFolder: false,
+                parent: parent,
+                children: Array.Empty<FileTreeNodeViewModel>(),
+                file: file);
+
+            _fileTreeNodes[file.FullPath] = fileNode;
+            nodes.Add(fileNode);
         }
+
+        totalProgress = acc;
+        return nodes;
     }
 
     private bool LoadDictionary(DictionaryEditorFile file)
@@ -1538,7 +1587,7 @@ public partial class DictionaryEditorControl : UserControl
 
         string groupPreview = entry is null ? string.Empty : BuildGroupPreview(entry.Key, wholeScreen);
         EntryGroupTextBox.Text = string.IsNullOrWhiteSpace(groupPreview)
-            ? "当前词条没有可用的 ERB 语义分组信息。"
+            ? "当前词条无分组信息"
             : groupPreview;
 
         EntryContextTextBox.Text = entry is null
@@ -1724,7 +1773,7 @@ public partial class DictionaryEditorControl : UserControl
     {
         _changingFileSelection = true;
         if (_currentFile is not null &&
-            _fileTreeItems.TryGetValue(_currentFile.FullPath, out TreeViewItem? fileNode))
+            _fileTreeNodes.TryGetValue(_currentFile.FullPath, out FileTreeNodeViewModel? fileNode))
         {
             fileNode.IsSelected = true;
         }

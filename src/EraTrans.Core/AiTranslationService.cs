@@ -59,7 +59,7 @@ public sealed class AiTranslationService
         3. alt 相同的行是互斥分支：不要把它们的译文接成连续对话，但人名、称呼、术语要与本请求其他行保持一致。
         4. sid 相同的行属于同一屏；整窗只含一屏时还会给出 scene（id/type）。同一屏内的称呼、语气与术语必须一致；type 为 menu 时是同一菜单的并列选项，type 为 dialogue 时是连续对白。
         5. cmd/kind 说明该行的显示方式：button 是按钮文字（简短、以动作开头、不加句号），data 是数据块选项，html 是界面文本；print/form 是正文对白，按句翻译。menu 为 1 的行是同一菜单的选项，句式与长度要互相一致。
-        6. 保留原文的变量占位符（如 %CALLNAME:MASTER%）、行内条件（\@ 条件 ? A # B \@）、控制码、标点和换行结构；无法翻译时原样返回原文。
+        6. 原文中的 [[P0]]、[[P1]] 等标记是程序保护的代码占位符，必须原样保留（不要翻译、删除或修改编号）；保留行内条件（\@ [[P0]] ? A # B \@）、控制码、标点和换行结构；无法翻译时原样返回原文。
 
         part 大于 1 表示这是同一函数前一段的延续，人称和译法沿用它。
         同一请求内，同一人名、称呼和术语必须使用同一译法。
@@ -103,14 +103,19 @@ public sealed class AiTranslationService
         if (window.TargetCount == 0)
             return new WindowTranslationOutcome([], [], []);
 
-        string userPrompt = BuildWindowPayload(window);
+        MaskedTranslationWindow masked = AiPlaceholderMasker.MaskWindow(window);
+        string userPrompt = BuildWindowPayload(masked.MaskedWindow);
         return await CompleteWithReasoningFallbackAsync(
             profile,
             WindowSystemPrompt,
             userPrompt,
             requestKind: "Translation",
             requestedEntryCount: window.TargetCount,
-            processResponse: response => ParseWindowResponse(response, window),
+            processResponse: response =>
+            {
+                WindowTranslationOutcome outcome = ParseWindowResponse(response, masked.MaskedWindow);
+                return AiPlaceholderMasker.RestoreOutcome(outcome, masked.PlaceholdersByLineId);
+            },
             reasoning,
             cancellationToken);
     }

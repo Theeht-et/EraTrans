@@ -34,15 +34,18 @@ public sealed record RestoreOriginalCopyResult(
     int RemovedRenamedErdFiles);
 
 /// <summary>
-/// Manages lightweight pre-apply snapshots and rollback/restore operations for
+/// Manages lightweight post-apply snapshots and rollback/restore operations for
 /// the working game copy and dictionary under <see cref="EraTransOutputLayout.AiContextDirectory"/>.
+/// Each snapshot captures the exact game-copy text files and dictionary JSONs from the
+/// same apply round so both stay 100% aligned when rolling back.
 /// The original game directory is strictly read-only, and save data (<c>sav/</c>)
 /// plus <c>emuera.config</c> are never touched.
 /// </summary>
 public sealed class ApplySnapshotService
 {
     public const string SnapshotsFolderName = "apply-snapshots";
-    public const string CopyBeforeArchiveName = "copy-before.zip";
+    public const string CopySnapshotArchiveName = "copy-snapshot.zip";
+    public const string LegacyCopyArchiveName = "copy-before.zip";
     public const string DictionaryArchiveName = "dictionary-snapshot.zip";
     public const string ManifestFileName = "manifest.json";
     public const int DefaultMaxSnapshots = 5;
@@ -68,12 +71,16 @@ public sealed class ApplySnapshotService
         return Path.Combine(layout.AiContextDirectory, SnapshotsFolderName);
     }
 
-    public ApplySnapshotInfo CreatePreApplySnapshot(
+    /// <summary>
+    /// Captures a post-apply finished snapshot containing the current round's written
+    /// game-copy text files and the dictionary JSONs used for that round.
+    /// </summary>
+    public ApplySnapshotInfo CreatePostApplySnapshot(
         EraTransOutputLayout layout,
+        TranslationApplyResult? applyResult = null,
         EraParserOptions? options = null,
         int maxSnapshots = DefaultMaxSnapshots,
-        DateTimeOffset? timestamp = null,
-        bool pruneOldSnapshots = true)
+        DateTimeOffset? timestamp = null)
     {
         ArgumentNullException.ThrowIfNull(layout);
         if (maxSnapshots <= 0)
@@ -95,7 +102,7 @@ public sealed class ApplySnapshotService
         bool hasGameCopyBackup = false;
         if (Directory.Exists(layout.GameCopyDirectory))
         {
-            string copyZipPath = Path.Combine(snapshotDir, CopyBeforeArchiveName);
+            string copyZipPath = Path.Combine(snapshotDir, CopySnapshotArchiveName);
             backedUpGameFiles = PackGameCopyTextFiles(layout.GameCopyDirectory, copyZipPath, textExtensions);
             if (backedUpGameFiles > 0)
             {
@@ -123,6 +130,26 @@ public sealed class ApplySnapshotService
             }
         }
 
+        string gameCopyRoot = Path.GetFullPath(layout.GameCopyDirectory);
+        string[] modifiedFiles = applyResult is null
+            ? Array.Empty<string>()
+            : applyResult.ModifiedFiles
+                .Select(path => ToRelativeUnixPath(gameCopyRoot, path))
+                .Where(path => !string.IsNullOrWhiteSpace(path))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+        ApplySnapshotRenamedFile[] renamedFiles = applyResult is null
+            ? Array.Empty<ApplySnapshotRenamedFile>()
+            : applyResult.RenamedFiles
+                .Select(item => new ApplySnapshotRenamedFile(
+                    ToRelativeUnixPath(gameCopyRoot, item.PreviousPath),
+                    ToRelativeUnixPath(gameCopyRoot, item.NewPath)))
+                .Where(item => !string.IsNullOrWhiteSpace(item.NewRelativePath))
+                .OrderBy(item => item.NewRelativePath, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
         string mode = options is null
             ? InferModeFromLayout(layout)
             : EraTransOutputLayout.GetVersionFolderName(options.ExtractionMode);
@@ -135,67 +162,14 @@ public sealed class ApplySnapshotService
             HasDictionaryBackup: hasDictionaryBackup,
             BackedUpGameFileCount: backedUpGameFiles,
             BackedUpDictionaryFileCount: backedUpDictionaryFiles,
-            ModifiedFiles: Array.Empty<string>(),
-            RenamedFiles: Array.Empty<ApplySnapshotRenamedFile>(),
-            Completed: false);
+            ModifiedFiles: modifiedFiles,
+            RenamedFiles: renamedFiles,
+            Completed: true);
 
         WriteManifest(snapshotDir, manifest);
-        if (pruneOldSnapshots)
-        {
-            PruneOldSnapshots(layout, maxSnapshots);
-        }
+        PruneOldSnapshots(layout, maxSnapshots);
 
         return new ApplySnapshotInfo(snapshotDir, manifest);
-    }
-
-    public ApplySnapshotInfo RecordApplyResult(
-        ApplySnapshotInfo snapshot,
-        EraTransOutputLayout layout,
-        TranslationApplyResult applyResult)
-    {
-        ArgumentNullException.ThrowIfNull(snapshot);
-        ArgumentNullException.ThrowIfNull(layout);
-        ArgumentNullException.ThrowIfNull(applyResult);
-
-        string gameCopyRoot = Path.GetFullPath(layout.GameCopyDirectory);
-
-        string[] modifiedFiles = applyResult.ModifiedFiles
-            .Select(path => ToRelativeUnixPath(gameCopyRoot, path))
-            .Where(path => !string.IsNullOrWhiteSpace(path))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-
-        ApplySnapshotRenamedFile[] renamedFiles = applyResult.RenamedFiles
-            .Select(item => new ApplySnapshotRenamedFile(
-                ToRelativeUnixPath(gameCopyRoot, item.PreviousPath),
-                ToRelativeUnixPath(gameCopyRoot, item.NewPath)))
-            .Where(item => !string.IsNullOrWhiteSpace(item.NewRelativePath))
-            .OrderBy(item => item.NewRelativePath, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-
-        ApplySnapshotManifest updated = snapshot.Manifest with
-        {
-            ModifiedFiles = modifiedFiles,
-            RenamedFiles = renamedFiles,
-            Completed = true
-        };
-
-        WriteManifest(snapshot.DirectoryPath, updated);
-        return snapshot with { Manifest = updated };
-    }
-
-    public void DeleteSnapshot(ApplySnapshotInfo? snapshot)
-    {
-        if (snapshot is null || string.IsNullOrWhiteSpace(snapshot.DirectoryPath))
-        {
-            return;
-        }
-
-        if (Directory.Exists(snapshot.DirectoryPath))
-        {
-            Directory.Delete(snapshot.DirectoryPath, recursive: true);
-        }
     }
 
     public IReadOnlyList<ApplySnapshotInfo> ListSnapshots(EraTransOutputLayout layout)
@@ -265,9 +239,10 @@ public sealed class ApplySnapshotService
     }
 
     /// <summary>
-    /// Restores the game working copy to the state captured before the selected snapshot
-    /// (cleaning up ERD renames introduced in the selected or later snapshots), and
-    /// optionally rolls back the dictionary directory as well.
+    /// Restores the game working copy to the exact post-apply state captured in the
+    /// selected snapshot (removing any extra <c>.erd</c> files not present in that snapshot,
+    /// then extracting the snapshot's text files), and optionally restores the matching
+    /// dictionary snapshot from the exact same round.
     /// </summary>
     public ApplyRollbackResult RestoreSnapshot(
         EraTransOutputLayout layout,
@@ -282,77 +257,79 @@ public sealed class ApplySnapshotService
         int restoredGameFiles = 0;
         int restoredDictionaryFiles = 0;
 
-        if (Directory.Exists(gameCopyRoot))
-        {
-            IReadOnlyList<ApplySnapshotInfo> allSnapshots = ListSnapshots(layout);
-            var renamedToRemove = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-            foreach (ApplySnapshotInfo candidate in allSnapshots)
-            {
-                bool isTargetOrNewer =
-                    candidate.Manifest.CreatedAt > snapshot.Manifest.CreatedAt ||
-                    (candidate.Manifest.CreatedAt == snapshot.Manifest.CreatedAt &&
-                     string.CompareOrdinal(candidate.Manifest.Id, snapshot.Manifest.Id) >= 0) ||
-                    string.Equals(candidate.Manifest.Id, snapshot.Manifest.Id, StringComparison.Ordinal);
-
-                if (!isTargetOrNewer)
-                {
-                    continue;
-                }
-
-                foreach (ApplySnapshotRenamedFile renamed in candidate.Manifest.RenamedFiles)
-                {
-                    if (!string.IsNullOrWhiteSpace(renamed.NewRelativePath))
-                    {
-                        renamedToRemove.Add(renamed.NewRelativePath);
-                    }
-                }
-            }
-
-            foreach (string relativePath in renamedToRemove)
-            {
-                if (IsProtectedRelativePath(relativePath))
-                {
-                    continue;
-                }
-
-                string fullPath = ResolveSafePath(gameCopyRoot, relativePath);
-                if (File.Exists(fullPath))
-                {
-                    ClearReadOnlyAttribute(fullPath);
-                    File.Delete(fullPath);
-                    removedRenamedFiles++;
-                }
-            }
-        }
-
-        string copyZipPath = Path.Combine(snapshot.DirectoryPath, CopyBeforeArchiveName);
-        if (File.Exists(copyZipPath))
+        string? copyZipPath = ResolveCopyArchivePath(snapshot.DirectoryPath);
+        if (copyZipPath is not null)
         {
             Directory.CreateDirectory(gameCopyRoot);
-            using ZipArchive archive = ZipFile.OpenRead(copyZipPath);
-            foreach (ZipArchiveEntry entry in archive.Entries)
+
+            var snapshotErdRelatives = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            using (ZipArchive archive = ZipFile.OpenRead(copyZipPath))
             {
-                if (string.IsNullOrEmpty(entry.Name))
+                foreach (ZipArchiveEntry entry in archive.Entries)
                 {
-                    continue;
+                    if (string.IsNullOrEmpty(entry.Name))
+                    {
+                        continue;
+                    }
+
+                    string normalized = NormalizeRelativePath(entry.FullName);
+                    if (IsProtectedRelativePath(normalized))
+                    {
+                        continue;
+                    }
+
+                    if (normalized.EndsWith(".erd", StringComparison.OrdinalIgnoreCase))
+                    {
+                        snapshotErdRelatives.Add(normalized);
+                    }
                 }
 
-                string normalized = NormalizeRelativePath(entry.FullName);
-                if (IsProtectedRelativePath(normalized))
+                // Remove any extra .erd files in GameCopyDirectory not present in this snapshot.
+                foreach (string existingFile in Directory.EnumerateFiles(gameCopyRoot, "*", SearchOption.AllDirectories))
                 {
-                    continue;
+                    string relative = NormalizeRelativePath(Path.GetRelativePath(gameCopyRoot, existingFile));
+                    if (IsProtectedRelativePath(relative))
+                    {
+                        continue;
+                    }
+
+                    if (!relative.EndsWith(".erd", StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    if (!snapshotErdRelatives.Contains(relative))
+                    {
+                        ClearReadOnlyAttribute(existingFile);
+                        File.Delete(existingFile);
+                        removedRenamedFiles++;
+                    }
                 }
 
-                string destinationPath = ResolveSafePath(gameCopyRoot, normalized);
-                Directory.CreateDirectory(Path.GetDirectoryName(destinationPath)!);
-                if (File.Exists(destinationPath))
+                // Extract all snapshot text files back into GameCopyDirectory.
+                foreach (ZipArchiveEntry entry in archive.Entries)
                 {
-                    ClearReadOnlyAttribute(destinationPath);
-                }
+                    if (string.IsNullOrEmpty(entry.Name))
+                    {
+                        continue;
+                    }
 
-                entry.ExtractToFile(destinationPath, overwrite: true);
-                restoredGameFiles++;
+                    string normalized = NormalizeRelativePath(entry.FullName);
+                    if (IsProtectedRelativePath(normalized))
+                    {
+                        continue;
+                    }
+
+                    string destinationPath = ResolveSafePath(gameCopyRoot, normalized);
+                    Directory.CreateDirectory(Path.GetDirectoryName(destinationPath)!);
+                    if (File.Exists(destinationPath))
+                    {
+                        ClearReadOnlyAttribute(destinationPath);
+                    }
+
+                    entry.ExtractToFile(destinationPath, overwrite: true);
+                    restoredGameFiles++;
+                }
             }
         }
 
@@ -536,6 +513,18 @@ public sealed class ApplySnapshotService
 
         string fileName = segments[^1];
         return fileName.Equals("emuera.config", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string? ResolveCopyArchivePath(string snapshotDir)
+    {
+        string primary = Path.Combine(snapshotDir, CopySnapshotArchiveName);
+        if (File.Exists(primary))
+        {
+            return primary;
+        }
+
+        string legacy = Path.Combine(snapshotDir, LegacyCopyArchiveName);
+        return File.Exists(legacy) ? legacy : null;
     }
 
     private static int PackGameCopyTextFiles(

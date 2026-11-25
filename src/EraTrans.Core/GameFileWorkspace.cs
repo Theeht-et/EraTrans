@@ -24,7 +24,8 @@ public static class GameFileWorkspace
         string outputDirectory,
         EraParserOptions options,
         bool ignoreEncodingIssueFiles = true,
-        ICollection<GameFileEncodingIssue>? skippedEncodingIssues = null)
+        ICollection<GameFileEncodingIssue>? skippedEncodingIssues = null,
+        bool allowUpdateExisting = false)
     {
         ArgumentNullException.ThrowIfNull(options);
         return CopyDirectoryForModification(
@@ -33,7 +34,8 @@ public static class GameFileWorkspace
             options.FileEncoding,
             options.TargetFileExtensions,
             ignoreEncodingIssueFiles,
-            skippedEncodingIssues);
+            skippedEncodingIssues,
+            allowUpdateExisting);
     }
 
     public static IReadOnlyList<string> CopyDirectoryForModification(
@@ -42,7 +44,8 @@ public static class GameFileWorkspace
         Encoding? fallbackEncoding,
         IReadOnlyList<string>? targetFileExtensions,
         bool ignoreEncodingIssueFiles = true,
-        ICollection<GameFileEncodingIssue>? skippedEncodingIssues = null)
+        ICollection<GameFileEncodingIssue>? skippedEncodingIssues = null,
+        bool allowUpdateExisting = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(gameDirectory);
         ArgumentException.ThrowIfNullOrWhiteSpace(outputDirectory);
@@ -64,10 +67,27 @@ public static class GameFileWorkspace
             outputRoot,
             "The complete game-copy directory must not overlap the original game directory.");
 
-        if (Directory.Exists(outputRoot) || File.Exists(outputRoot))
+        bool updatingExisting = false;
+        if (File.Exists(outputRoot))
         {
             throw new InvalidOperationException(
-                $"输出目录中的游戏副本已存在，为避免覆盖已有文件或用户修改，已停止操作：{outputRoot}。请先备份并移走或删除该游戏副本，再重新生成。");
+                $"输出路径已存在同名文件，无法创建游戏副本：{outputRoot}");
+        }
+
+        if (Directory.Exists(outputRoot))
+        {
+            if (!allowUpdateExisting)
+            {
+                throw new InvalidOperationException(
+                    $"输出目录中的游戏副本已存在，为避免覆盖已有文件或用户修改，已停止操作：{outputRoot}。请先备份并移走或删除该游戏副本，再重新生成。");
+            }
+
+            if ((File.GetAttributes(outputRoot) & FileAttributes.ReparsePoint) != 0)
+            {
+                throw new IOException($"游戏副本目录本身是符号链接或其他 Reparse Point，不能安全地执行原地更新：{outputRoot}");
+            }
+
+            updatingExisting = true;
         }
 
         string parentDirectory = Path.GetDirectoryName(outputRoot)
@@ -97,6 +117,27 @@ public static class GameFileWorkspace
                     skippedEncodingIssues?.Add(issue);
                 }
             }
+        }
+
+        if (updatingExisting)
+        {
+            var updatedRelativeFiles = new List<string>();
+            RemoveStaleRenamedErdFiles(gameRoot, outputRoot);
+            UpdateExistingDirectoryContents(
+                gameRoot,
+                outputRoot,
+                gameRoot,
+                outputRoot,
+                updatedRelativeFiles,
+                fallbackEncoding,
+                textExtensions,
+                ignoredTextPaths);
+
+            return updatedRelativeFiles
+                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(path => path, StringComparer.Ordinal)
+                .Select(path => Path.Combine(outputRoot, path))
+                .ToArray();
         }
 
         Directory.CreateDirectory(parentDirectory);
@@ -258,6 +299,152 @@ public static class GameFileWorkspace
                     destinationPath,
                     File.GetLastWriteTimeUtc(sourcePath));
                 copiedFiles.Add(Path.GetRelativePath(workspaceRoot, destinationPath));
+            }
+        }
+    }
+
+    private static void RemoveStaleRenamedErdFiles(string gameRoot, string outputRoot)
+    {
+        foreach (string copyFile in Directory.EnumerateFiles(outputRoot, "*", SearchOption.AllDirectories))
+        {
+            string relative = Path.GetRelativePath(outputRoot, copyFile).Replace('\\', '/');
+            if (ApplySnapshotService.IsProtectedRelativePath(relative))
+            {
+                continue;
+            }
+
+            if (!Path.GetExtension(copyFile).Equals(".erd", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            string originalCandidate = Path.GetFullPath(Path.Combine(gameRoot, Path.GetRelativePath(outputRoot, copyFile)));
+            if (!File.Exists(originalCandidate))
+            {
+                FileAttributes attrs = File.GetAttributes(copyFile);
+                if ((attrs & FileAttributes.ReadOnly) != 0)
+                {
+                    File.SetAttributes(copyFile, attrs & ~FileAttributes.ReadOnly);
+                }
+                File.Delete(copyFile);
+            }
+        }
+    }
+
+    private static void UpdateExistingDirectoryContents(
+        string sourceDirectory,
+        string destinationDirectory,
+        string sourceRoot,
+        string workspaceRoot,
+        List<string> syncedFiles,
+        Encoding? fallbackEncoding,
+        IReadOnlySet<string> textExtensions,
+        IReadOnlySet<string> ignoredTextPaths)
+    {
+        var enumerationOptions = new EnumerationOptions
+        {
+            AttributesToSkip = 0,
+            IgnoreInaccessible = false,
+            RecurseSubdirectories = false
+        };
+
+        foreach (string sourcePath in Directory.EnumerateFileSystemEntries(sourceDirectory, "*", enumerationOptions))
+        {
+            FileAttributes attributes = File.GetAttributes(sourcePath);
+            if ((attributes & FileAttributes.ReparsePoint) != 0)
+            {
+                throw new IOException(
+                    $"游戏目录包含符号链接或其他 Reparse Point，出于安全考虑不能继续更新：{sourcePath}");
+            }
+
+            string name = Path.GetFileName(sourcePath);
+            string relativeUnix = Path.GetRelativePath(sourceRoot, sourcePath).Replace('\\', '/');
+            if (ApplySnapshotService.IsProtectedRelativePath(relativeUnix))
+            {
+                continue;
+            }
+
+            string destinationPath = Path.Combine(destinationDirectory, name);
+            if ((attributes & FileAttributes.Directory) != 0)
+            {
+                Directory.CreateDirectory(destinationPath);
+                UpdateExistingDirectoryContents(
+                    sourcePath,
+                    destinationPath,
+                    sourceRoot,
+                    workspaceRoot,
+                    syncedFiles,
+                    fallbackEncoding,
+                    textExtensions,
+                    ignoredTextPaths);
+            }
+            else
+            {
+                bool isText = IsGameTextFile(sourcePath, textExtensions);
+                if (isText)
+                {
+                    if (File.Exists(destinationPath))
+                    {
+                        FileAttributes dstAttrs = File.GetAttributes(destinationPath);
+                        if ((dstAttrs & FileAttributes.ReadOnly) != 0)
+                        {
+                            File.SetAttributes(destinationPath, dstAttrs & ~FileAttributes.ReadOnly);
+                        }
+                    }
+
+                    if (fallbackEncoding is not null && !ignoredTextPaths.Contains(Path.GetFullPath(sourcePath)))
+                    {
+                        string text = GameFileText.Read(sourcePath, fallbackEncoding).Text;
+                        if (Path.GetExtension(sourcePath).Equals(".xml", StringComparison.OrdinalIgnoreCase))
+                            text = NormalizeXmlEncodingDeclaration(text);
+                        try
+                        {
+                            File.WriteAllText(destinationPath, text, Utf8WithBomAndStrictEncoder);
+                        }
+                        catch (EncoderFallbackException)
+                        {
+                            File.Copy(sourcePath, destinationPath, overwrite: true);
+                        }
+                    }
+                    else
+                    {
+                        File.Copy(sourcePath, destinationPath, overwrite: true);
+                    }
+
+                    FileAttributes writableAttributes = attributes & ~FileAttributes.ReadOnly;
+                    File.SetAttributes(destinationPath, writableAttributes);
+                    File.SetLastWriteTimeUtc(destinationPath, File.GetLastWriteTimeUtc(sourcePath));
+                }
+                else
+                {
+                    bool shouldCopy = !File.Exists(destinationPath);
+                    if (!shouldCopy)
+                    {
+                        var srcInfo = new FileInfo(sourcePath);
+                        var dstInfo = new FileInfo(destinationPath);
+                        shouldCopy = srcInfo.Length != dstInfo.Length ||
+                                     srcInfo.LastWriteTimeUtc != dstInfo.LastWriteTimeUtc;
+                    }
+
+                    if (shouldCopy)
+                    {
+                        if (File.Exists(destinationPath))
+                        {
+                            FileAttributes dstAttrs = File.GetAttributes(destinationPath);
+                            if ((dstAttrs & FileAttributes.ReadOnly) != 0)
+                            {
+                                File.SetAttributes(destinationPath, dstAttrs & ~FileAttributes.ReadOnly);
+                            }
+                        }
+
+                        File.Copy(sourcePath, destinationPath, overwrite: true);
+                        FileAttributes writableAttributes = attributes & ~FileAttributes.ReadOnly;
+                        File.SetAttributes(destinationPath, writableAttributes);
+                        File.SetLastWriteTimeUtc(destinationPath, File.GetLastWriteTimeUtc(sourcePath));
+                    }
+                }
+
+                syncedFiles.Add(Path.GetRelativePath(workspaceRoot, destinationPath));
             }
         }
     }

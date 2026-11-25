@@ -172,11 +172,6 @@ public partial class DictionaryEditorControl : UserControl
             return false;
         }
 
-        if (!CommitActiveGridEdits())
-        {
-            return false;
-        }
-
         if (_document?.IsDirty != true)
         {
             return true;
@@ -228,11 +223,6 @@ public partial class DictionaryEditorControl : UserControl
             return false;
         }
 
-        if (!CommitActiveGridEdits())
-        {
-            return false;
-        }
-
         if (_document?.IsDirty != true)
         {
             return true;
@@ -259,10 +249,6 @@ public partial class DictionaryEditorControl : UserControl
                _currentFile is null ||
                LoadDictionary(_currentFile);
     }
-
-    private bool CommitActiveGridEdits() =>
-        EntriesDataGrid.CommitEdit(DataGridEditingUnit.Cell, true) &&
-        EntriesDataGrid.CommitEdit(DataGridEditingUnit.Row, true);
 
     private void SetEmptyState(string title, string description, bool showProgress = false)
     {
@@ -1051,7 +1037,7 @@ public partial class DictionaryEditorControl : UserControl
                 EntryGroupLabelTextBlock.Text = "同组条目";
             }
             StatusTextBlock.Text = string.IsNullOrWhiteSpace(_groupingFallbackReason)
-                ? "已加载 · 右键词条或按 Ctrl+E 可打开大窗口编辑"
+                ? "已加载 · 双击词条、右键或按 Ctrl+E 可打开编辑窗口"
                 : $"字典已加载；分组文件不可用：{_groupingFallbackReason}";
             UpdateDocumentStatus();
             UpdateCurrentFileProgressFromDocument();
@@ -1357,18 +1343,42 @@ public partial class DictionaryEditorControl : UserControl
         UpdateContextPreview();
     }
 
-    private void EntriesDataGrid_CurrentCellChanged(object? sender, EventArgs e)
+    private void EntriesDataGrid_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
-        UpdateContextPreview();
+        if (FindVisualParent<DataGridRow>(e.OriginalSource as DependencyObject) is { Item: DictionaryEditorEntry entry })
+        {
+            OpenTranslationEditDialog(entry);
+        }
+    }
+
+    private static T? FindVisualParent<T>(DependencyObject? child) where T : DependencyObject
+    {
+        while (child is not null)
+        {
+            if (child is T match)
+            {
+                return match;
+            }
+
+            child = child is Visual
+                ? VisualTreeHelper.GetParent(child)
+                : LogicalTreeHelper.GetParent(child);
+        }
+
+        return null;
     }
 
     private DictionaryEditorEntry? GetActiveEntry() =>
-        EntriesDataGrid.CurrentCell.Item as DictionaryEditorEntry ??
         EntriesDataGrid.SelectedItem as DictionaryEditorEntry ??
-        EntriesDataGrid.SelectedCells
-            .Select(cell => cell.Item)
+        EntriesDataGrid.SelectedItems
             .OfType<DictionaryEditorEntry>()
             .FirstOrDefault();
+
+    private DictionaryEditorEntry[] GetSelectedEntries() =>
+        EntriesDataGrid.SelectedItems
+            .OfType<DictionaryEditorEntry>()
+            .Distinct()
+            .ToArray();
 
     private void EditSelectedTranslationMenuItem_Click(object sender, RoutedEventArgs e)
     {
@@ -1379,15 +1389,55 @@ public partial class DictionaryEditorControl : UserControl
         }
     }
 
-    private void OpenTranslationEditDialog(DictionaryEditorEntry entry)
+    private void SetSelectedStageMenuItem_Click(object sender, RoutedEventArgs e)
     {
-        if (_isTranslating || !entry.IsEditable)
+        if (_isTranslating ||
+            _document is null ||
+            sender is not MenuItem { Tag: string rawTag } ||
+            !int.TryParse(rawTag, NumberStyles.Integer, CultureInfo.InvariantCulture, out int targetStage))
         {
             return;
         }
 
-        if (!EntriesDataGrid.CommitEdit(DataGridEditingUnit.Cell, true) ||
-            !EntriesDataGrid.CommitEdit(DataGridEditingUnit.Row, true))
+        DictionaryEditorEntry[] editableEntries = GetSelectedEntries()
+            .Where(entry => entry.IsEditable)
+            .ToArray();
+        if (editableEntries.Length == 0)
+        {
+            StatusTextBlock.Text = "选中项中没有可修改状态的词条。";
+            return;
+        }
+
+        int changedCount = 0;
+        foreach (DictionaryEditorEntry entry in editableEntries)
+        {
+            if (entry.Stage != targetStage)
+            {
+                entry.Stage = targetStage;
+                changedCount++;
+            }
+        }
+
+        if (changedCount == 0)
+        {
+            return;
+        }
+
+        UpdateDocumentStatus();
+        UpdateCurrentFileProgressFromDocument();
+        string stageLabel = targetStage switch
+        {
+            -1 => "忽略",
+            0 => "未翻译",
+            1 => "已翻译",
+            _ => targetStage.ToString(CultureInfo.InvariantCulture)
+        };
+        StatusTextBlock.Text = $"已将 {changedCount} 条词条状态设为「{stageLabel}」；保存当前字典后才会写入文件。";
+    }
+
+    private void OpenTranslationEditDialog(DictionaryEditorEntry entry)
+    {
+        if (_isTranslating || !entry.IsEditable)
         {
             return;
         }
@@ -1396,6 +1446,8 @@ public partial class DictionaryEditorControl : UserControl
             entry.Key,
             entry.Original,
             entry.Translation,
+            entry.Stage,
+            entry.StageOptions,
             entry.IsScriptEntry)
         {
             Owner = OwnerWindow
@@ -1406,9 +1458,18 @@ public partial class DictionaryEditorControl : UserControl
             return;
         }
 
+        bool changed = !string.Equals(entry.Translation, dialog.EditedTranslation, StringComparison.Ordinal) ||
+                       entry.Stage != dialog.EditedStage;
+        if (!changed)
+        {
+            return;
+        }
+
         entry.Translation = dialog.EditedTranslation;
-        StatusTextBlock.Text = "译文已更新到编辑器；保存当前字典后才会写入文件。";
+        entry.Stage = dialog.EditedStage;
+        StatusTextBlock.Text = "译文与状态已更新到编辑器；保存当前字典后才会写入文件。";
         UpdateDocumentStatus();
+        UpdateCurrentFileProgressFromDocument();
     }
 
     /// <summary>Loads (once per dictionary) the optional span sidecar that records source lines.</summary>
@@ -1459,9 +1520,7 @@ public partial class DictionaryEditorControl : UserControl
             return;
         }
 
-        // CurrentCell tracks the entry the user is actively viewing. SelectedCells can
-        // contain cells from a previous multi-selection, so preferring its first item
-        // can leave the preview showing stale or empty context after navigation.
+        // In FullRow mode, SelectedItem tracks the active row the user is viewing.
         DictionaryEditorEntry? entry = GetActiveEntry();
 
         bool wholeScreen = ScreenPreviewCheckBox.Visibility == Visibility.Visible &&
@@ -1550,12 +1609,6 @@ public partial class DictionaryEditorControl : UserControl
 
         try
         {
-            if (!CommitActiveGridEdits())
-            {
-                StatusTextBlock.Text = "当前单元格内容尚未通过提交，未保存字典。请修正后重试。";
-                return false;
-            }
-
             _document.Save();
             StatusTextBlock.Text = "保存成功。原始字段和其他 JSON 字段均已保留。";
             UpdateDocumentStatus();
@@ -1588,16 +1641,7 @@ public partial class DictionaryEditorControl : UserControl
 
     private void TranslateSelectedButton_Click(object sender, RoutedEventArgs e)
     {
-        if (!CommitActiveGridEdits())
-        {
-            return;
-        }
-
-        DictionaryEditorEntry[] selected = EntriesDataGrid.SelectedCells
-            .Select(cell => cell.Item)
-            .OfType<DictionaryEditorEntry>()
-            .Concat(EntriesDataGrid.SelectedItems.OfType<DictionaryEditorEntry>())
-            .Distinct()
+        DictionaryEditorEntry[] selected = GetSelectedEntries()
             .Where(IsPendingTranslation)
             .ToArray();
 
@@ -1618,11 +1662,6 @@ public partial class DictionaryEditorControl : UserControl
     {
         if (_document is null)
             return;
-
-        if (!CommitActiveGridEdits())
-        {
-            return;
-        }
 
         DictionaryEditorEntry[] pending = _document.Entries
             .Where(IsPendingTranslation)

@@ -14,6 +14,8 @@ public partial class TranslationEditWindow : Window
         string key,
         string original,
         string translation,
+        int stage,
+        IReadOnlyList<DictionaryStageOption> stageOptions,
         bool isScriptTarget = false)
     {
         InitializeComponent();
@@ -23,6 +25,9 @@ public partial class TranslationEditWindow : Window
         KeyTextBlock.Text = key;
         OriginalTextBox.Text = _original;
         TranslationTextBox.Text = translation ?? string.Empty;
+        EditedStage = stage;
+        StageComboBox.ItemsSource = stageOptions;
+        StageComboBox.SelectedValue = stage;
         UpdateValidationBanner();
 
         Loaded += (_, _) =>
@@ -33,8 +38,14 @@ public partial class TranslationEditWindow : Window
     }
 
     public string EditedTranslation { get; private set; } = string.Empty;
+    public int EditedStage { get; private set; }
 
     private void TranslationTextBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        UpdateValidationBanner();
+    }
+
+    private void StageComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         UpdateValidationBanner();
     }
@@ -48,7 +59,12 @@ public partial class TranslationEditWindow : Window
             return;
         }
 
-        string warning = TranslationPreValidator.Validate(_original, TranslationTextBox.Text, _isScriptTarget);
+        int currentStage = StageComboBox?.SelectedValue is int selectedStage
+            ? selectedStage
+            : EditedStage;
+        string warning = currentStage < 0
+            ? string.Empty
+            : TranslationPreValidator.Validate(_original, TranslationTextBox.Text, _isScriptTarget);
         if (warning.Length == 0)
         {
             ValidationWarningBorder.Visibility = Visibility.Collapsed;
@@ -64,6 +80,11 @@ public partial class TranslationEditWindow : Window
     private void Confirm_Click(object sender, RoutedEventArgs e)
     {
         EditedTranslation = TranslationTextBox.Text;
+        if (StageComboBox.SelectedValue is int selectedStage)
+        {
+            EditedStage = selectedStage;
+        }
+
         DialogResult = true;
     }
 

@@ -76,7 +76,22 @@
                        FontSize="13"
                        FontWeight="SemiBold"
                        Foreground="#39414A" />
-
+            <StackPanel Grid.Column="1"
+                        Orientation="Horizontal"
+                        VerticalAlignment="Center">
+                <TextBlock Text="翻译状态"
+                           VerticalAlignment="Center"
+                           Margin="0,0,8,0"
+                           FontSize="12"
+                           Foreground="#59636F" />
+                <ComboBox x:Name="StageComboBox"
+                          Width="136"
+                          Height="30"
+                          VerticalContentAlignment="Center"
+                          DisplayMemberPath="Label"
+                          SelectedValuePath="Value"
+                          SelectionChanged="StageComboBox_SelectionChanged" />
+            </StackPanel>
         </Grid>
 
         <TextBox x:Name="TranslationTextBox"

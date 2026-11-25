@@ -354,21 +354,71 @@
                                   HeadersVisibility="Column"
                                   GridLinesVisibility="Horizontal"
                                   RowHeaderWidth="0"
-                                  SelectionUnit="CellOrRowHeader"
+                                  SelectionUnit="FullRow"
                                   SelectionMode="Extended"
-                                  IsReadOnly="False"
+                                  IsReadOnly="True"
                                   EnableRowVirtualization="True"
                                   EnableColumnVirtualization="True"
                                   ScrollViewer.HorizontalScrollBarVisibility="Auto"
                                   ScrollViewer.VerticalScrollBarVisibility="Auto"
                                   SelectionChanged="EntriesDataGrid_SelectionChanged"
-                                  CurrentCellChanged="EntriesDataGrid_CurrentCellChanged">
+                                  MouseDoubleClick="EntriesDataGrid_MouseDoubleClick">
                             <DataGrid.ContextMenu>
                                 <ContextMenu>
-                                    <MenuItem Header="打开完整译文编辑窗口 (Ctrl+E)"
+                                    <MenuItem Header="编辑译文 (Ctrl+E)"
                                               Click="EditSelectedTranslationMenuItem_Click" />
+                                    <Separator />
+                                    <MenuItem Header="设为未翻译（0）"
+                                              Tag="0"
+                                              Click="SetSelectedStageMenuItem_Click" />
+                                    <MenuItem Header="设为已翻译（1）"
+                                              Tag="1"
+                                              Click="SetSelectedStageMenuItem_Click" />
+                                    <MenuItem Header="设为忽略（-1）"
+                                              Tag="-1"
+                                              Click="SetSelectedStageMenuItem_Click" />
                                 </ContextMenu>
                             </DataGrid.ContextMenu>
+                            <DataGrid.RowStyle>
+                                <Style TargetType="{x:Type DataGridRow}">
+                                    <Setter Property="Background" Value="White" />
+                                    <Setter Property="Foreground" Value="#20242A" />
+                                    <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                                    <Style.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter Property="Background" Value="#F3F6FA" />
+                                        </Trigger>
+                                        <Trigger Property="IsSelected" Value="True">
+                                            <Setter Property="Background" Value="#DCEBFA" />
+                                            <Setter Property="Foreground" Value="#132F4C" />
+                                        </Trigger>
+                                        <MultiTrigger>
+                                            <MultiTrigger.Conditions>
+                                                <Condition Property="IsSelected" Value="True" />
+                                                <Condition Property="Selector.IsSelectionActive" Value="False" />
+                                            </MultiTrigger.Conditions>
+                                            <Setter Property="Background" Value="#E8ECF0" />
+                                            <Setter Property="Foreground" Value="#20242A" />
+                                        </MultiTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </DataGrid.RowStyle>
+                            <DataGrid.CellStyle>
+                                <Style TargetType="{x:Type DataGridCell}">
+                                    <Setter Property="Background" Value="Transparent" />
+                                    <Setter Property="Foreground" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=DataGridRow}}" />
+                                    <Setter Property="BorderThickness" Value="0" />
+                                    <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                                    <Style.Triggers>
+                                        <Trigger Property="IsSelected" Value="True">
+                                            <Setter Property="Background" Value="Transparent" />
+                                            <Setter Property="BorderBrush" Value="Transparent" />
+                                            <Setter Property="BorderThickness" Value="0" />
+                                            <Setter Property="Foreground" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=DataGridRow}}" />
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </DataGrid.CellStyle>
                             <DataGrid.ColumnHeaderStyle>
                                 <Style TargetType="{x:Type DataGridColumnHeader}">
                                     <Setter Property="HorizontalContentAlignment" Value="Center" />
@@ -412,7 +462,7 @@
                                                     Binding="{Binding Original}"
                                                     IsReadOnly="True"
                                                     Width="2*" />
-                                <DataGridTemplateColumn Header="译文" Width="2.4*">
+                                <DataGridTemplateColumn Header="译文" Width="2.4*" IsReadOnly="True">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
                                             <Grid>
@@ -435,19 +485,8 @@
                                             </Grid>
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
-                                    <DataGridTemplateColumn.CellEditingTemplate>
-                                        <DataTemplate>
-                                            <TextBox Text="{Binding Translation, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                     IsEnabled="{Binding IsEditable}"
-                                                     Padding="5,4"
-                                                     MinHeight="32"
-                                                     TextWrapping="Wrap"
-                                                     AcceptsReturn="True"
-                                                     VerticalScrollBarVisibility="Auto" />
-                                        </DataTemplate>
-                                    </DataGridTemplateColumn.CellEditingTemplate>
                                 </DataGridTemplateColumn>
-                                <DataGridTemplateColumn Header="翻译状态" Width="76">
+                                <DataGridTemplateColumn Header="翻译状态" Width="76" IsReadOnly="True">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
                                             <TextBlock Text="{Binding StageDescription}"
@@ -456,17 +495,6 @@
                                                        VerticalAlignment="Center" />
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
-                                    <DataGridTemplateColumn.CellEditingTemplate>
-                                        <DataTemplate>
-                                            <ComboBox ItemsSource="{Binding StageOptions}"
-                                                      DisplayMemberPath="Label"
-                                                      SelectedValuePath="Value"
-                                                      SelectedValue="{Binding Stage, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                      IsEnabled="{Binding IsEditable}"
-                                                      HorizontalAlignment="Stretch"
-                                                      Padding="2,2" />
-                                        </DataTemplate>
-                                    </DataGridTemplateColumn.CellEditingTemplate>
                                 </DataGridTemplateColumn>
                             </DataGrid.Columns>
                         </DataGrid>
@@ -592,7 +620,7 @@
                                    VerticalAlignment="Center"
                                    TextTrimming="CharacterEllipsis"
                                    ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"
-                                   Text="就绪 · 右键词条或按 Ctrl+E 可打开大窗口编辑" />
+                                   Text="就绪 · 双击词条、右键或按 Ctrl+E 可打开编辑窗口" />
                     </DockPanel>
                 </Grid>
             </Border>

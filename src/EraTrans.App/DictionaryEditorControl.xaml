@@ -357,21 +357,21 @@
                                 <Button.ContextMenu>
                                     <ContextMenu x:Name="ToolsContextMenu">
                                         <MenuItem x:Name="VariableGlossaryMenuItem"
-                                                  Header="变量与术语中心"
+                                                  Header="变量术语"
                                                   IsEnabled="False"
                                                   Click="VariableGlossaryButton_Click" />
                                         <Separator />
                                         <MenuItem x:Name="ProgressStatsMenuItem"
-                                                  Header="翻译进度统计"
+                                                  Header="翻译进度"
                                                   IsEnabled="False"
                                                   Click="ProgressStatsButton_Click" />
                                         <MenuItem x:Name="CoverageReportMenuItem"
-                                                  Header="提取覆盖率自检"
+                                                  Header="覆盖率报告"
                                                   Visibility="Collapsed"
                                                   Click="CoverageReportButton_Click" />
                                         <Separator />
                                         <MenuItem x:Name="AiLogsMenuItem"
-                                                  Header="AI 翻译记录"
+                                                  Header="AI 记录"
                                                   Click="AiLogsButton_Click" />
                                     </ContextMenu>
                                 </Button.ContextMenu>

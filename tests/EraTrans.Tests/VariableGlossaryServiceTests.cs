@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using EraTrans.Core;
+using EraTrans.Core.VisibleText;
 using Xunit;
 
 namespace EraTrans.Tests;
@@ -67,7 +68,7 @@ public sealed class VariableGlossaryServiceTests : IDisposable
             """,
             Encoding.UTF8);
 
-        EraTransOutputLayout layout = EraTransOutputLayout.Create(outputRoot, gameDir, EraExtractionMode.V2);
+        EraTransOutputLayout layout = EraTransOutputLayout.Create(outputRoot, gameDir, ExtractionMode.Lexer);
         var service = new VariableGlossaryService();
 
         VariableGlossaryDocument first = service.SyncFromGameDirectory(layout);

@@ -230,7 +230,7 @@ public partial class DictionaryEditorControl
                 cancellation.Token.ThrowIfCancellationRequested();
 
                 WindowTranslationOutcome outcome = await _translationService.TranslateWindowAsync(
-                    profile, window, reasoning: null, cancellation.Token);
+                    profile, window, reasoning: null, _activeGlossary, cancellation.Token);
                 applied += ApplyWindowResults(outcome, entriesByIndex, ref skipped);
 
                 if (outcome.MissingIds.Count > 0)
@@ -239,7 +239,7 @@ public partial class DictionaryEditorControl
                     // answer never wastes the whole request.
                     TranslationWindow retry = RetryWindowForIds(window, outcome.MissingIds);
                     WindowTranslationOutcome retryOutcome = await _translationService.TranslateWindowAsync(
-                        profile, retry, reasoning: null, cancellation.Token);
+                        profile, retry, reasoning: null, _activeGlossary, cancellation.Token);
                     applied += ApplyWindowResults(retryOutcome, entriesByIndex, ref skipped);
                 }
 

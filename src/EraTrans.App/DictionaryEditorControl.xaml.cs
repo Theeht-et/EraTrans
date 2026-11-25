@@ -29,6 +29,9 @@ public partial class DictionaryEditorControl : UserControl
 
     private string _dictionaryDirectory = string.Empty;
     private string _gameDirectory = string.Empty;
+    private EraTransOutputLayout? _activeLayout;
+    private readonly VariableGlossaryService _glossaryService = new();
+    private IReadOnlyList<VariableGlossaryEntry> _activeGlossary = Array.Empty<VariableGlossaryEntry>();
     private EraTransUserSettings _settings;
     public event Action<string?>? CurrentFileChanged;
     public event Action<bool>? SaveAvailabilityChanged;
@@ -144,6 +147,8 @@ public partial class DictionaryEditorControl : UserControl
                 return false;
             }
 
+            _activeLayout = layout;
+            ReloadActiveGlossary();
             RefreshDictionaryFiles(preferredRelativePath ?? _currentFile?.RelativePath);
             return true;
         }
@@ -153,9 +158,11 @@ public partial class DictionaryEditorControl : UserControl
             return false;
         }
 
+        _activeLayout = layout;
         _dictionaryDirectory = dictionaryDirectory;
         _gameDirectory = gameDirectory;
         DictionaryDirectoryTextBlock.Text = _dictionaryDirectory;
+        ReloadActiveGlossary();
         RefreshDictionaryFiles(preferredRelativePath);
         return true;
     }
@@ -351,7 +358,9 @@ public partial class DictionaryEditorControl : UserControl
                 return;
             }
 
-            IReadOnlyList<DictionaryEditorFile> files = _service.ListDictionaryFiles(_dictionaryDirectory);
+            IReadOnlyList<DictionaryEditorFile> files = _service.ListDictionaryFiles(_dictionaryDirectory)
+                .Where(file => !VariableGlossaryService.IsManagedVariableCsvDictionary(file.RelativePath))
+                .ToArray();
             _allDictionaryFiles = files;
             BuildDictionaryTree(files, expandAll: false);
             if (files.Count == 0)
@@ -651,6 +660,49 @@ public partial class DictionaryEditorControl : UserControl
         }
 
         return $"{folder.FullRelativePath}\n已完成 {progress.CompletedFiles} / {progress.TotalFiles} 文件 · 词条 {progress.TranslatedCount} / {progress.ActiveCount}（{progress.CompletionPercent:0.0}%）";
+    }
+
+    private void ReloadActiveGlossary()
+    {
+        if (_activeLayout is null)
+        {
+            _activeGlossary = Array.Empty<VariableGlossaryEntry>();
+            return;
+        }
+
+        try
+        {
+            _activeGlossary = _glossaryService.Load(_activeLayout).Entries;
+        }
+        catch
+        {
+            _activeGlossary = Array.Empty<VariableGlossaryEntry>();
+        }
+    }
+
+    private void VariableGlossaryButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_isTranslating || _activeLayout is null)
+        {
+            return;
+        }
+
+        var window = new VariableGlossaryWindow(
+            _activeLayout,
+            _glossaryService,
+            _translationService,
+            _providerStore,
+            _settings)
+        {
+            Owner = OwnerWindow
+        };
+        window.ShowDialog();
+        ReloadActiveGlossary();
+
+        int translatedCount = _activeGlossary.Count(entry => !string.IsNullOrWhiteSpace(entry.Translation));
+        StatusTextBlock.Text = _activeGlossary.Count == 0
+            ? "变量与术语中心：暂无含假名可见变量。"
+            : $"变量与术语中心已更新：共 {_activeGlossary.Count:N0} 条，已定稿 {translatedCount:N0} 条（AI 翻译时自动按需生效）。";
     }
 
     private void ProgressStatsButton_Click(object sender, RoutedEventArgs e)
@@ -1594,7 +1646,7 @@ public partial class DictionaryEditorControl : UserControl
 
         string groupPreview = entry is null ? string.Empty : BuildGroupPreview(entry.Key, wholeScreen);
         EntryGroupTextBox.Text = string.IsNullOrWhiteSpace(groupPreview)
-            ? "当前词条没有可用的 ERB 语义分组信息。"
+            ? "当前词条无分组信息"
             : groupPreview;
 
         EntryContextTextBox.Text = entry is null
@@ -1634,6 +1686,7 @@ public partial class DictionaryEditorControl : UserControl
     private void UpdateTranslationButtons()
     {
         bool hasDocument = _document is not null;
+        VariableGlossaryMenuItem.IsEnabled = !_isTranslating && _activeLayout is not null;
         ProgressStatsMenuItem.IsEnabled = !_isTranslating && _allDictionaryFiles.Count > 0;
         TranslateSelectedButton.IsEnabled = hasDocument && !_isTranslating;
         TranslatePendingButton.IsEnabled = hasDocument && !_isTranslating;
@@ -1763,6 +1816,7 @@ public partial class DictionaryEditorControl : UserControl
         FileTreeSearchTextBox.IsEnabled = enabled;
         FileTreeStatusFilterComboBox.IsEnabled = enabled;
         EntriesDataGrid.IsEnabled = enabled;
+        VariableGlossaryMenuItem.IsEnabled = enabled && _activeLayout is not null;
         ProgressStatsMenuItem.IsEnabled = enabled && _allDictionaryFiles.Count > 0;
         TranslateSelectedButton.IsEnabled = enabled && _document is not null;
         TranslatePendingButton.IsEnabled = enabled && _document is not null;

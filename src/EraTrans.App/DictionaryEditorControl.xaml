@@ -356,6 +356,11 @@
                                     Click="ToolsMenuButton_Click">
                                 <Button.ContextMenu>
                                     <ContextMenu x:Name="ToolsContextMenu">
+                                        <MenuItem x:Name="VariableGlossaryMenuItem"
+                                                  Header="变量与术语中心"
+                                                  IsEnabled="False"
+                                                  Click="VariableGlossaryButton_Click" />
+                                        <Separator />
                                         <MenuItem x:Name="ProgressStatsMenuItem"
                                                   Header="翻译进度统计"
                                                   IsEnabled="False"

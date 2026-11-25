@@ -60,9 +60,17 @@ public sealed class AiTranslationService
         4. sid 相同的行属于同一屏；整窗只含一屏时还会给出 scene（id/type）。同一屏内的称呼、语气与术语必须一致；type 为 menu 时是同一菜单的并列选项，type 为 dialogue 时是连续对白。
         5. cmd/kind 说明该行的显示方式：button 是按钮文字（简短、以动作开头、不加句号），data 是数据块选项，html 是界面文本；print/form 是正文对白，按句翻译。menu 为 1 的行是同一菜单的选项，句式与长度要互相一致。
         6. 原文中的 [[P0]]、[[P1]] 等标记是程序保护的代码占位符，必须原样保留（不要翻译、删除或修改编号）；保留行内条件（\@ [[P0]] ? A # B \@）、控制码、标点和换行结构；无法翻译时原样返回原文。
+        7. 若请求中包含 glossary 字段（原词到固定译名的映射），翻译正文与界面时必须严格遵循其中指定的译名。
 
         part 大于 1 表示这是同一函数前一段的延续，人称和译法沿用它。
         同一请求内，同一人名、称呼和术语必须使用同一译法。
+        """;
+
+    private const string GlossarySystemPrompt = """
+        你是 ERA 游戏术语本地化助手。请把给定列表中的日文游戏术语（道具、指令、素质、能力等名称）翻译成简洁、自然的简体中文译名。
+
+        1. 只返回一个 JSON 对象，键是编号 id，值是简洁中文译名，例如 {"0":"跳蛋","1":"接吻"}。不要代码块、不要解释。
+        2. 译名保持简短贴合 ERA 游戏常见用语，不加多余标点或解释。
         """;
 
     private static readonly JsonSerializerOptions PromptJsonOptions = new()
@@ -85,10 +93,21 @@ public sealed class AiTranslationService
     /// Translates one window of lines. Lines marked as reference are sent as
     /// context only; the answer is a flat id-to-text object.
     /// </summary>
-    public async Task<WindowTranslationOutcome> TranslateWindowAsync(
+    public Task<WindowTranslationOutcome> TranslateWindowAsync(
         AiProviderProfile profile,
         TranslationWindow window,
         AiReasoningOptions? reasoning = null,
+        CancellationToken cancellationToken = default) =>
+        TranslateWindowAsync(profile, window, reasoning, glossary: null, cancellationToken);
+
+    /// <summary>
+    /// Translates one window of lines with optional on-demand variable glossary injection.
+    /// </summary>
+    public async Task<WindowTranslationOutcome> TranslateWindowAsync(
+        AiProviderProfile profile,
+        TranslationWindow window,
+        AiReasoningOptions? reasoning,
+        IReadOnlyList<VariableGlossaryEntry>? glossary,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(window);
@@ -103,8 +122,14 @@ public sealed class AiTranslationService
         if (window.TargetCount == 0)
             return new WindowTranslationOutcome([], [], []);
 
+        // Match glossary against the unmasked original texts so terms appearing in
+        // either prose or placeholders are captured for the current batch.
+        IReadOnlyDictionary<string, string> matchedGlossary = VariableGlossaryService.MatchForTexts(
+            window.Lines.Select(line => line.Text),
+            glossary);
+
         MaskedTranslationWindow masked = AiPlaceholderMasker.MaskWindow(window);
-        string userPrompt = BuildWindowPayload(masked.MaskedWindow);
+        string userPrompt = BuildWindowPayload(masked.MaskedWindow, matchedGlossary);
         return await CompleteWithReasoningFallbackAsync(
             profile,
             WindowSystemPrompt,
@@ -121,11 +146,93 @@ public sealed class AiTranslationService
     }
 
     /// <summary>
-    /// Legacy semantic-group request, kept only for the real-game integration test
-    /// until the grouping service batching is removed.
+    /// Batch-translates variable glossary entries for the Glossary Center window.
+    /// Returns a map from batch index (0..entries.Count-1) to translated Chinese term.
     /// </summary>
-    
-        /// <summary>
+    public async Task<IReadOnlyDictionary<int, string>> TranslateGlossaryEntriesAsync(
+        AiProviderProfile profile,
+        IReadOnlyList<VariableGlossaryEntry> entries,
+        AiReasoningOptions? reasoning = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(entries);
+        AiProviderProfileValidator.Validate(profile);
+
+        if (entries.Count == 0)
+            return new Dictionary<int, string>();
+
+        var items = new List<Dictionary<string, object>>(entries.Count);
+        for (int index = 0; index < entries.Count; index++)
+        {
+            items.Add(new Dictionary<string, object>(StringComparer.Ordinal)
+            {
+                ["id"] = index,
+                ["table"] = entries[index].Table,
+                ["text"] = entries[index].Original
+            });
+        }
+
+        string userPrompt = JsonSerializer.Serialize(
+            new Dictionary<string, object>(StringComparer.Ordinal) { ["terms"] = items },
+            PromptJsonOptions);
+
+        return await CompleteWithReasoningFallbackAsync(
+            profile,
+            GlossarySystemPrompt,
+            userPrompt,
+            requestKind: "GlossaryTranslation",
+            requestedEntryCount: entries.Count,
+            processResponse: response => ParseGlossaryResponse(response, entries.Count),
+            reasoning,
+            cancellationToken);
+    }
+
+    private static IReadOnlyDictionary<int, string> ParseGlossaryResponse(string response, int count)
+    {
+        string json = ExtractJsonRegion(response);
+        JsonDocument document;
+        try
+        {
+            document = JsonDocument.Parse(json);
+        }
+        catch (JsonException ex)
+        {
+            throw new InvalidDataException("模型返回的术语 JSON 无法解析：" + ex.Message, ex);
+        }
+
+        var parsed = new Dictionary<int, string>();
+        using (document)
+        {
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                throw new InvalidDataException("模型返回的术语结果必须是 JSON 对象。");
+            }
+
+            foreach (JsonProperty property in document.RootElement.EnumerateObject())
+            {
+                if (!int.TryParse(property.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int id) ||
+                    id < 0 || id >= count)
+                {
+                    continue;
+                }
+
+                string? text = ReadTranslationText(property.Value)?.Trim();
+                if (!string.IsNullOrWhiteSpace(text))
+                {
+                    parsed[id] = text;
+                }
+            }
+        }
+
+        if (parsed.Count == 0)
+        {
+            throw new InvalidDataException("模型没有返回任何可用的术语译名。");
+        }
+
+        return parsed;
+    }
+
+    /// <summary>
     /// A rejected reasoning field fails the entire request, while the identical
     /// request without reasoning usually succeeds. Retry once without it instead
     /// of asking the user to understand provider dialects. Each attempt keeps its
@@ -292,7 +399,9 @@ public sealed class AiTranslationService
     /// reading order, and the flags tell it which lines to translate, which belong
     /// to the same sentence, and which are mutually exclusive branches.
     /// </summary>
-    public static string BuildWindowPayload(TranslationWindow window)
+    public static string BuildWindowPayload(
+        TranslationWindow window,
+        IReadOnlyDictionary<string, string>? matchedGlossary = null)
     {
         ArgumentNullException.ThrowIfNull(window);
 
@@ -341,6 +450,8 @@ public sealed class AiTranslationService
                 scene["type"] = window.SceneType;
             payload["scene"] = scene;
         }
+        if (matchedGlossary is { Count: > 0 })
+            payload["glossary"] = matchedGlossary;
         payload["lines"] = lines;
 
         return JsonSerializer.Serialize(payload, PromptJsonOptions);
@@ -452,7 +563,7 @@ public sealed class AiTranslationService
         return trimmed[start..(end + 1)];
     }
 
-            public Task TestConnectionAsync(
+    public Task TestConnectionAsync(
         AiProviderProfile profile,
         CancellationToken cancellationToken = default) =>
         TestConnectionAsync(profile, reasoning: null, cancellationToken);

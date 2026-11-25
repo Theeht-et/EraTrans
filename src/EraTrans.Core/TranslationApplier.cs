@@ -41,7 +41,8 @@ public sealed class TranslationApplier
         string outputDirectory,
         EraParserOptions? options = null,
         SpanCatalog? spanCatalog = null,
-        bool ignoreEncodingIssueFiles = true)
+        bool ignoreEncodingIssueFiles = true,
+        bool allowUpdateExisting = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(gameDirectory);
         ArgumentException.ThrowIfNullOrWhiteSpace(dictionaryDirectory);
@@ -80,7 +81,8 @@ public sealed class TranslationApplier
                 outputRoot,
                 parserOptions,
                 ignoreEncodingIssueFiles,
-                skippedEncodingIssues);
+                skippedEncodingIssues,
+                allowUpdateExisting);
 
         var warnings = new ConcurrentBag<string>();
         var ignoredSourcePaths = new HashSet<string>(

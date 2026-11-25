@@ -1,7 +1,8 @@
 <Window x:Class="EraTrans.App.TranslationProgressWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="工作区翻译进度统计"
+        Title="翻译进度"
+        UseLayoutRounding="True"
         Width="880"
         Height="620"
         MinWidth="680"
@@ -20,7 +21,7 @@
         </Grid.RowDefinitions>
 
         <StackPanel Margin="0,0,0,12">
-            <TextBlock Text="工作区翻译进度统计"
+            <TextBlock Text="翻译进度"
                        FontSize="19"
                        FontWeight="SemiBold"
                        Foreground="#20242A" />

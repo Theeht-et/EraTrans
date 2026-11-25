@@ -2,10 +2,11 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="EraTrans"
-        Width="1560"
-        Height="1000"
-        MinWidth="1200"
-        MinHeight="760"
+        Width="1360"
+        Height="840"
+        MinWidth="1120"
+        MinHeight="680"
+        UseLayoutRounding="True"
         Icon="pack://application:,,,/Assets/game-translator-icon.ico"
         WindowStartupLocation="CenterScreen"
         Background="#F5F6F8"
@@ -55,11 +56,11 @@
                             Click="SettingsMenuButton_Click">
                         <Button.ContextMenu>
                             <ContextMenu x:Name="SettingsContextMenu">
-                                <MenuItem Header="解析与提取设置" Click="Settings_Click" />
-                                <MenuItem Header="AI 服务设置" Click="AiSettingsMenuItem_Click" />
+                                <MenuItem Header="提取与写回" Click="Settings_Click" />
+                                <MenuItem Header="AI 设置" Click="AiSettingsMenuItem_Click" />
                                 <Separator />
-                                <MenuItem x:Name="AnalyzeGameCopyMenuItem" Header="汉化副本引擎体检" Click="AnalyzeGameCopyMenuItem_Click" />
-                                <MenuItem Header="重新加载工作区" Click="ReloadWorkspaceMenuItem_Click" />
+                                <MenuItem x:Name="AnalyzeGameCopyMenuItem" Header="引擎体检" Click="AnalyzeGameCopyMenuItem_Click" />
+                                <MenuItem Header="重载工作区" Click="ReloadWorkspaceMenuItem_Click" />
                             </ContextMenu>
                         </Button.ContextMenu>
                     </Button>

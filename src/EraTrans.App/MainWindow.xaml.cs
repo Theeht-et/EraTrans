@@ -412,8 +412,14 @@ public partial class MainWindow : Window
             return;
         }
 
-        SetBusy(true, "正在生成汉化副本", "正在复制原游戏并写入已保存译文，请稍候…");
-        StatusText.Text = "正在生成汉化副本，请稍候…";
+        bool isIncremental = Directory.Exists(workingCopyDirectory);
+        SetBusy(
+            true,
+            isIncremental ? "正在增量更新汉化副本" : "正在生成汉化副本",
+            isIncremental
+                ? "仅刷新有变动的汉化脚本，存档与未改动文件保持原样，请稍候…"
+                : "正在复制原游戏并写入已保存译文，请稍候…");
+        StatusText.Text = isIncremental ? "正在增量更新汉化副本，请稍候…" : "正在生成汉化副本，请稍候…";
 
         try
         {
@@ -427,7 +433,9 @@ public partial class MainWindow : Window
                     dictionaryDirectory,
                     workingCopyDirectory,
                     options,
-                    ignoreEncodingIssueFiles: false));
+                    ignoreEncodingIssueFiles: false,
+                    updateExistingCopy: true,
+                    auxiliaryDataDirectory: layout.AiContextDirectory));
             }
             catch (InvalidDataException ex) when (GameFileEncodingPreflightException.TryExtract(ex, out GameFileEncodingPreflightException? preflight))
             {
@@ -438,13 +446,15 @@ public partial class MainWindow : Window
                     return;
                 }
 
-                StatusText.Text = $"正在忽略 {preflight.Issues.Count} 个编码异常文件并继续生成副本…";
+                StatusText.Text = $"正在忽略 {preflight.Issues.Count} 个编码异常文件并继续处理副本…";
                 result = await Task.Run(() => applier.Apply(
                     gameDirectory,
                     dictionaryDirectory,
                     workingCopyDirectory,
                     options,
-                    ignoreEncodingIssueFiles: true));
+                    ignoreEncodingIssueFiles: true,
+                    updateExistingCopy: true,
+                    auxiliaryDataDirectory: layout.AiContextDirectory));
             }
 
             DisplayNameInjectionResult? injection = null;
@@ -462,17 +472,41 @@ public partial class MainWindow : Window
 
             string injectionSummary = injection is { WrappedTokenCount: > 0 }
                 ? $"，显示层变量名封装 {injection.WrappedTokenCount} 处（{injection.ModifiedFileCount} 文件 / {injection.MappedTermCount} 条译名）"
-                : string.Empty;
+                : injection is { HelperFilePath: not null, MappedTermCount: > 0 }
+                    ? $"，已同步变量译名表（{injection.MappedTermCount} 条）"
+                    : string.Empty;
 
-            StatusText.Text =
-                $"副本处理完成：完整复制 {result.CopiedFiles.Count} 个游戏文件，应用译文 {result.ModifiedFiles.Count} 个"
-                + $"（精确位置 {result.SpanReplacedCount} 条 / 原文匹配 {result.FallbackReplacedCount} 条）"
-                + $"{(result.SkippedByEncodingCount > 0 ? $"，编码不兼容跳过 {result.SkippedByEncodingCount} 条" : string.Empty)}"
-                + $"，重命名 ERD {result.RenamedFiles.Count} 个{injectionSummary}，{result.Warnings.Count} 条警告。";
+            if (result.IsIncrementalUpdate)
+            {
+                bool nothingChanged = result.ModifiedFiles.Count == 0 &&
+                                      result.RestoredFileCount == 0 &&
+                                      result.RenamedFiles.Count == 0 &&
+                                      (injection is null || (injection.WrappedTokenCount == 0 && injection.HelperFilePath is null));
+
+                StatusText.Text = nothingChanged
+                    ? "增量更新完成：当前汉化副本已是最新，无需改动。"
+                    : $"增量更新完成：刷新译文 {result.ModifiedFiles.Count} 个文件"
+                      + $"{(result.RestoredFileCount > 0 ? $"，还原清空译文 {result.RestoredFileCount} 个文件" : string.Empty)}"
+                      + $"（精确位置 {result.SpanReplacedCount} 条 / 原文匹配 {result.FallbackReplacedCount} 条）"
+                      + $"{(result.SkippedByEncodingCount > 0 ? $"，编码不兼容跳过 {result.SkippedByEncodingCount} 条" : string.Empty)}"
+                      + $"{injectionSummary}，{result.Warnings.Count} 条警告。";
+            }
+            else
+            {
+                StatusText.Text =
+                    $"副本处理完成：完整复制 {result.CopiedFiles.Count} 个游戏文件，应用译文 {result.ModifiedFiles.Count} 个"
+                    + $"（精确位置 {result.SpanReplacedCount} 条 / 原文匹配 {result.FallbackReplacedCount} 条）"
+                    + $"{(result.SkippedByEncodingCount > 0 ? $"，编码不兼容跳过 {result.SkippedByEncodingCount} 条" : string.Empty)}"
+                    + $"，重命名 ERD {result.RenamedFiles.Count} 个{injectionSummary}，{result.Warnings.Count} 条警告。";
+            }
+
+            string headerLine = result.IsIncrementalUpdate
+                ? $"增量更新完成（仅刷新变动脚本，存档与未改动文件保持原样）\n刷新译文文件：{result.ModifiedFiles.Count}\n"
+                  + (result.RestoredFileCount > 0 ? $"还原清空译文文件：{result.RestoredFileCount}\n" : string.Empty)
+                : $"完整复制游戏文件：{result.CopiedFiles.Count}\n应用译文：{result.ModifiedFiles.Count}\n";
 
             string message =
-                $"完整复制游戏文件：{result.CopiedFiles.Count}\n" +
-                $"应用译文：{result.ModifiedFiles.Count}\n" +
+                headerLine +
                 $"  精确位置替换：{result.SpanReplacedCount} 条\n" +
                 $"  原文匹配替换：{result.FallbackReplacedCount} 条\n" +
                 (result.SkippedByEncodingCount > 0
@@ -481,7 +515,9 @@ public partial class MainWindow : Window
                 $"重命名 ERD：{result.RenamedFiles.Count}\n" +
                 (injection is { WrappedTokenCount: > 0 }
                     ? $"显示层变量名封装：{injection.WrappedTokenCount} 处（{injection.ModifiedFileCount} 个文件，{injection.MappedTermCount} 条译名，CSV 保持原样）\n"
-                    : string.Empty) +
+                    : injection is { HelperFilePath: not null, MappedTermCount: > 0 }
+                        ? $"显示层变量译名表已同步：{injection.MappedTermCount} 条（CSV 保持原样）\n"
+                        : string.Empty) +
                 $"警告：{result.Warnings.Count}\n输出位置：{workingCopyDirectory}";
             if (result.Warnings.Count > 0)
                 message += "\n\n" + string.Join("\n", result.Warnings.Take(8));

@@ -13,6 +13,7 @@ namespace EraTrans.App;
 public partial class MainWindow : Window
 {
     private readonly EraTransUserSettingsStore _settingsStore = new();
+    private readonly VariableGlossaryService _glossaryService = new();
     private EraTransUserSettings _settings;
     private readonly DictionaryEditorControl _editor;
     private EraTransOutputLayout? _activeLayout;
@@ -74,6 +75,29 @@ public partial class MainWindow : Window
     {
         if (!_isProcessing)
             _editor.OpenAiSettings();
+    }
+
+    private void AnalyzeGameCopyMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (_isProcessing || !TryGetGameOutputLayout(out EraTransOutputLayout layout))
+            return;
+
+        if (!Directory.Exists(layout.GameCopyDirectory))
+        {
+            MessageBox.Show(
+                this,
+                "当前工作区尚未生成汉化副本。请先点击「生成汉化副本」，再进行引擎体检。",
+                "未找到汉化副本",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
+
+        var window = new EraAnalyzeReportWindow(layout.GameCopyDirectory)
+        {
+            Owner = this
+        };
+        window.ShowDialog();
     }
 
     private void ReloadWorkspaceMenuItem_Click(object sender, RoutedEventArgs e)
@@ -423,11 +447,28 @@ public partial class MainWindow : Window
                     ignoreEncodingIssueFiles: true));
             }
 
+            DisplayNameInjectionResult? injection = null;
+            if (_settings.EnableDisplayNameTranslationInjection)
+            {
+                injection = await Task.Run(() =>
+                {
+                    VariableGlossaryDocument glossary = _glossaryService.Load(layout);
+                    return DisplayNameTranslationInjector.ApplyToGameCopy(
+                        workingCopyDirectory,
+                        glossary.Entries,
+                        options.FileEncoding);
+                });
+            }
+
+            string injectionSummary = injection is { WrappedTokenCount: > 0 }
+                ? $"，显示层变量名封装 {injection.WrappedTokenCount} 处（{injection.ModifiedFileCount} 文件 / {injection.MappedTermCount} 条译名）"
+                : string.Empty;
+
             StatusText.Text =
                 $"副本处理完成：完整复制 {result.CopiedFiles.Count} 个游戏文件，应用译文 {result.ModifiedFiles.Count} 个"
                 + $"（精确位置 {result.SpanReplacedCount} 条 / 原文匹配 {result.FallbackReplacedCount} 条）"
                 + $"{(result.SkippedByEncodingCount > 0 ? $"，编码不兼容跳过 {result.SkippedByEncodingCount} 条" : string.Empty)}"
-                + $"，重命名 ERD {result.RenamedFiles.Count} 个，{result.Warnings.Count} 条警告。";
+                + $"，重命名 ERD {result.RenamedFiles.Count} 个{injectionSummary}，{result.Warnings.Count} 条警告。";
 
             string message =
                 $"完整复制游戏文件：{result.CopiedFiles.Count}\n" +
@@ -438,6 +479,9 @@ public partial class MainWindow : Window
                     ? $"  编码不兼容跳过：{result.SkippedByEncodingCount} 条\n"
                     : string.Empty) +
                 $"重命名 ERD：{result.RenamedFiles.Count}\n" +
+                (injection is { WrappedTokenCount: > 0 }
+                    ? $"显示层变量名封装：{injection.WrappedTokenCount} 处（{injection.ModifiedFileCount} 个文件，{injection.MappedTermCount} 条译名，CSV 保持原样）\n"
+                    : string.Empty) +
                 $"警告：{result.Warnings.Count}\n输出位置：{workingCopyDirectory}";
             if (result.Warnings.Count > 0)
                 message += "\n\n" + string.Join("\n", result.Warnings.Take(8));

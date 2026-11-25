@@ -58,6 +58,7 @@
                                 <MenuItem Header="解析与提取设置" Click="Settings_Click" />
                                 <MenuItem Header="AI 服务设置" Click="AiSettingsMenuItem_Click" />
                                 <Separator />
+                                <MenuItem x:Name="AnalyzeGameCopyMenuItem" Header="汉化副本引擎体检" Click="AnalyzeGameCopyMenuItem_Click" />
                                 <MenuItem Header="重新加载工作区" Click="ReloadWorkspaceMenuItem_Click" />
                             </ContextMenu>
                         </Button.ContextMenu>
@@ -162,7 +163,7 @@
                            VerticalAlignment="Center"
                            TextTrimming="CharacterEllipsis"
                            ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"
-                           Text="请先选择原游戏目录和输出目录" />
+                           Text="请选择原游戏目录和输出目录" />
             </DockPanel>
         </Border>
     </Grid>

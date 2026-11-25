@@ -1,0 +1,120 @@
+<Window x:Class="EraTrans.App.EraAnalyzeReportWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="汉化副本引擎体检"
+        Width="860"
+        Height="560"
+        MinWidth="680"
+        MinHeight="440"
+        ResizeMode="CanResize"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        Background="#F5F6F8"
+        Loaded="Window_Loaded"
+        Closing="Window_Closing">
+    <Grid Margin="18">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Margin="0,0,0,12">
+            <TextBlock Text="汉化副本引擎体检"
+                       FontSize="20"
+                       FontWeight="SemiBold"
+                       Foreground="#20242A" />
+            <TextBlock Margin="0,4,0,0"
+                       Text="使用内置无头 Emuera 分析引擎对当前汉化副本执行只读静态编译检查，不运行游戏、不改动存档。"
+                       FontSize="12"
+                       Foreground="#68717D"
+                       TextWrapping="Wrap" />
+        </StackPanel>
+
+        <DockPanel Grid.Row="1" Margin="0,0,0,10">
+            <ProgressBar x:Name="AnalyzeProgressBar"
+                         DockPanel.Dock="Left"
+                         Width="110"
+                         Height="6"
+                         Margin="0,0,10,0"
+                         VerticalAlignment="Center"
+                         IsIndeterminate="True"
+                         Foreground="#1971C2"
+                         Background="#E9ECEF"
+                         BorderThickness="0"
+                         Visibility="Collapsed" />
+            <TextBlock x:Name="SummaryTextBlock"
+                       VerticalAlignment="Center"
+                       FontSize="12.5"
+                       FontWeight="SemiBold"
+                       Foreground="#39414A"
+                       Text="正在准备引擎体检…" />
+        </DockPanel>
+
+        <Border Grid.Row="2"
+                Padding="1"
+                Background="White"
+                BorderBrush="#E3E6EA"
+                BorderThickness="1"
+                CornerRadius="8">
+            <DataGrid x:Name="DiagnosticsDataGrid"
+                      AutoGenerateColumns="False"
+                      IsReadOnly="True"
+                      CanUserAddRows="False"
+                      CanUserDeleteRows="False"
+                      HeadersVisibility="Column"
+                      GridLinesVisibility="Horizontal"
+                      RowHeaderWidth="0"
+                      EnableRowVirtualization="True"
+                      BorderThickness="0"
+                      Background="White">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="等级"
+                                        Binding="{Binding Severity}"
+                                        Width="84">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="{x:Type TextBlock}">
+                                <Setter Property="HorizontalAlignment" Value="Center" />
+                                <Setter Property="VerticalAlignment" Value="Center" />
+                                <Setter Property="FontWeight" Value="SemiBold" />
+                            </Style>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
+                    <DataGridTextColumn Header="文件"
+                                        Binding="{Binding File}"
+                                        Width="1.2*" />
+                    <DataGridTextColumn Header="行号"
+                                        Binding="{Binding Line}"
+                                        Width="64">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="{x:Type TextBlock}">
+                                <Setter Property="HorizontalAlignment" Value="Center" />
+                                <Setter Property="VerticalAlignment" Value="Center" />
+                            </Style>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
+                    <DataGridTextColumn Header="诊断详情"
+                                        Binding="{Binding Message}"
+                                        Width="2*" />
+                </DataGrid.Columns>
+            </DataGrid>
+        </Border>
+
+        <DockPanel Grid.Row="3" Margin="0,12,0,0" LastChildFill="False">
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                <Button x:Name="RunAnalyzeButton"
+                        Content="重新体检"
+                        Height="34"
+                        Padding="16,0"
+                        Margin="0,0,8,0"
+                        Style="{StaticResource PrimaryButtonStyle}"
+                        Click="RunAnalyzeButton_Click" />
+                <Button Content="关闭"
+                        Width="78"
+                        Height="34"
+                        IsCancel="True" />
+            </StackPanel>
+        </DockPanel>
+    </Grid>
+</Window>

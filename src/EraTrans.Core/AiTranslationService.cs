@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace EraTrans.Core;
 
@@ -54,17 +55,26 @@ public sealed class AiTranslationService
     private const string WindowSystemPrompt = """
         你是 ERA 游戏文本本地化翻译助手。请把 lines 中 do 为 1 的行翻译成简体中文。
 
-        1. 只返回一个 JSON 对象，键是 id，值是译文，例如 {"12":"译文"}。不要代码块、不要解释、不要输出 do 为 0 的行。
-        2. 相邻且 join 相同的行属于同一句话：先整段理解，再逐行输出。不要让半句各自成句，拼起来要通顺，不要重复主语。
+        1. 只返回一个 JSON 对象，键必须原样抄写对应行的 id（例如 {"12_a3":"译文"}），值是译文。不要代码块、不要解释、不要输出 do 为 0 的行；严格一对一映射，严禁合并、拆分、漏行或重新编号。
+        2. 相邻且 join 相同的行会被游戏引擎直接拼接成同一句话：请先通读整句并按自然中文语序构思，再把译文按原槽位自然切分写回各自 id，切勿把多行合并到同一 id。
+           示例：「[[P0]]は」+「触手の蠢き」+「に反応して震えている。」→ 分别译为「[[P0]]因」「触手的蠕动」「而产生反应，身体颤抖着。」（拼起来通顺且严格对应原槽位）。
         3. alt 相同的行是互斥分支：不要把它们的译文接成连续对话，但人名、称呼、术语要与本请求其他行保持一致。
         4. sid 相同的行属于同一屏；整窗只含一屏时还会给出 scene（id/type）。同一屏内的称呼、语气与术语必须一致；type 为 menu 时是同一菜单的并列选项，type 为 dialogue 时是连续对白。
         5. cmd/kind 说明该行的显示方式：button 是按钮文字（简短、以动作开头、不加句号），data 是数据块选项，html 是界面文本；print/form 是正文对白，按句翻译。menu 为 1 的行是同一菜单的选项，句式与长度要互相一致。
-        6. 原文中的 [[P0]]、[[P1]] 等标记是程序保护的代码占位符，必须原样保留（不要翻译、删除或修改编号）；保留行内条件（\@ [[P0]] ? A # B \@）、控制码、标点和换行结构；无法翻译时原样返回原文。
+        6. 原文中的 [[P0]]、[[P1]] 等标记是程序保护的代码占位符，必须原样保留（不要翻译、删除或修改编号，也不要凭空增删占位符）；保留行内条件（\@ [[P0]] ? A # B \@）、控制码、标点和换行结构；无法翻译时原样返回原文。
         7. 若请求中包含 glossary 字段（原词到固定译名的映射），翻译正文与界面时必须严格遵循其中指定的译名。
 
         part 大于 1 表示这是同一函数前一段的延续，人称和译法沿用它。
         同一请求内，同一人名、称呼和术语必须使用同一译法。
         """;
+
+    private static readonly Regex PlaceholderTokenRegex = new(
+        @"\[\[\s*[Pp](\d+)\s*\]\]",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly Regex LegacyArrayEntryRegex = new(
+        """\{\s*"id"\s*:\s*(?:"(?<id>[^"]+)"|(?<id>-?\d+))\s*,\s*"translation"\s*:\s*"(?<val>(?:\\.|[^"\\])*)"\s*\}""",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private const string GlossarySystemPrompt = """
         你是 ERA 游戏术语本地化助手。请把给定列表中的日文游戏术语（道具、指令、素质、能力等名称）翻译成简洁、自然的简体中文译名。
@@ -412,7 +422,7 @@ public sealed class AiTranslationService
         {
             var item = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
-                ["id"] = line.Id,
+                ["id"] = FormatLineId(line),
                 ["text"] = line.Text,
                 ["do"] = line.Translate ? 1 : 0
             };
@@ -460,9 +470,34 @@ public sealed class AiTranslationService
     }
 
     /// <summary>
-    /// Parses the flat id-to-text answer. Missing ids are reported instead of
-    /// failing the whole request, and the older array shape is still accepted so a
-    /// model that ignores the instructions does not waste the request.
+    /// Formats a deterministic checksummed id (e.g. <c>12_a3</c>) for a window line so
+    /// models cannot silently renumber sequential integer ids after merging lines.
+    /// </summary>
+    public static string FormatLineId(WindowLine line)
+    {
+        ArgumentNullException.ThrowIfNull(line);
+        uint hash = 2166136261u;
+        hash = MixHash(hash, line.Id.ToString(CultureInfo.InvariantCulture));
+        hash = MixHash(hash, "|");
+        hash = MixHash(hash, line.Text ?? string.Empty);
+        return $"{line.Id.ToString(CultureInfo.InvariantCulture)}_{(hash & 0xFFu):x2}";
+    }
+
+    private static uint MixHash(uint hash, string text)
+    {
+        foreach (char ch in text)
+        {
+            hash ^= ch;
+            hash *= 16777619u;
+        }
+        return hash;
+    }
+
+    /// <summary>
+    /// Parses the flat id-to-text answer (supporting checksummed ids such as <c>12_a3</c>
+    /// as well as legacy integer ids). When the JSON is truncated or partially malformed,
+    /// salvages every intact entry instead of discarding the entire batch. Also validates
+    /// per-line placeholder consistency and guards against cascading id-shift corruption.
     /// </summary>
     public static WindowTranslationOutcome ParseWindowResponse(
         string response,
@@ -471,73 +506,343 @@ public sealed class AiTranslationService
         ArgumentException.ThrowIfNullOrWhiteSpace(response);
         ArgumentNullException.ThrowIfNull(window);
 
-        HashSet<int> expected = window.Lines
-            .Where(line => line.Translate)
-            .Select(line => line.Id)
-            .ToHashSet();
-        var parsed = new Dictionary<int, string>();
-
-        string json = ExtractJsonRegion(response);
-        JsonDocument document;
-        try
+        WindowLine[] targetLines = window.Lines.Where(line => line.Translate).ToArray();
+        Dictionary<int, WindowLine> expectedById = targetLines.ToDictionary(line => line.Id);
+        Dictionary<string, int> tagToId = new(StringComparer.OrdinalIgnoreCase);
+        foreach (WindowLine line in targetLines)
         {
-            document = JsonDocument.Parse(json);
-        }
-        catch (JsonException ex)
-        {
-            throw new InvalidDataException("模型返回的 JSON 无法解析：" + ex.Message, ex);
+            tagToId[FormatLineId(line)] = line.Id;
         }
 
-        using (document)
+        List<(string RawKey, string Text)> rawEntries = ExtractRawEntries(response);
+
+        var taggedParsed = new Dictionary<int, string>();
+        var bareParsed = new Dictionary<int, string>();
+        var unknownSet = new HashSet<int>();
+        bool usedTaggedKeys = false;
+
+        foreach ((string rawKey, string text) in rawEntries)
         {
-            JsonElement root = document.RootElement;
-            if (root.ValueKind == JsonValueKind.Object)
+            if (string.IsNullOrWhiteSpace(text))
+                continue;
+
+            string key = rawKey.Trim();
+            if (tagToId.TryGetValue(key, out int taggedId))
             {
-                foreach (JsonProperty property in root.EnumerateObject())
-                {
-                    if (!int.TryParse(property.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int id))
-                        continue;
+                usedTaggedKeys = true;
+                taggedParsed[taggedId] = text;
+                continue;
+            }
 
-                    string? text = ReadTranslationText(property.Value);
-                    if (!string.IsNullOrWhiteSpace(text))
-                        parsed[id] = text;
+            int underscoreIndex = key.IndexOf('_');
+            if (underscoreIndex > 0 &&
+                int.TryParse(key.AsSpan(0, underscoreIndex), NumberStyles.Integer, CultureInfo.InvariantCulture, out int badTaggedId))
+            {
+                // Key had a checksum suffix that does not match the expected line tag.
+                unknownSet.Add(badTaggedId);
+                continue;
+            }
+
+            if (int.TryParse(key, NumberStyles.Integer, CultureInfo.InvariantCulture, out int bareId))
+            {
+                if (expectedById.ContainsKey(bareId))
+                    bareParsed[bareId] = text;
+                else
+                    unknownSet.Add(bareId);
+            }
+        }
+
+        var merged = new Dictionary<int, string>(taggedParsed);
+        if (!usedTaggedKeys)
+        {
+            foreach (KeyValuePair<int, string> pair in bareParsed)
+            {
+                merged[pair.Key] = pair.Value;
+            }
+        }
+        else
+        {
+            foreach (KeyValuePair<int, string> pair in bareParsed)
+            {
+                if (!merged.ContainsKey(pair.Key) &&
+                    expectedById.TryGetValue(pair.Key, out WindowLine? line) &&
+                    HasMatchingPlaceholders(line.Text, pair.Value))
+                {
+                    merged[pair.Key] = pair.Value;
                 }
             }
-            else if (root.ValueKind == JsonValueKind.Array)
-            {
-                foreach (JsonElement item in root.EnumerateArray())
-                {
-                    if (item.ValueKind != JsonValueKind.Object ||
-                        !item.TryGetProperty("id", out JsonElement idElement) ||
-                        !idElement.TryGetInt32(out int id) ||
-                        !item.TryGetProperty("translation", out JsonElement translation))
-                    {
-                        continue;
-                    }
+        }
 
-                    string? text = ReadTranslationText(translation);
-                    if (!string.IsNullOrWhiteSpace(text))
-                        parsed[id] = text;
+        if (merged.Count == 0)
+            throw new InvalidDataException("模型没有返回任何可用的译文。");
+
+        // Validate placeholder sets per line and detect cascading id-shift corruption.
+        var validTranslations = new List<AiTranslationResult>(merged.Count);
+        var mismatchedLineIndices = new List<int>();
+        var acceptedLineIndices = new List<int>();
+
+        for (int i = 0; i < targetLines.Length; i++)
+        {
+            WindowLine line = targetLines[i];
+            if (!merged.TryGetValue(line.Id, out string? translation))
+                continue;
+
+            if (!HasMatchingPlaceholders(line.Text, translation))
+            {
+                mismatchedLineIndices.Add(i);
+                continue;
+            }
+
+            acceptedLineIndices.Add(i);
+            validTranslations.Add(new AiTranslationResult(line.Id, translation));
+        }
+
+        // Two or more placeholder mismatches in one response strongly indicate that the
+        // model merged lines and shifted subsequent ids; keep only the clean prefix
+        // before the first mismatch so the shifted suffix is safely retried.
+        if (mismatchedLineIndices.Count >= 2)
+        {
+            int firstBadIndex = mismatchedLineIndices[0];
+            var filtered = new List<AiTranslationResult>(validTranslations.Count);
+            for (int k = 0; k < validTranslations.Count; k++)
+            {
+                if (acceptedLineIndices[k] < firstBadIndex)
+                    filtered.Add(validTranslations[k]);
+            }
+            validTranslations = filtered;
+        }
+
+        if (validTranslations.Count == 0)
+            throw new InvalidDataException("模型没有返回任何可用的译文（译文占位符或行号校验未通过）。");
+
+        HashSet<int> acceptedIds = validTranslations.Select(item => item.Id).ToHashSet();
+        int[] unknown = unknownSet.Order().ToArray();
+        int[] missing = targetLines
+            .Where(line => !acceptedIds.Contains(line.Id))
+            .Select(line => line.Id)
+            .Order()
+            .ToArray();
+
+        return new WindowTranslationOutcome(validTranslations, missing, unknown);
+    }
+
+    private static bool HasMatchingPlaceholders(string originalText, string translatedText)
+    {
+        HashSet<int> expected = ExtractPlaceholderIndices(originalText);
+        HashSet<int> actual = ExtractPlaceholderIndices(translatedText);
+        return expected.SetEquals(actual);
+    }
+
+    private static HashSet<int> ExtractPlaceholderIndices(string text)
+    {
+        var indices = new HashSet<int>();
+        if (string.IsNullOrEmpty(text))
+            return indices;
+
+        foreach (Match match in PlaceholderTokenRegex.Matches(text))
+        {
+            if (int.TryParse(match.Groups[1].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int index))
+                indices.Add(index);
+        }
+        return indices;
+    }
+
+    private static List<(string RawKey, string Text)> ExtractRawEntries(string response)
+    {
+        Exception? parseFailure = null;
+        string? json = null;
+        try
+        {
+            json = ExtractJsonRegion(response);
+        }
+        catch (InvalidDataException ex)
+        {
+            parseFailure = ex;
+        }
+
+        if (json is not null)
+        {
+            try
+            {
+                using JsonDocument document = JsonDocument.Parse(json);
+                JsonElement root = document.RootElement;
+                var entries = new List<(string RawKey, string Text)>();
+                if (root.ValueKind == JsonValueKind.Object)
+                {
+                    foreach (JsonProperty property in root.EnumerateObject())
+                    {
+                        string? text = ReadTranslationText(property.Value);
+                        if (!string.IsNullOrWhiteSpace(text))
+                            entries.Add((property.Name, text));
+                    }
+                    return entries;
                 }
+
+                if (root.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (JsonElement item in root.EnumerateArray())
+                    {
+                        if (item.ValueKind != JsonValueKind.Object ||
+                            !item.TryGetProperty("id", out JsonElement idElement) ||
+                            !item.TryGetProperty("translation", out JsonElement translation))
+                        {
+                            continue;
+                        }
+
+                        string? rawKey = idElement.ValueKind switch
+                        {
+                            JsonValueKind.Number when idElement.TryGetInt32(out int num) => num.ToString(CultureInfo.InvariantCulture),
+                            JsonValueKind.String => idElement.GetString(),
+                            _ => null
+                        };
+                        string? text = ReadTranslationText(translation);
+                        if (!string.IsNullOrWhiteSpace(rawKey) && !string.IsNullOrWhiteSpace(text))
+                            entries.Add((rawKey, text));
+                    }
+                    return entries;
+                }
+
+                throw new InvalidDataException("模型返回内容必须是 JSON 对象或数组。");
+            }
+            catch (JsonException ex)
+            {
+                parseFailure = new InvalidDataException("模型返回的 JSON 无法解析：" + ex.Message, ex);
+            }
+        }
+
+        // Fallback: rescue intact entries from truncated or partially malformed JSON.
+        List<(string RawKey, string Text)> rescued = RescueEntriesFromPartialJson(response);
+        if (rescued.Count > 0)
+            return rescued;
+
+        throw parseFailure ?? new InvalidDataException("模型返回内容中没有 JSON 内容。");
+    }
+
+    private static List<(string RawKey, string Text)> RescueEntriesFromPartialJson(string response)
+    {
+        var results = new List<(string RawKey, string Text)>();
+        int startObject = response.IndexOf('{');
+        int startArray = response.IndexOf('[');
+        if (startObject < 0 && startArray < 0)
+            return results;
+
+        // First scan flat "key": "value" pairs with a JSON string state machine.
+        int i = startObject >= 0 ? startObject : 0;
+        int length = response.Length;
+        while (i < length)
+        {
+            int keyStart = response.IndexOf('"', i);
+            if (keyStart < 0)
+                break;
+
+            if (!TryReadJsonString(response, keyStart, out string? key, out int afterKey))
+            {
+                i = keyStart + 1;
+                continue;
+            }
+
+            int pos = SkipWhitespace(response, afterKey);
+            if (pos >= length || response[pos] != ':')
+            {
+                i = afterKey;
+                continue;
+            }
+
+            pos = SkipWhitespace(response, pos + 1);
+            if (pos >= length || response[pos] != '"')
+            {
+                i = pos;
+                continue;
+            }
+
+            if (!TryReadJsonString(response, pos, out string? value, out int afterValue))
+            {
+                // Truncated string at end of reply: stop scanning here.
+                break;
+            }
+
+            int nextToken = SkipWhitespace(response, afterValue);
+            bool cleanlyTerminated = nextToken < length && (response[nextToken] == ',' || response[nextToken] == '}');
+            if (cleanlyTerminated && !string.IsNullOrWhiteSpace(key) && !string.IsNullOrWhiteSpace(value))
+            {
+                results.Add((key, value));
+                i = nextToken + 1;
             }
             else
             {
-                throw new InvalidDataException("模型返回内容必须是 JSON 对象或数组。");
+                // Value was likely broken by an unescaped quote; advance past the key and keep salvaging later entries.
+                i = afterKey;
             }
         }
 
-        if (parsed.Count == 0)
-            throw new InvalidDataException("模型没有返回任何可用的译文。");
+        if (results.Count > 0)
+            return results;
 
-        int[] unknown = parsed.Keys.Where(id => !expected.Contains(id)).Order().ToArray();
-        int[] missing = expected.Where(id => !parsed.ContainsKey(id)).Order().ToArray();
+        // Fallback for truncated legacy array shape: [{"id":1,"translation":"..."}, ...]
+        foreach (Match match in LegacyArrayEntryRegex.Matches(response))
+        {
+            string rawId = match.Groups["id"].Value;
+            string rawVal = match.Groups["val"].Value;
+            try
+            {
+                string? decoded = JsonSerializer.Deserialize<string>("\"" + rawVal + "\"");
+                if (!string.IsNullOrWhiteSpace(rawId) && !string.IsNullOrWhiteSpace(decoded))
+                    results.Add((rawId, decoded));
+            }
+            catch (JsonException)
+            {
+                // Skip malformed entry.
+            }
+        }
 
-        var translations = window.Lines
-            .Where(line => line.Translate && parsed.ContainsKey(line.Id))
-            .Select(line => new AiTranslationResult(line.Id, parsed[line.Id]))
-            .ToArray();
+        return results;
+    }
 
-        return new WindowTranslationOutcome(translations, missing, unknown);
+    private static int SkipWhitespace(string text, int index)
+    {
+        while (index < text.Length && char.IsWhiteSpace(text[index]))
+            index++;
+        return index;
+    }
+
+    private static bool TryReadJsonString(string text, int openQuoteIndex, out string? value, out int nextIndex)
+    {
+        value = null;
+        nextIndex = openQuoteIndex + 1;
+        if (openQuoteIndex >= text.Length || text[openQuoteIndex] != '"')
+            return false;
+
+        int i = openQuoteIndex + 1;
+        while (i < text.Length)
+        {
+            char ch = text[i];
+            if (ch == '\\')
+            {
+                if (i + 1 >= text.Length)
+                    return false;
+                i += 2;
+                continue;
+            }
+
+            if (ch == '"')
+            {
+                string literal = text[openQuoteIndex..(i + 1)];
+                try
+                {
+                    value = JsonSerializer.Deserialize<string>(literal);
+                    nextIndex = i + 1;
+                    return value is not null;
+                }
+                catch (JsonException)
+                {
+                    return false;
+                }
+            }
+
+            i++;
+        }
+
+        return false;
     }
 
     private static string? ReadTranslationText(JsonElement value) => value.ValueKind switch

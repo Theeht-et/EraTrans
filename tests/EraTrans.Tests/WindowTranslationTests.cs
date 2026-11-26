@@ -128,6 +128,90 @@ public sealed class WindowTranslationTests
             AiTranslationService.ParseWindowResponse("""{"1":""}""", Window(1)));
     }
 
+    [Fact]
+    public void Payload_EmitsChecksummedLineIds_AndParserResolvesThem()
+    {
+        TranslationWindow window = Window(1, 2);
+
+        using JsonDocument document = JsonDocument.Parse(AiTranslationService.BuildWindowPayload(window));
+        JsonElement[] lines = document.RootElement.GetProperty("lines").EnumerateArray().ToArray();
+        string tag1 = lines[1].GetProperty("id").GetString()!;
+        string tag2 = lines[2].GetProperty("id").GetString()!;
+
+        Assert.Equal(AiTranslationService.FormatLineId(window.Lines[1]), tag1);
+        Assert.Equal(AiTranslationService.FormatLineId(window.Lines[2]), tag2);
+        Assert.StartsWith("1_", tag1, StringComparison.Ordinal);
+        Assert.StartsWith("2_", tag2, StringComparison.Ordinal);
+
+        string response = $"{{\"{tag1}\":\"甲\",\"{tag2}\":\"乙\"}}";
+        WindowTranslationOutcome outcome = AiTranslationService.ParseWindowResponse(response, window);
+
+        Assert.True(outcome.IsComplete);
+        Assert.Equal(new[] { (1, "甲"), (2, "乙") }, outcome.Translations.Select(t => (t.Id, t.Translation)));
+    }
+
+    [Fact]
+    public void Parse_RejectsMismatchedChecksumTag()
+    {
+        TranslationWindow window = Window(1, 2);
+        string tag1 = AiTranslationService.FormatLineId(window.Lines[1]);
+        string badTag2 = "2_zz";
+
+        WindowTranslationOutcome outcome = AiTranslationService.ParseWindowResponse(
+            $"{{\"{tag1}\":\"甲\",\"{badTag2}\":\"错位译文\"}}",
+            window);
+
+        Assert.Single(outcome.Translations);
+        Assert.Equal(1, outcome.Translations[0].Id);
+        Assert.Equal(new[] { 2 }, outcome.MissingIds);
+        Assert.Equal(new[] { 2 }, outcome.UnknownIds);
+    }
+
+    [Fact]
+    public void Parse_RescuesIntactEntriesFromTruncatedOrMalformedJson()
+    {
+        TranslationWindow window = Window(1, 2, 3, 4);
+
+        // Truncated before closing brace
+        WindowTranslationOutcome truncated = AiTranslationService.ParseWindowResponse(
+            "{\"1\":\"甲\",\"2\":\"乙\",\"3\":\"被截断的半句",
+            window);
+        Assert.Equal(new[] { 1, 2 }, truncated.Translations.Select(t => t.Id));
+        Assert.Equal(new[] { 3, 4 }, truncated.MissingIds);
+
+        // Malformed unescaped quotes on entry 2, valid entries before and after
+        WindowTranslationOutcome malformed = AiTranslationService.ParseWindowResponse(
+            "{\"1\":\"甲\",\"2\":\"他说\"坏引号\"了\",\"3\":\"丙\",\"4\":\"丁\"}",
+            window);
+        Assert.Equal(new[] { 1, 3, 4 }, malformed.Translations.Select(t => t.Id));
+        Assert.Equal(new[] { 2 }, malformed.MissingIds);
+    }
+
+    [Fact]
+    public void Parse_DetectsPlaceholderMismatchAndCascadingIdShift()
+    {
+        var window = new TranslationWindow(
+            "TRAIN_MESSAGE_A",
+            1,
+            [
+                new WindowLine(0, "k0", "[[P0]]は身体をよじる。", "TRAIN_MESSAGE_A", true, false, 0, false, null),
+                new WindowLine(1, "k1", "[[P0]]は反抗的だ。", "TRAIN_MESSAGE_A", true, false, 0, false, null),
+                new WindowLine(2, "k2", "触手の蠢き", "TRAIN_MESSAGE_A", true, false, 1, false, "alt_002"),
+                new WindowLine(3, "k3", "に反応して震えている。", "TRAIN_MESSAGE_A", true, false, 1, false, "alt_001"),
+                new WindowLine(4, "k4", "[[P0]]は小さく震えた。", "TRAIN_MESSAGE_A", true, false, 0, false, null)
+            ]);
+
+        // Model merged lines and shifted ids starting at 2:
+        // id 2 (no placeholder) got [[P0]], id 3 (no placeholder) got [[P0]], id 4 got no placeholder.
+        string shiftedReply =
+            """{"0":"[[P0]]扭动着身体。","1":"[[P0]]态度反抗。","2":"[[P0]]因触手颤抖。","3":"[[P0]]微微颤抖。","4":"完全错位的尾巴。"}""";
+
+        WindowTranslationOutcome outcome = AiTranslationService.ParseWindowResponse(shiftedReply, window);
+
+        Assert.Equal(new[] { 0, 1 }, outcome.Translations.Select(t => t.Id));
+        Assert.Equal(new[] { 2, 3, 4 }, outcome.MissingIds);
+    }
+
     private static TranslationWindow Window(params int[] translateIds)
     {
         var lines = new List<WindowLine>();

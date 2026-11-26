@@ -214,6 +214,8 @@ public partial class DictionaryEditorControl
         int applied = 0;
         int skipped = 0;
         int completed = 0;
+        int failedRequests = 0;
+        string? lastErrorMessage = null;
         int totalRequests = windows.Count;
         int totalLines = windows.Sum(window => window.TargetCount);
 
@@ -229,27 +231,58 @@ public partial class DictionaryEditorControl
             {
                 cancellation.Token.ThrowIfCancellationRequested();
 
-                WindowTranslationOutcome outcome = await _translationService.TranslateWindowAsync(
-                    profile, window, reasoning: null, _activeGlossary, cancellation.Token);
-                applied += ApplyWindowResults(outcome, entriesByIndex, ref skipped);
-
-                if (outcome.MissingIds.Count > 0)
+                WindowTranslationOutcome? outcome = null;
+                try
                 {
-                    // Only the unanswered lines are sent again, so a partially broken
-                    // answer never wastes the whole request.
-                    TranslationWindow retry = RetryWindowForIds(window, outcome.MissingIds);
-                    WindowTranslationOutcome retryOutcome = await _translationService.TranslateWindowAsync(
-                        profile, retry, reasoning: null, _activeGlossary, cancellation.Token);
-                    applied += ApplyWindowResults(retryOutcome, entriesByIndex, ref skipped);
+                    outcome = await _translationService.TranslateWindowAsync(
+                        profile, window, reasoning: null, _activeGlossary, cancellation.Token);
+                    applied += ApplyWindowResults(outcome, entriesByIndex, ref skipped);
+                    EntriesDataGrid.Items.Refresh();
+                    UpdateDocumentStatus();
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    // Isolate per-window failures so other concurrent windows continue
+                    // and the user can clearly see which entries stayed untranslated.
+                    failedRequests++;
+                    lastErrorMessage = ex.Message;
+                }
+
+                if (outcome is not null && outcome.MissingIds.Count > 0)
+                {
+                    try
+                    {
+                        // Only the unanswered lines are sent again, so a partially broken
+                        // answer never wastes the whole request.
+                        TranslationWindow retry = RetryWindowForIds(window, outcome.MissingIds);
+                        WindowTranslationOutcome retryOutcome = await _translationService.TranslateWindowAsync(
+                            profile, retry, reasoning: null, _activeGlossary, cancellation.Token);
+                        applied += ApplyWindowResults(retryOutcome, entriesByIndex, ref skipped);
+                        EntriesDataGrid.Items.Refresh();
+                        UpdateDocumentStatus();
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        throw;
+                    }
+                    catch (Exception ex)
+                    {
+                        // Keep all translations already applied from the first pass.
+                        failedRequests++;
+                        lastErrorMessage = ex.Message;
+                    }
                 }
 
                 completed++;
-                StatusTextBlock.Text =
-                    $"{statusPrefix}：已完成 {completed}/{totalRequests} 个请求" +
-                    $"（并发 {concurrency}），回填 {applied} 行，跳过 {skipped} 行。";
-
-                EntriesDataGrid.Items.Refresh();
-                UpdateDocumentStatus();
+                StatusTextBlock.Text = failedRequests > 0
+                    ? $"{statusPrefix}：已处理 {completed}/{totalRequests} 个请求" +
+                      $"（并发 {concurrency}，失败 {failedRequests}），回填 {applied} 行，跳过 {skipped} 行。"
+                    : $"{statusPrefix}：已完成 {completed}/{totalRequests} 个请求" +
+                      $"（并发 {concurrency}），回填 {applied} 行，跳过 {skipped} 行。";
             }
         }
 
@@ -270,9 +303,26 @@ public partial class DictionaryEditorControl
                 throw;
             }
 
-            StatusTextBlock.Text =
-                $"{statusPrefix}完成：{totalRequests} 个请求，回填 {applied} 行，跳过 {skipped} 行。" +
-                "请检查译文并手动保存。";
+            if (failedRequests > 0)
+            {
+                StatusTextBlock.Text =
+                    $"{statusPrefix}结束：共 {totalRequests} 个请求（失败 {failedRequests} 次），已回填 {applied} 行，跳过 {skipped} 行。" +
+                    "未回填词条已保留为空，请检查后手动保存。";
+                MessageBox.Show(
+                    OwnerWindow,
+                    $"有 {failedRequests} 次批次/补翻请求失败，已尽可能回填可识别的 {applied} 行译文。\n" +
+                    "未回填的词条已保留为空，可在左侧筛选「未翻译」快速定位。\n\n" +
+                    $"最近一次错误：{lastErrorMessage}",
+                    "部分翻译未完成",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+            }
+            else
+            {
+                StatusTextBlock.Text =
+                    $"{statusPrefix}完成：{totalRequests} 个请求，回填 {applied} 行，跳过 {skipped} 行。" +
+                    "请检查译文并手动保存。";
+            }
         }
         catch (OperationCanceledException)
         {

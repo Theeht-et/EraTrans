@@ -117,7 +117,7 @@ public partial class ParserSettingsWindow : Window
 
             List<string> targetExtensions = _settingsToPreserve.TargetFileExtensions is { Count: > 0 }
                 ? [.. _settingsToPreserve.TargetFileExtensions]
-                : [.. EraParserOptions.DefaultTargetFileExtensions];
+                : EraTransUserSettings.CreateDefault().TargetFileExtensions;
 
             var settings = new EraTransUserSettings
             {

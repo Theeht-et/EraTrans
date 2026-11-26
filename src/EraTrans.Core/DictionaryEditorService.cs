@@ -443,47 +443,12 @@ public sealed class DictionaryEditorDocument : INotifyPropertyChanged
 
         byte[] outputBytes = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false)
             .GetBytes(_json.ToString(Formatting.Indented));
-        string temporaryPath = Path.Combine(
-            Path.GetDirectoryName(FilePath)!,
-            $".{Path.GetFileName(FilePath)}.{Guid.NewGuid():N}.tmp");
+        AtomicFileWriter.WriteAllBytes(FilePath, outputBytes);
 
-        try
-        {
-            using (var stream = new FileStream(
-                       temporaryPath,
-                       FileMode.CreateNew,
-                       FileAccess.Write,
-                       FileShare.None,
-                       bufferSize: 4096,
-                       options: FileOptions.WriteThrough))
-            {
-                stream.Write(outputBytes);
-                stream.Flush(flushToDisk: true);
-            }
-
-            try
-            {
-                File.Replace(temporaryPath, FilePath, destinationBackupFileName: null);
-            }
-            catch (PlatformNotSupportedException)
-            {
-                // Both paths are in the same directory, so the fallback remains a
-                // same-volume replacement on platforms without File.Replace support.
-                File.Move(temporaryPath, FilePath, overwrite: true);
-            }
-
-            _loadedFileHash = SHA256.HashData(outputBytes);
-            _isDirty = false;
-            OnPropertyChanged(nameof(IsDirty));
-            OnPropertyChanged(nameof(SummaryText));
-        }
-        finally
-        {
-            if (File.Exists(temporaryPath))
-            {
-                File.Delete(temporaryPath);
-            }
-        }
+        _loadedFileHash = SHA256.HashData(outputBytes);
+        _isDirty = false;
+        OnPropertyChanged(nameof(IsDirty));
+        OnPropertyChanged(nameof(SummaryText));
     }
 
     private void Entry_PropertyChanged(object? sender, PropertyChangedEventArgs e)

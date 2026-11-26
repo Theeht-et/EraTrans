@@ -134,6 +134,13 @@ public sealed class DictionaryExtractor
                     generatedFiles,
                     warnings,
                     ignoredFilePaths);
+                scannedFiles = ExtractVisibleTextCsv(
+                    gameRoot,
+                    outputRoot,
+                    effectiveOptions,
+                    scannedFiles,
+                    generatedFiles,
+                    warnings);
             }
 
             var erdFiles = scannedFiles
@@ -554,8 +561,7 @@ public sealed class DictionaryExtractor
     }
 
     /// <summary>
-    /// Replaces the legacy ERB branch with the visible-text extractor. CSV/RES/XML/ERD files are
-    /// still processed by the legacy parsers, so only ERB entries are removed from the returned list.
+    /// Replaces the legacy ERB branch with the visible-text extractor.
     /// </summary>
     private static IReadOnlyList<GameFile> ExtractVisibleTextErb(
         string gameRoot,
@@ -599,6 +605,50 @@ public sealed class DictionaryExtractor
                 : "。"));
 
         return scannedFiles.Where(file => file.Kind != GameFileKind.Erb).ToArray();
+    }
+
+    /// <summary>
+    /// Replaces the legacy CSV/RES/ERD branches in V2 mode with the safe visible-text CSV extractor.
+    /// High-risk non-display files (resources/*.csv, ERB/**/*.ERD, _Rename.csv, variable tables) are
+    /// skipped so only player-facing CSV fields enter the main dictionary with exact span sidecars.
+    /// </summary>
+    private static IReadOnlyList<GameFile> ExtractVisibleTextCsv(
+        string gameRoot,
+        string outputRoot,
+        EraParserOptions options,
+        IReadOnlyList<GameFile> scannedFiles,
+        ConcurrentBag<string> generatedFiles,
+        ConcurrentBag<string> warnings)
+    {
+        GameFile[] csvFiles = scannedFiles.Where(file => file.Kind == GameFileKind.Csv).ToArray();
+        if (csvFiles.Length > 0)
+        {
+            VisibleTextCsvExtractionResult result = new VisibleTextCsvExtractor()
+                .Extract(gameRoot, outputRoot, csvFiles, options);
+
+            foreach (string file in result.GeneratedFiles)
+            {
+                generatedFiles.Add(file);
+            }
+
+            foreach (string warning in result.Warnings)
+            {
+                warnings.Add(warning);
+            }
+
+            if (result.FileCount > 0)
+            {
+                warnings.Add(
+                    $"新版 CSV 可见文本抽取：{result.FileCount} 个文件 / {result.EntryCount} 条；保留译文 {result.PreservedTranslations} 条" +
+                    (result.ResetTranslations > 0
+                        ? $"，因原文变化重置 {result.ResetTranslations} 条。"
+                        : "。"));
+            }
+        }
+
+        return scannedFiles
+            .Where(file => file.Kind is not (GameFileKind.Csv or GameFileKind.Erd or GameFileKind.ResourceCsv))
+            .ToArray();
     }
 
     /// <summary>

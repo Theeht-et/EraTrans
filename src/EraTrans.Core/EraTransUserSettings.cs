@@ -71,31 +71,13 @@ public sealed class EraTransUserSettings
     public string LastOutputRootDirectory { get; set; } = string.Empty;
     public string LastDictionaryFileRelativePath { get; set; } = string.Empty;
 
-    public List<string> TargetFileExtensions { get; set; } =
-    [
-        ".csv", ".erb", ".erh", ".erd"
-    ];
+    public List<string> TargetFileExtensions { get; set; } = [.. EraParserOptions.DefaultTargetFileExtensions];
 
-    public List<string> AutoReplaceReferenceFiles { get; set; } =
-    [
-        "Abl", "Base", "CFlag", "CSTR", "Equip", "Ex",
-        "Exp", "Flag", "Global", "Item", "Juel",
-        "Mark", "Nowex", "Palam", "Source", "Stain",
-        "Talent", "TCVAR", "TEquip", "Tflag", "Train",
-        "TSTR", "修正字典"
-    ];
+    public List<string> AutoReplaceReferenceFiles { get; set; } = [.. EraParserOptions.DefaultAutoReplaceReferenceFiles];
 
-    public List<string> VariableNameCharacters { get; set; } =
-    [
-        "☆", "♡", "∀", "←", "→"
-    ];
+    public List<string> VariableNameCharacters { get; set; } = [.. EraParserOptions.DefaultVariableNameCharacters];
 
-    public List<string> Operators { get; set; } =
-    [
-        "(", ")", "{", "}", "?", "#", "=", "+=", "-=", "*=", "/=",
-        ">", "<", "==", "!=", ">=", "<=", "&&", "||", "&", "|", "!",
-        "+", "-", "*", "/", "%", "++", "--", ",", ":", "TO"
-    ];
+    public List<string> Operators { get; set; } = [.. EraParserOptions.DefaultOperators];
 
     public static EraTransUserSettings CreateDefault() => new();
 

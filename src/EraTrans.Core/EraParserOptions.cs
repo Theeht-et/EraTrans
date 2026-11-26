@@ -50,11 +50,7 @@ public sealed class EraParserOptions
     /// </summary>
     public bool EnableVariableAutoCorrection { get; init; } = false;
 
-    /// <summary>
-    /// Top-level CSV dictionary names used for variable auto-correction,
-    /// without the .json extension.
-    /// </summary>
-    public IReadOnlyList<string> AutoReplaceReferenceFiles { get; init; } =
+    internal static readonly string[] DefaultAutoReplaceReferenceFiles =
     [
         "Abl", "Base", "CFlag", "CSTR", "Equip", "Ex",
         "Exp", "Flag", "Global", "Item", "Juel",
@@ -63,10 +59,7 @@ public sealed class EraParserOptions
         "TSTR", "修正字典"
     ];
 
-    /// <summary>
-    /// Game-file extensions checked when applying a dictionary at the same relative path.
-    /// </summary>
-    public IReadOnlyList<string> TargetFileExtensions { get; init; } =
+    internal static readonly string[] DefaultTargetFileExtensions =
     [
         ".csv",
         ".erb",
@@ -74,21 +67,36 @@ public sealed class EraParserOptions
         ".erd"
     ];
 
-    /// <summary>
-    /// Additional characters allowed in ERA variable names.
-    /// </summary>
-    public IReadOnlyList<string> VariableNameCharacters { get; init; } =
+    internal static readonly string[] DefaultVariableNameCharacters =
     [
         "☆", "♡", "∀", "←", "→"
     ];
 
-    /// <summary>
-    /// Operators recognized by the ERA expression parser.
-    /// </summary>
-    public IReadOnlyList<string> Operators { get; init; } =
+    internal static readonly string[] DefaultOperators =
     [
         "(", ")", "{", "}", "?", "#", "=", "+=", "-=", "*=", "/=",
         ">", "<", "==", "!=", ">=", "<=", "&&", "||", "&", "|", "!",
         "+", "-", "*", "/", "%", "++", "--", ",", ":", "TO"
     ];
+
+    /// <summary>
+    /// Top-level CSV dictionary names used for variable auto-correction,
+    /// without the .json extension.
+    /// </summary>
+    public IReadOnlyList<string> AutoReplaceReferenceFiles { get; init; } = DefaultAutoReplaceReferenceFiles;
+
+    /// <summary>
+    /// Game-file extensions checked when applying a dictionary at the same relative path.
+    /// </summary>
+    public IReadOnlyList<string> TargetFileExtensions { get; init; } = DefaultTargetFileExtensions;
+
+    /// <summary>
+    /// Additional characters allowed in ERA variable names.
+    /// </summary>
+    public IReadOnlyList<string> VariableNameCharacters { get; init; } = DefaultVariableNameCharacters;
+
+    /// <summary>
+    /// Operators recognized by the ERA expression parser.
+    /// </summary>
+    public IReadOnlyList<string> Operators { get; init; } = DefaultOperators;
 }

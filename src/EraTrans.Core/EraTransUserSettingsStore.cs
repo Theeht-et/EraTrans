@@ -52,46 +52,12 @@ public sealed class EraTransUserSettingsStore
         ArgumentNullException.ThrowIfNull(settings);
         settings.Validate();
 
-        string directory = Path.GetDirectoryName(_filePath)
-            ?? throw new InvalidOperationException("设置文件路径无效。");
-        Directory.CreateDirectory(directory);
+        if (string.IsNullOrEmpty(Path.GetDirectoryName(_filePath)))
+        {
+            throw new InvalidOperationException("设置文件路径无效。");
+        }
 
         string json = JsonSerializer.Serialize(settings, JsonOptions);
-        string temporaryPath = Path.Combine(
-            directory,
-            $".{Path.GetFileName(_filePath)}.{Guid.NewGuid():N}.tmp");
-
-        try
-        {
-            using (var stream = new FileStream(
-                       temporaryPath,
-                       FileMode.CreateNew,
-                       FileAccess.Write,
-                       FileShare.None,
-                       bufferSize: 4096,
-                       options: FileOptions.WriteThrough))
-            using (var writer = new StreamWriter(stream, new UTF8Encoding(false)))
-            {
-                writer.Write(json);
-                writer.Flush();
-                stream.Flush(flushToDisk: true);
-            }
-
-            if (File.Exists(_filePath))
-            {
-                File.Replace(temporaryPath, _filePath, destinationBackupFileName: null);
-            }
-            else
-            {
-                File.Move(temporaryPath, _filePath);
-            }
-        }
-        finally
-        {
-            if (File.Exists(temporaryPath))
-            {
-                File.Delete(temporaryPath);
-            }
-        }
+        AtomicFileWriter.WriteAllText(_filePath, json);
     }
 }

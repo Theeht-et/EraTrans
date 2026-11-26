@@ -55,6 +55,12 @@ public sealed class EraTransUserSettingsTests
             settings.AutoReplaceReferenceFiles);
         Assert.Equal(new[] { "☆", "♡", "∀", "←", "→" }, settings.VariableNameCharacters);
         Assert.Contains("TO", settings.Operators);
+
+        var defaultParserOptions = new EraParserOptions();
+        Assert.Equal(defaultParserOptions.TargetFileExtensions, settings.TargetFileExtensions);
+        Assert.Equal(defaultParserOptions.AutoReplaceReferenceFiles, settings.AutoReplaceReferenceFiles);
+        Assert.Equal(defaultParserOptions.VariableNameCharacters, settings.VariableNameCharacters);
+        Assert.Equal(defaultParserOptions.Operators, settings.Operators);
     }
 
     [Fact]

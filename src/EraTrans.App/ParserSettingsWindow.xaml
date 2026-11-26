@@ -77,7 +77,7 @@
 
                         <TextBlock Grid.Row="2"
                                    Grid.Column="1"
-                                   Text="新版会自动跳过代码和图片编号，只提取玩家能看到的对话与角色信息（ERB/CSV）；两版字典分开存放，互不覆盖。"
+                                   Text="新版会自动跳过代码和图片编号，只提取玩家能看到的对话与角色信息；两版字典分开存放，互不覆盖。"
                                    TextWrapping="Wrap"
                                    FontSize="11"
                                    Foreground="#68717D"
@@ -97,7 +97,7 @@
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
-                                <TextBlock Text="游戏默认文字编码（无 BOM 时回退）"
+                                <TextBlock Text="游戏默认文字编码"
                                            VerticalAlignment="Center"
                                            Foreground="#39414A" />
                                 <ComboBox x:Name="EncodingComboBox"
@@ -105,13 +105,13 @@
                                           Height="34"
                                           Margin="0,0,0,6"
                                           VerticalContentAlignment="Center">
-                                    <ComboBoxItem Content="Shift-JIS（日文 / CP932）" Tag="932" />
-                                    <ComboBoxItem Content="GBK（简体中文 / CP936）" Tag="936" />
-                                    <ComboBoxItem Content="Big5（繁体中文 / CP950）" Tag="950" />
+                                    <ComboBoxItem Content="Shift-JIS（日文）" Tag="932" />
+                                    <ComboBoxItem Content="GBK（简体中文）" Tag="936" />
+                                    <ComboBoxItem Content="Big5（繁体中文）" Tag="950" />
                                 </ComboBox>
                                 <TextBlock Grid.Row="1"
                                            Grid.Column="1"
-                                           Text="绝大多数日文原版游戏保持「Shift-JIS（CP932）」即可；UTF-8 / UTF-16 会自动识别，仅在读取中文改版游戏出现乱码时切换。"
+                                           Text="绝大多数日文原版游戏保持「Shift-JIS」即可；仅在读取中文改版游戏出现乱码时切换。"
                                            TextWrapping="Wrap"
                                            FontSize="11"
                                            Foreground="#68717D" />
@@ -120,8 +120,8 @@
 
                         <CheckBox x:Name="WriteContextCheckBox"
                                   Grid.Row="5"
-                                  Content="在词典中附带原文所在行（context）"
-                                  ToolTip="保存原句所在行作为上下文参考，方便人工校对和 AI 理解前后语境"
+                                  Content="在词典中附带原文所在行"
+                                  ToolTip="保存原句所在行作为参考，方便人工校对和 AI 理解前后语境"
                                   Foreground="#39414A" />
                         <CheckBox x:Name="AutoOpenFolderCheckBox"
                                   Grid.Row="5"
@@ -147,12 +147,12 @@
                                    Margin="0,0,0,12" />
 
                         <CheckBox x:Name="ExtractHtmlTitleCheckBox"
-                                  Content="提取鼠标悬停时的提示文字（HTML title）"
+                                  Content="提取鼠标悬停时的提示文字"
                                   ToolTip="鼠标放到按钮或图标上弹出的说明文字，不影响按钮本身功能。建议保持开启"
                                   Foreground="#39414A"
                                   Margin="0,0,0,10" />
                         <CheckBox x:Name="ExtractPrintDataEntriesCheckBox"
-                                  Content="提取随机对话与随机事件文本（PRINTDATA / DATALIST）"
+                                  Content="提取随机对话与随机事件文本"
                                   ToolTip="提取游戏里随机抽取的台词或事件中的所有候选句子。建议保持开启"
                                   Foreground="#39414A"
                                   Margin="0,0,0,10" />
@@ -176,14 +176,14 @@
                                    FontSize="16"
                                    FontWeight="SemiBold"
                                    Foreground="#20242A" />
-                        <TextBlock Text="新版按精确位置（Span）写入译文，不会误改代码；旧版按原文匹配替换。"
+                        <TextBlock Text="新版按精确位置写入译文，不会误改代码；旧版按原文匹配替换。"
                                    Margin="0,4,0,10"
                                    TextWrapping="Wrap"
                                    FontSize="11"
                                    Foreground="#68717D" />
 
                         <CheckBox x:Name="EnableDisplayNameTranslationInjectionCheckBox"
-                                  Content="自动替换界面中的道具/技能/属性译名（显示层 %XXXNAME% 封装，不改 CSV）"
+                                  Content="自动替换界面中的道具/技能/属性译名（推荐开启）"
                                   ToolTip="配合「变量术语」窗口里的译名，在游戏界面自动显示中文，同时不破坏原有存档和游戏逻辑"
                                   Foreground="#39414A" />
                     </StackPanel>
@@ -207,7 +207,7 @@
                                   Margin="0,12,0,6"
                                   Foreground="#39414A" />
 
-                        <TextBlock Text="按游戏里同一屏的完整对话一起发给 AI，上下文更连贯（推荐开启，需要新版分组文件）；关闭则固定每 12 句翻译一次。"
+                        <TextBlock Text="按游戏里同一屏的完整对话一起发给 AI，上下文更连贯（推荐开启）；关闭则固定每 12 句翻译一次。"
                                    TextWrapping="Wrap"
                                    FontSize="11"
                                    Foreground="#68717D" />
@@ -221,7 +221,7 @@
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
                             <StackPanel>
-                                <TextBlock Text="单次发给 AI 的字数上限（分窗字符数）"
+                                <TextBlock Text="单次发给 AI 的字数上限"
                                            Margin="0,0,0,5"
                                            FontWeight="SemiBold"
                                            Foreground="#39414A" />
@@ -232,7 +232,7 @@
                                          ToolTip="默认 3000，越小单次发送越短" />
                             </StackPanel>
                             <StackPanel Grid.Column="2">
-                                <TextBlock Text="单次发给 AI 的句数上限（分窗行数）"
+                                <TextBlock Text="单次发给 AI 的句数上限"
                                            Margin="0,0,0,5"
                                            FontWeight="SemiBold"
                                            Foreground="#39414A" />
@@ -243,7 +243,7 @@
                                          ToolTip="默认 60，防止短句过多拉长单次请求" />
                             </StackPanel>
                             <StackPanel Grid.Column="4">
-                                <TextBlock Text="同时翻译的并发数（并发请求数）"
+                                <TextBlock Text="同时翻译的并发数"
                                            Margin="0,0,0,5"
                                            FontWeight="SemiBold"
                                            Foreground="#39414A" />

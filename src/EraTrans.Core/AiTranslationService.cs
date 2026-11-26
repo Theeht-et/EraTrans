@@ -16,7 +16,9 @@ public sealed record AiTranslationResult(int Id, string Translation);
 public sealed record WindowTranslationOutcome(
     IReadOnlyList<AiTranslationResult> Translations,
     IReadOnlyList<int> MissingIds,
-    IReadOnlyList<int> UnknownIds)
+    IReadOnlyList<int> UnknownIds,
+    IReadOnlyDictionary<int, string>? IssuesByLineId = null,
+    string? RawResponse = null)
 {
     public bool IsComplete => MissingIds.Count == 0;
 }
@@ -40,6 +42,23 @@ public interface IAiChatCompletionClient
         AiReasoningOptions? reasoning,
         CancellationToken cancellationToken = default) =>
         CompleteAsync(profile, systemPrompt, userPrompt, cancellationToken);
+
+    /// <summary>
+    /// Multi-turn conversation overload used for same-session targeted retries.
+    /// Custom/test implementations that only implement the single-turn overload
+    /// automatically fall back via this default forwarder.
+    /// </summary>
+    Task<string> CompleteAsync(
+        AiProviderProfile profile,
+        IReadOnlyList<AiChatMessage> messages,
+        AiReasoningOptions? reasoning = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(messages);
+        string systemPrompt = messages.FirstOrDefault(m => string.Equals(m.Role, "system", StringComparison.OrdinalIgnoreCase))?.Content ?? string.Empty;
+        string userPrompt = messages.LastOrDefault(m => string.Equals(m.Role, "user", StringComparison.OrdinalIgnoreCase))?.Content ?? string.Empty;
+        return CompleteAsync(profile, systemPrompt, userPrompt, reasoning, cancellationToken);
+    }
 }
 
 /// <summary>
@@ -61,7 +80,7 @@ public sealed class AiTranslationService
         3. alt 相同的行是互斥分支：不要把它们的译文接成连续对话，但人名、称呼、术语要与本请求其他行保持一致。
         4. sid 相同的行属于同一屏；整窗只含一屏时还会给出 scene（id/type）。同一屏内的称呼、语气与术语必须一致；type 为 menu 时是同一菜单的并列选项，type 为 dialogue 时是连续对白。
         5. cmd/kind 说明该行的显示方式：button 是按钮文字（简短、以动作开头、不加句号），data 是数据块选项，html 是界面文本；print/form 是正文对白，按句翻译。menu 为 1 的行是同一菜单的选项，句式与长度要互相一致。
-        6. 原文中的 [[P0]]、[[P1]] 等标记是程序保护的代码占位符，必须原样保留（不要翻译、删除或修改编号，也不要凭空增删占位符）；保留行内条件（\@ [[P0]] ? A # B \@）、控制码、标点和换行结构；无法翻译时原样返回原文。
+        6. 原文中的 [[P0]]、[[P1]] 等标记是程序保护的代码占位符，必须原样保留且出现次数与原文完全一致（不要翻译、删除、修改编号，也不要在后半句重复补写 [[P0]]，需要主语时请省略或用“他/她”）；保留行内条件（\@ [[P0]] ? A # B \@）、控制码、标点和换行结构；无法翻译时原样返回原文。
         7. 若请求中包含 glossary 字段（原词到固定译名的映射），翻译正文与界面时必须严格遵循其中指定的译名。
 
         part 大于 1 表示这是同一函数前一段的延续，人称和译法沿用它。
@@ -162,6 +181,97 @@ public sealed class AiTranslationService
     }
 
     /// <summary>
+    /// Continues the same conversation to ask the model to fix only the missing or
+    /// validation-rejected lines, carrying the exact per-line failure reasons so the
+    /// model can correct them in place without losing screen context.
+    /// </summary>
+    public async Task<WindowTranslationOutcome> RetryWindowInSessionAsync(
+        AiProviderProfile profile,
+        TranslationWindow originalWindow,
+        WindowTranslationOutcome previousOutcome,
+        AiReasoningOptions? reasoning = null,
+        IReadOnlyList<VariableGlossaryEntry>? glossary = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(originalWindow);
+        ArgumentNullException.ThrowIfNull(previousOutcome);
+        AiProviderProfileValidator.Validate(profile);
+
+        if (previousOutcome.MissingIds.Count == 0)
+            return new WindowTranslationOutcome([], [], []);
+
+        HashSet<int> missingSet = previousOutcome.MissingIds.ToHashSet();
+        WindowLine[] retryLines = originalWindow.Lines
+            .Where(line => line.Translate && missingSet.Contains(line.Id))
+            .ToArray();
+        if (retryLines.Length == 0)
+            return new WindowTranslationOutcome([], [], []);
+
+        TranslationWindow retryWindow = originalWindow with { Lines = retryLines };
+        if (string.IsNullOrWhiteSpace(previousOutcome.RawResponse))
+        {
+            return await TranslateWindowAsync(profile, retryWindow, reasoning, glossary, cancellationToken);
+        }
+
+        IReadOnlyDictionary<string, string> matchedGlossary = VariableGlossaryService.MatchForTexts(
+            originalWindow.Lines.Select(line => line.Text),
+            glossary);
+
+        MaskedTranslationWindow maskedOriginal = AiPlaceholderMasker.MaskWindow(originalWindow);
+        string originalUserPrompt = BuildWindowPayload(maskedOriginal.MaskedWindow, matchedGlossary);
+
+        WindowLine[] maskedRetryLines = maskedOriginal.MaskedWindow.Lines
+            .Where(line => line.Translate && missingSet.Contains(line.Id))
+            .ToArray();
+        TranslationWindow maskedRetryWindow = maskedOriginal.MaskedWindow with { Lines = maskedRetryLines };
+
+        string followUpPrompt = BuildFollowUpCorrectionPrompt(maskedRetryLines, previousOutcome.IssuesByLineId);
+        AiChatMessage[] messages =
+        [
+            new AiChatMessage("system", WindowSystemPrompt),
+            new AiChatMessage("user", originalUserPrompt),
+            new AiChatMessage("assistant", previousOutcome.RawResponse),
+            new AiChatMessage("user", followUpPrompt)
+        ];
+
+        return await CompleteWithReasoningFallbackAsync(
+            profile,
+            messages,
+            requestKind: "TranslationRetry",
+            requestedEntryCount: maskedRetryLines.Length,
+            processResponse: response =>
+            {
+                WindowTranslationOutcome outcome = ParseWindowResponse(response, maskedRetryWindow);
+                return AiPlaceholderMasker.RestoreOutcome(outcome, maskedOriginal.PlaceholdersByLineId);
+            },
+            reasoning,
+            cancellationToken);
+    }
+
+    private static string BuildFollowUpCorrectionPrompt(
+        IReadOnlyList<WindowLine> failedMaskedLines,
+        IReadOnlyDictionary<int, string>? issuesByLineId)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine("你上一轮回复中以下条目未通过校验或遗漏，请只重新翻译这几条，并只返回一个 JSON 对象（键必须原样抄写下面的 id，不要输出其他行、不要解释、不要代码块）：");
+        foreach (WindowLine line in failedMaskedLines)
+        {
+            string tag = FormatLineId(line);
+            string reason = issuesByLineId is not null && issuesByLineId.TryGetValue(line.Id, out string? detail)
+                ? detail
+                : "上一轮未返回可用译文";
+            builder.Append("- id=\"")
+                .Append(tag)
+                .Append("\"：")
+                .Append(reason)
+                .Append("｜原文：")
+                .AppendLine(line.Text);
+        }
+
+        return builder.ToString().TrimEnd();
+    }
+
+    /// <summary>
     /// Batch-translates variable glossary entries for the Glossary Center window.
     /// Returns a map from batch index (0..entries.Count-1) to translated Chinese term.
     /// </summary>
@@ -254,10 +364,30 @@ public sealed class AiTranslationService
     /// of asking the user to understand provider dialects. Each attempt keeps its
     /// own log entry, so the rejected request stays available for diagnosis.
     /// </summary>
-    private async Task<T> CompleteWithReasoningFallbackAsync<T>(
+    private Task<T> CompleteWithReasoningFallbackAsync<T>(
         AiProviderProfile profile,
         string systemPrompt,
         string userPrompt,
+        string requestKind,
+        int requestedEntryCount,
+        Func<string, T> processResponse,
+        AiReasoningOptions? reasoning,
+        CancellationToken cancellationToken) =>
+        CompleteWithReasoningFallbackAsync(
+            profile,
+            [
+                new AiChatMessage("system", systemPrompt),
+                new AiChatMessage("user", userPrompt)
+            ],
+            requestKind,
+            requestedEntryCount,
+            processResponse,
+            reasoning,
+            cancellationToken);
+
+    private async Task<T> CompleteWithReasoningFallbackAsync<T>(
+        AiProviderProfile profile,
+        IReadOnlyList<AiChatMessage> messages,
         string requestKind,
         int requestedEntryCount,
         Func<string, T> processResponse,
@@ -272,21 +402,20 @@ public sealed class AiTranslationService
         try
         {
             return await CompleteWithLogAsync(
-                profile, systemPrompt, userPrompt, requestKind, requestedEntryCount,
+                profile, messages, requestKind, requestedEntryCount,
                 processResponse, reasoning, cancellationToken);
         }
         catch (Exception ex) when (AiReasoningFallback.IsRejection(ex, reasoning))
         {
             return await CompleteWithLogAsync(
-                profile, systemPrompt, userPrompt, requestKind, requestedEntryCount,
+                profile, messages, requestKind, requestedEntryCount,
                 processResponse, AiReasoningOptions.Auto, cancellationToken);
         }
     }
 
     private async Task<T> CompleteWithLogAsync<T>(
         AiProviderProfile profile,
-        string systemPrompt,
-        string userPrompt,
+        IReadOnlyList<AiChatMessage> messages,
         string requestKind,
         int requestedEntryCount,
         Func<string, T> processResponse,
@@ -295,11 +424,13 @@ public sealed class AiTranslationService
     {
         AiTranslationLogEntry? log = null;
         string apiKey = profile.ApiKey.Trim();
+        string systemPrompt = messages.FirstOrDefault(m => string.Equals(m.Role, "system", StringComparison.OrdinalIgnoreCase))?.Content ?? string.Empty;
+        string userPrompt = messages.LastOrDefault(m => string.Equals(m.Role, "user", StringComparison.OrdinalIgnoreCase))?.Content ?? string.Empty;
 
         if (_logStore is not null)
         {
             AiProviderHttpRequestDetails requestDetails =
-                AiProviderHttpRequestFactory.Create(profile, systemPrompt, userPrompt, reasoning);
+                AiProviderHttpRequestFactory.Create(profile, messages, reasoning);
             string endpoint = requestDetails.Endpoint;
             using JsonDocument requestDocument = JsonDocument.Parse(requestDetails.JsonBody);
             string requestJson = JsonSerializer.Serialize(
@@ -339,12 +470,20 @@ public sealed class AiTranslationService
         Stopwatch? stopwatch = log is null ? null : Stopwatch.StartNew();
         try
         {
-            string response = await _client.CompleteAsync(
-                profile,
-                systemPrompt,
-                userPrompt,
-                reasoning,
-                cancellationToken);
+            string response = messages.Count == 2 &&
+                string.Equals(messages[0].Role, "system", StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(messages[1].Role, "user", StringComparison.OrdinalIgnoreCase)
+                ? await _client.CompleteAsync(
+                    profile,
+                    systemPrompt,
+                    userPrompt,
+                    reasoning,
+                    cancellationToken)
+                : await _client.CompleteAsync(
+                    profile,
+                    messages,
+                    reasoning,
+                    cancellationToken);
 
             if (log is not null)
                 log.RawResponse = RedactSecret(response, apiKey);
@@ -519,6 +658,7 @@ public sealed class AiTranslationService
         var taggedParsed = new Dictionary<int, string>();
         var bareParsed = new Dictionary<int, string>();
         var unknownSet = new HashSet<int>();
+        var issuesByLineId = new Dictionary<int, string>();
         bool usedTaggedKeys = false;
 
         foreach ((string rawKey, string text) in rawEntries)
@@ -540,6 +680,11 @@ public sealed class AiTranslationService
             {
                 // Key had a checksum suffix that does not match the expected line tag.
                 unknownSet.Add(badTaggedId);
+                if (expectedById.TryGetValue(badTaggedId, out WindowLine? expectedLine))
+                {
+                    issuesByLineId[badTaggedId] =
+                        $"行号校验后缀不匹配（模型返回 {key}，期望 {FormatLineId(expectedLine)}）";
+                }
                 continue;
             }
 
@@ -566,7 +711,7 @@ public sealed class AiTranslationService
             {
                 if (!merged.ContainsKey(pair.Key) &&
                     expectedById.TryGetValue(pair.Key, out WindowLine? line) &&
-                    HasMatchingPlaceholders(line.Text, pair.Value))
+                    ValidatePlaceholders(line.Text, pair.Value) is null)
                 {
                     merged[pair.Key] = pair.Value;
                 }
@@ -574,9 +719,14 @@ public sealed class AiTranslationService
         }
 
         if (merged.Count == 0)
-            throw new InvalidDataException("模型没有返回任何可用的译文。");
+        {
+            throw new InvalidDataException(BuildDetailedRejectionMessage(
+                "模型没有返回任何可用的译文。",
+                targetLines,
+                issuesByLineId));
+        }
 
-        // Validate placeholder sets per line and detect cascading id-shift corruption.
+        // Validate exact placeholder counts per line and detect cascading id-shift corruption.
         var validTranslations = new List<AiTranslationResult>(merged.Count);
         var mismatchedLineIndices = new List<int>();
         var acceptedLineIndices = new List<int>();
@@ -587,9 +737,11 @@ public sealed class AiTranslationService
             if (!merged.TryGetValue(line.Id, out string? translation))
                 continue;
 
-            if (!HasMatchingPlaceholders(line.Text, translation))
+            string? placeholderIssue = ValidatePlaceholders(line.Text, translation);
+            if (placeholderIssue is not null)
             {
                 mismatchedLineIndices.Add(i);
+                issuesByLineId[line.Id] = placeholderIssue;
                 continue;
             }
 
@@ -597,23 +749,36 @@ public sealed class AiTranslationService
             validTranslations.Add(new AiTranslationResult(line.Id, translation));
         }
 
-        // Two or more placeholder mismatches in one response strongly indicate that the
-        // model merged lines and shifted subsequent ids; keep only the clean prefix
-        // before the first mismatch so the shifted suffix is safely retried.
-        if (mismatchedLineIndices.Count >= 2)
+        // Only apply cascading suffix truncation when the model ignored checksummed tags
+        // and used bare sequential integers (where merging lines causes silent id drift).
+        // When checksummed tags matched, each line's identity is verified individually.
+        if (!usedTaggedKeys && mismatchedLineIndices.Count >= 2)
         {
             int firstBadIndex = mismatchedLineIndices[0];
+            int firstBadId = targetLines[firstBadIndex].Id;
             var filtered = new List<AiTranslationResult>(validTranslations.Count);
             for (int k = 0; k < validTranslations.Count; k++)
             {
                 if (acceptedLineIndices[k] < firstBadIndex)
+                {
                     filtered.Add(validTranslations[k]);
+                }
+                else
+                {
+                    int droppedId = validTranslations[k].Id;
+                    issuesByLineId.TryAdd(droppedId, $"检测到纯数字行号疑似错位（自第 {firstBadId} 行起截断待补翻）");
+                }
             }
             validTranslations = filtered;
         }
 
         if (validTranslations.Count == 0)
-            throw new InvalidDataException("模型没有返回任何可用的译文（译文占位符或行号校验未通过）。");
+        {
+            throw new InvalidDataException(BuildDetailedRejectionMessage(
+                "模型没有返回任何可用的译文（译文占位符或行号校验未通过）。",
+                targetLines,
+                issuesByLineId));
+        }
 
         HashSet<int> acceptedIds = validTranslations.Select(item => item.Id).ToHashSet();
         int[] unknown = unknownSet.Order().ToArray();
@@ -623,28 +788,98 @@ public sealed class AiTranslationService
             .Order()
             .ToArray();
 
-        return new WindowTranslationOutcome(validTranslations, missing, unknown);
+        foreach (int missingId in missing)
+        {
+            issuesByLineId.TryAdd(missingId, "模型未返回该行译文");
+        }
+
+        return new WindowTranslationOutcome(validTranslations, missing, unknown, issuesByLineId, response);
     }
 
-    private static bool HasMatchingPlaceholders(string originalText, string translatedText)
+    private static string BuildDetailedRejectionMessage(
+        string headline,
+        IReadOnlyList<WindowLine> targetLines,
+        IReadOnlyDictionary<int, string> issuesByLineId)
     {
-        HashSet<int> expected = ExtractPlaceholderIndices(originalText);
-        HashSet<int> actual = ExtractPlaceholderIndices(translatedText);
-        return expected.SetEquals(actual);
+        if (issuesByLineId.Count == 0)
+            return headline;
+
+        var builder = new StringBuilder(headline);
+        builder.AppendLine();
+        builder.AppendLine("具体未通过明细：");
+
+        int shown = 0;
+        const int maxShown = 8;
+        foreach (WindowLine line in targetLines)
+        {
+            if (!issuesByLineId.TryGetValue(line.Id, out string? reason))
+                continue;
+
+            if (shown < maxShown)
+            {
+                builder.Append("- ")
+                    .Append(FormatLineId(line))
+                    .Append("：")
+                    .AppendLine(reason);
+            }
+            shown++;
+        }
+
+        if (shown > maxShown)
+        {
+            builder.Append("……其余 ")
+                .Append(shown - maxShown)
+                .Append(" 条省略。");
+        }
+
+        return builder.ToString().TrimEnd();
     }
 
-    private static HashSet<int> ExtractPlaceholderIndices(string text)
+    private static string? ValidatePlaceholders(string originalText, string translatedText)
     {
-        var indices = new HashSet<int>();
+        Dictionary<int, int> expected = CountPlaceholderIndices(originalText);
+        Dictionary<int, int> actual = CountPlaceholderIndices(translatedText);
+
+        var problems = new List<string>();
+        foreach (KeyValuePair<int, int> pair in expected.OrderBy(item => item.Key))
+        {
+            int actualCount = actual.GetValueOrDefault(pair.Key);
+            if (actualCount < pair.Value)
+            {
+                problems.Add(actualCount == 0
+                    ? $"缺少 [[P{pair.Key}]]"
+                    : $"缺少 [[P{pair.Key}]]（原文 {pair.Value} 处，译文 {actualCount} 处）");
+            }
+        }
+
+        foreach (KeyValuePair<int, int> pair in actual.OrderBy(item => item.Key))
+        {
+            int expectedCount = expected.GetValueOrDefault(pair.Key);
+            if (pair.Value > expectedCount)
+            {
+                problems.Add(expectedCount == 0
+                    ? $"多出原文不存在的 [[P{pair.Key}]]"
+                    : $"多出 [[P{pair.Key}]]（原文 {expectedCount} 处，译文 {pair.Value} 处）");
+            }
+        }
+
+        return problems.Count == 0 ? null : string.Join("；", problems);
+    }
+
+    private static Dictionary<int, int> CountPlaceholderIndices(string text)
+    {
+        var counts = new Dictionary<int, int>();
         if (string.IsNullOrEmpty(text))
-            return indices;
+            return counts;
 
         foreach (Match match in PlaceholderTokenRegex.Matches(text))
         {
             if (int.TryParse(match.Groups[1].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int index))
-                indices.Add(index);
+            {
+                counts[index] = counts.GetValueOrDefault(index) + 1;
+            }
         }
-        return indices;
+        return counts;
     }
 
     private static List<(string RawKey, string Text)> ExtractRawEntries(string response)

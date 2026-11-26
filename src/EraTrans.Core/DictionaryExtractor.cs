@@ -484,49 +484,20 @@ public sealed class DictionaryExtractor
             outputContent = [0xEF, 0xBB, 0xBF, .. outputContent];
         }
 
-        string temporaryPath = Path.Combine(
-            Path.GetDirectoryName(existingPath)!,
-            $".{Path.GetFileName(existingPath)}.{Guid.NewGuid():N}.tmp");
+        AtomicFileWriter.WriteAllBytes(
+            existingPath,
+            outputContent,
+            beforeReplace: () =>
+            {
+                byte[] currentHash = SHA256.HashData(File.ReadAllBytes(existingPath));
+                if (!CryptographicOperations.FixedTimeEquals(originalHash, currentHash))
+                {
+                    throw new IOException(
+                        $"字典在补充上下文时被其他程序修改，为避免覆盖外部更改已取消更新：{existingPath}");
+                }
+            });
 
-        try
-        {
-            using (var stream = new FileStream(
-                       temporaryPath,
-                       FileMode.CreateNew,
-                       FileAccess.Write,
-                       FileShare.None,
-                       bufferSize: 4096,
-                       options: FileOptions.WriteThrough))
-            {
-                stream.Write(outputContent);
-                stream.Flush(flushToDisk: true);
-            }
-
-            byte[] currentHash = SHA256.HashData(File.ReadAllBytes(existingPath));
-            if (!CryptographicOperations.FixedTimeEquals(originalHash, currentHash))
-            {
-                throw new IOException(
-                    $"字典在补充上下文时被其他程序修改，为避免覆盖外部更改已取消更新：{existingPath}");
-            }
-
-            try
-            {
-                File.Replace(temporaryPath, existingPath, destinationBackupFileName: null);
-            }
-            catch (PlatformNotSupportedException)
-            {
-                File.Move(temporaryPath, existingPath, overwrite: true);
-            }
-
-            return true;
-        }
-        finally
-        {
-            if (File.Exists(temporaryPath))
-            {
-                File.Delete(temporaryPath);
-            }
-        }
+        return true;
     }
 
     private static string NormalizeContextMatchKey(string key)

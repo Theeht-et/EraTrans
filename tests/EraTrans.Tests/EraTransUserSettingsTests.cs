@@ -1,6 +1,7 @@
 using EraTrans.Core;
 using EraTrans.Core.VisibleText;
 using System.Text;
+using System.Text.Json;
 using Xunit;
 
 namespace EraTrans.Tests;
@@ -100,6 +101,63 @@ public sealed class EraTransUserSettingsTests
         Assert.Equal(settings.VariableNameCharacters, loaded.VariableNameCharacters);
         Assert.Equal(settings.Operators, loaded.Operators);
         Assert.Equal(932, loaded.ToParserOptions().FileEncoding.CodePage);
+    }
+
+    [Fact]
+    public void Store_SaveWritesLegacySettingsUnderNestedLegacySection()
+    {
+        using var temporary = new TemporaryDirectory();
+        string path = Path.Combine(temporary.Path, "settings.json");
+        var store = new EraTransUserSettingsStore(path);
+        EraTransUserSettings settings = EraTransUserSettings.CreateDefault();
+        settings.Legacy.HideEnglishText = false;
+        settings.Legacy.EnableVariableAutoCorrection = true;
+
+        store.Save(settings);
+
+        using JsonDocument doc = JsonDocument.Parse(File.ReadAllText(path, Encoding.UTF8));
+        JsonElement root = doc.RootElement;
+        Assert.False(root.TryGetProperty("HideEnglishText", out _));
+        Assert.False(root.TryGetProperty("EnableVariableAutoCorrection", out _));
+        Assert.False(root.TryGetProperty("Operators", out _));
+        Assert.True(root.TryGetProperty("Legacy", out JsonElement legacy));
+        Assert.False(legacy.GetProperty("HideEnglishText").GetBoolean());
+        Assert.True(legacy.GetProperty("EnableVariableAutoCorrection").GetBoolean());
+    }
+
+    [Fact]
+    public void Store_LoadFlatLegacySettingsJson_MigratesIntoNestedLegacyObject()
+    {
+        using var temporary = new TemporaryDirectory();
+        string path = Path.Combine(temporary.Path, "settings.json");
+        File.WriteAllText(
+            path,
+            """
+            {
+              "FileEncodingId": "932",
+              "ErbExtractionMode": "legacy",
+              "HideEnglishText": false,
+              "MergeDuplicateEntries": true,
+              "HideVariableEntries": false,
+              "MergeConcatenatedStrings": false,
+              "EnableVariableAutoCorrection": true,
+              "AutoReplaceReferenceFiles": ["Abl", "Base"],
+              "VariableNameCharacters": ["※"],
+              "Operators": ["(", ")", "=="]
+            }
+            """,
+            Encoding.UTF8);
+
+        EraTransUserSettings loaded = new EraTransUserSettingsStore(path).Load();
+
+        Assert.False(loaded.Legacy.HideEnglishText);
+        Assert.True(loaded.Legacy.MergeDuplicateEntries);
+        Assert.False(loaded.Legacy.HideVariableEntries);
+        Assert.False(loaded.Legacy.MergeConcatenatedStrings);
+        Assert.True(loaded.Legacy.EnableVariableAutoCorrection);
+        Assert.Equal(new[] { "Abl", "Base" }, loaded.Legacy.AutoReplaceReferenceFiles);
+        Assert.Equal(new[] { "※" }, loaded.Legacy.VariableNameCharacters);
+        Assert.Equal(new[] { "(", ")", "==" }, loaded.Legacy.Operators);
     }
 
     [Fact]

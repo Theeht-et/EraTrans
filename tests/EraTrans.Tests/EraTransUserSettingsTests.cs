@@ -41,6 +41,8 @@ public sealed class EraTransUserSettingsTests
         Assert.True(settings.ExtractPrintDataEntries);
         Assert.True(settings.SkipNonJapaneseEntries);
         Assert.True(settings.EnableErbSemanticGroupingTranslation);
+        Assert.Equal(5, EraTransUserSettings.DefaultTranslationConcurrency);
+        Assert.Equal(5, settings.TranslationConcurrency);
         Assert.Equal(string.Empty, settings.LastGameDirectory);
         Assert.Equal(string.Empty, settings.LastOutputRootDirectory);
         Assert.Equal(string.Empty, settings.LastDictionaryFileRelativePath);
@@ -193,6 +195,7 @@ public sealed class EraTransUserSettingsTests
         Assert.Equal("lexer", settings.ErbExtractionMode);
         Assert.True(settings.EnableErbSemanticGroupingTranslation);
         Assert.True(settings.HideVariableEntries);
+        Assert.Equal(5, settings.TranslationConcurrency);
     }
 
     [Fact]

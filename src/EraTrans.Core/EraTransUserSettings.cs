@@ -19,7 +19,7 @@ public sealed class EraTransUserSettings
 
     public const int MinimumTranslationConcurrency = 1;
     public const int MaximumTranslationConcurrency = 50;
-    public const int DefaultTranslationConcurrency = 1;
+    public const int DefaultTranslationConcurrency = 5;
 
     public string FileEncodingId { get; set; } = "932";
     public bool AutoOpenFolder { get; set; } = true;
@@ -57,8 +57,7 @@ public sealed class EraTransUserSettings
     public int WindowMaxLines { get; set; } = DefaultWindowLines;
 
     /// <summary>
-    /// How many translation requests may be in flight at the same time. 1 keeps
-    /// the previous strictly sequential behaviour.
+    /// How many translation requests may be in flight at the same time.
     /// </summary>
     public int TranslationConcurrency { get; set; } = DefaultTranslationConcurrency;
 

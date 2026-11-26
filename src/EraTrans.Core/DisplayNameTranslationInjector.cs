@@ -48,7 +48,7 @@ public static class DisplayNameTranslationInjector
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(gameCopyDirectory);
 
-        if (!Directory.Exists(gameCopyDirectory) || glossaryEntries is null || glossaryEntries.Count == 0)
+        if (!Directory.Exists(gameCopyDirectory))
         {
             return new DisplayNameInjectionResult(0, 0, 0, null);
         }
@@ -63,13 +63,15 @@ public static class DisplayNameTranslationInjector
 
         // Only keep valid, distinct mappings where translation differs from original
         // and contains no raw quotes or newlines that could break ERB CASE literals.
-        Dictionary<string, string> mappings = BuildSafeMappings(glossaryEntries);
+        Dictionary<string, string> mappings = glossaryEntries is { Count: > 0 }
+            ? BuildSafeMappings(glossaryEntries)
+            : new Dictionary<string, string>(StringComparer.Ordinal);
         if (mappings.Count == 0)
         {
             // Keep an existing helper valid as a pass-through so already-wrapped ERBs never break.
             if (File.Exists(helperPath))
             {
-                File.WriteAllText(helperPath, BuildHelperErbSource(mappings), Utf8WithBom);
+                AtomicFileWriter.WriteAllText(helperPath, BuildHelperErbSource(mappings), Utf8WithBom);
                 return new DisplayNameInjectionResult(0, 0, 0, helperPath);
             }
 
@@ -109,7 +111,7 @@ public static class DisplayNameTranslationInjector
             return new DisplayNameInjectionResult(mappings.Count, 0, 0, null);
         }
 
-        File.WriteAllText(helperPath, BuildHelperErbSource(mappings), Utf8WithBom);
+        AtomicFileWriter.WriteAllText(helperPath, BuildHelperErbSource(mappings), Utf8WithBom);
 
         return new DisplayNameInjectionResult(mappings.Count, modifiedFiles, wrappedTokens, helperPath);
     }

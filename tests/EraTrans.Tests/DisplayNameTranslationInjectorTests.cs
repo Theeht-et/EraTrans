@@ -128,6 +128,40 @@ public sealed class DisplayNameTranslationInjectorTests : IDisposable
     }
 
     [Fact]
+    public void ApplyToGameCopy_EmptyGlossaryResetsExistingHelperToPassThrough()
+    {
+        string copyDir = Path.Combine(_tempRoot, "GameCopyEmptyReset");
+        string erbDir = Path.Combine(copyDir, "ERB");
+        Directory.CreateDirectory(erbDir);
+
+        string erbPath = Path.Combine(erbDir, "SHOP.ERB");
+        File.WriteAllText(erbPath, "PRINTFORML [%ITEMNAME:0%]\n", Encoding.UTF8);
+
+        var initialGlossary = new[]
+        {
+            new VariableGlossaryEntry("ITEM", "ローター", "跳蛋")
+        };
+
+        DisplayNameInjectionResult first = DisplayNameTranslationInjector.ApplyToGameCopy(copyDir, initialGlossary);
+        Assert.NotNull(first.HelperFilePath);
+        Assert.Contains("CASE \"ローター\"", File.ReadAllText(first.HelperFilePath!, Encoding.UTF8), StringComparison.Ordinal);
+
+        DisplayNameInjectionResult reset = DisplayNameTranslationInjector.ApplyToGameCopy(
+            copyDir,
+            Array.Empty<VariableGlossaryEntry>());
+
+        Assert.Equal(0, reset.MappedTermCount);
+        Assert.Equal(0, reset.ModifiedFileCount);
+        Assert.Equal(0, reset.WrappedTokenCount);
+        Assert.Equal(first.HelperFilePath, reset.HelperFilePath);
+
+        string resetSource = File.ReadAllText(reset.HelperFilePath!, Encoding.UTF8);
+        Assert.Contains("@ERATRANS_TR_NAME(ARGS)", resetSource, StringComparison.Ordinal);
+        Assert.Contains("RETURNF ARGS", resetSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("CASE \"ローター\"", resetSource, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void EraAnalyzerService_ResolvesBuiltInDllPathInToolsAnalyzerFolder()
     {
         string fakeBase = Path.Combine(_tempRoot, "AppBase");

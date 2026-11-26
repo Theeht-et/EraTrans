@@ -148,9 +148,8 @@ public sealed class VariableGlossaryService
         ArgumentNullException.ThrowIfNull(document);
 
         string path = GetGlossaryPath(layout);
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         string json = JsonSerializer.Serialize(document, JsonOptions);
-        File.WriteAllText(path, json, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+        AtomicFileWriter.WriteAllText(path, json);
     }
 
     /// <summary>

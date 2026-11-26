@@ -245,35 +245,41 @@
                         <TextBlock x:Name="ModelCountTextBlock" Text="模型列表尚未获取，可直接填写模型 ID。"
                                    Margin="0,7,0,0" FontSize="11" Foreground="#7A8490" TextWrapping="Wrap"/>
                     </StackPanel>
-                    <StackPanel Grid.Row="6" Margin="0,0,0,10">
-                        <TextBlock Text="推理字段（可选）" Margin="0,0,0,6" FontSize="12" Foreground="#39414A"/>
-                        <TextBlock Text="留空即按默认处理；仅在服务商需要自定义思考参数时填写 JSON。"
-                                   Margin="0,0,0,8" FontSize="10" Foreground="#7A8490" TextWrapping="Wrap"/>
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0" Margin="0,0,8,0">
-                                <TextBlock Text="开启推理时附加的 JSON" Margin="0,0,0,5" FontSize="11" Foreground="#39414A"/>
-                                <TextBox x:Name="ReasoningOnJsonTextBox" Height="60" Padding="9,6"
-                                         AcceptsReturn="True" TextWrapping="Wrap" FontFamily="Consolas"
-                                         VerticalScrollBarVisibility="Auto"
-                                         TextChanged="ReasoningJson_TextChanged"
-                                         ToolTip='例如 { "reasoning_effort": "high" }'/>
-                            </StackPanel>
-                            <StackPanel Grid.Column="1">
-                                <TextBlock Text="关闭推理时附加的 JSON" Margin="0,0,0,5" FontSize="11" Foreground="#39414A"/>
-                                <TextBox x:Name="ReasoningOffJsonTextBox" Height="60" Padding="9,6"
-                                         AcceptsReturn="True" TextWrapping="Wrap" FontFamily="Consolas"
-                                         VerticalScrollBarVisibility="Auto"
-                                         TextChanged="ReasoningJson_TextChanged"
-                                         ToolTip='例如 { "reasoning_effort": "none" }'/>
-                            </StackPanel>
-                        </Grid>
-                        <TextBlock x:Name="ReasoningJsonHintTextBlock" Margin="0,6,0,0"
-                                   FontSize="10" Foreground="#7A8490" TextWrapping="Wrap"/>
-                    </StackPanel>
+                    <Expander x:Name="ReasoningExpander"
+                              Grid.Row="6"
+                              IsExpanded="False"
+                              Header="推理字段（可选，留空即按默认处理）"
+                              Margin="0,0,0,10"
+                              Foreground="#39414A">
+                        <StackPanel Margin="0,8,0,0">
+                            <TextBlock Text="仅在服务商需要自定义思考参数时填写 JSON。"
+                                       Margin="0,0,0,8" FontSize="10" Foreground="#7A8490" TextWrapping="Wrap"/>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                                    <TextBlock Text="开启推理时附加的 JSON" Margin="0,0,0,5" FontSize="11" Foreground="#39414A"/>
+                                    <TextBox x:Name="ReasoningOnJsonTextBox" Height="60" Padding="9,6"
+                                             AcceptsReturn="True" TextWrapping="Wrap" FontFamily="Consolas"
+                                             VerticalScrollBarVisibility="Auto"
+                                             TextChanged="ReasoningJson_TextChanged"
+                                             ToolTip='例如 { "reasoning_effort": "high" }'/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1">
+                                    <TextBlock Text="关闭推理时附加的 JSON" Margin="0,0,0,5" FontSize="11" Foreground="#39414A"/>
+                                    <TextBox x:Name="ReasoningOffJsonTextBox" Height="60" Padding="9,6"
+                                             AcceptsReturn="True" TextWrapping="Wrap" FontFamily="Consolas"
+                                             VerticalScrollBarVisibility="Auto"
+                                             TextChanged="ReasoningJson_TextChanged"
+                                             ToolTip='例如 { "reasoning_effort": "none" }'/>
+                                </StackPanel>
+                            </Grid>
+                            <TextBlock x:Name="ReasoningJsonHintTextBlock" Margin="0,6,0,0"
+                                       FontSize="10" Foreground="#7A8490" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Expander>
                     <TextBlock x:Name="StatusTextBlock" Grid.Row="7" Margin="0,6,0,0"
                                VerticalAlignment="Top" FontSize="12" Foreground="#68717D"
                                TextWrapping="Wrap"/>

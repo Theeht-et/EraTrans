@@ -251,7 +251,7 @@
                                          Height="32"
                                          Padding="8,0"
                                          VerticalContentAlignment="Center"
-                                         ToolTip="1–50，默认 1。调高可加快批量翻译，过高可能触发接口限流" />
+                                         ToolTip="1–50，默认 5。调高可加快批量翻译，过高可能触发接口限流" />
                             </StackPanel>
                         </Grid>
 

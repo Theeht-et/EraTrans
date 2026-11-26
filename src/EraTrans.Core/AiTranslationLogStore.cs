@@ -113,41 +113,11 @@ public sealed class AiTranslationLogStore : IAiTranslationLogStore
 
         lock (_gate)
         {
-            Directory.CreateDirectory(_directoryPath);
             string fileName =
                 $"{entry.StartedAtUtc.UtcDateTime:yyyyMMddTHHmmssfffZ}_{entry.Id}.json";
             string filePath = Path.Combine(_directoryPath, fileName);
-            string temporaryPath = Path.Combine(
-                _directoryPath,
-                $"{fileName}.{Guid.NewGuid():N}.tmp");
             string json = JsonSerializer.Serialize(entry, JsonOptions);
-
-            try
-            {
-                using (var stream = new FileStream(
-                           temporaryPath,
-                           FileMode.CreateNew,
-                           FileAccess.Write,
-                           FileShare.None,
-                           bufferSize: 8192,
-                           options: FileOptions.WriteThrough))
-                using (var writer = new StreamWriter(stream, new UTF8Encoding(false)))
-                {
-                    writer.Write(json);
-                    writer.Flush();
-                    stream.Flush(flushToDisk: true);
-                }
-
-                if (File.Exists(filePath))
-                    File.Replace(temporaryPath, filePath, destinationBackupFileName: null);
-                else
-                    File.Move(temporaryPath, filePath);
-            }
-            finally
-            {
-                if (File.Exists(temporaryPath))
-                    File.Delete(temporaryPath);
-            }
+            AtomicFileWriter.WriteAllText(filePath, json, bufferSize: 8192);
         }
     }
 

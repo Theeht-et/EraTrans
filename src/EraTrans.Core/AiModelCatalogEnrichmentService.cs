@@ -242,28 +242,13 @@ public sealed class AiModelCatalogEnrichmentService
         if (string.IsNullOrWhiteSpace(directory))
             return;
 
-        string temporaryPath = _catalogCacheFilePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {
-            Directory.CreateDirectory(directory);
-            File.WriteAllText(temporaryPath, json, new System.Text.UTF8Encoding(false));
-            File.Move(temporaryPath, _catalogCacheFilePath, overwrite: true);
+            AtomicFileWriter.WriteAllText(_catalogCacheFilePath, json);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             // The in-memory catalog is still usable when the local cache cannot be written.
-        }
-        finally
-        {
-            try
-            {
-                if (File.Exists(temporaryPath))
-                    File.Delete(temporaryPath);
-            }
-            catch (IOException)
-            {
-                // Best-effort cleanup of a temporary metadata cache file.
-            }
         }
     }
 

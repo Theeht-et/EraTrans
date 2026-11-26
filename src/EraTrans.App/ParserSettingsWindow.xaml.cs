@@ -44,11 +44,6 @@ public partial class ParserSettingsWindow : Window
         SkipNonJapaneseEntriesCheckBox.IsChecked = settings.SkipNonJapaneseEntries;
         AutoOpenFolderCheckBox.IsChecked = settings.AutoOpenFolder;
         EnableDisplayNameTranslationInjectionCheckBox.IsChecked = settings.EnableDisplayNameTranslationInjection;
-        EnableVariableAutoCorrectionCheckBox.IsChecked = settings.EnableVariableAutoCorrection;
-        HideEnglishTextCheckBox.IsChecked = settings.HideEnglishText;
-        MergeDuplicateEntriesCheckBox.IsChecked = settings.MergeDuplicateEntries;
-        HideVariableEntriesCheckBox.IsChecked = settings.HideVariableEntries;
-        MergeConcatenatedStringsCheckBox.IsChecked = settings.MergeConcatenatedStrings;
         WriteContextCheckBox.IsChecked = settings.WriteContext;
         EnableErbSemanticGroupingTranslationCheckBox.IsChecked = settings.EnableErbSemanticGroupingTranslation;
 
@@ -57,9 +52,7 @@ public partial class ParserSettingsWindow : Window
         TranslationConcurrencyTextBox.Text = settings.TranslationConcurrency.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
         TargetFileExtensionsTextBox.Text = string.Join(Environment.NewLine, settings.TargetFileExtensions);
-        AutoReplaceReferenceFilesTextBox.Text = string.Join(Environment.NewLine, settings.AutoReplaceReferenceFiles);
-        VariableNameCharactersTextBox.Text = string.Join(Environment.NewLine, settings.VariableNameCharacters);
-        OperatorsTextBox.Text = string.Join(Environment.NewLine, settings.Operators);
+        LegacySettingsControl.Populate(settings.Legacy);
 
         UpdateModeAvailability();
     }
@@ -73,7 +66,7 @@ public partial class ParserSettingsWindow : Window
     /// </summary>
     private void UpdateModeAvailability()
     {
-        if (LexerSettingsPanel is null || LegacySettingsPanel is null)
+        if (LexerSettingsPanel is null || LegacySettingsControl is null)
         {
             return;
         }
@@ -86,8 +79,8 @@ public partial class ParserSettingsWindow : Window
         LexerSettingsPanel.IsEnabled = isLexer;
         LexerSettingsPanel.Opacity = isLexer ? 1.0 : 0.55;
 
-        LegacySettingsPanel.IsEnabled = !isLexer;
-        LegacySettingsPanel.Opacity = isLexer ? 0.55 : 1.0;
+        LegacySettingsControl.IsEnabled = !isLexer;
+        LegacySettingsControl.Opacity = isLexer ? 0.55 : 1.0;
     }
 
     private static List<string> ReadLines(TextBox textBox) =>
@@ -147,11 +140,6 @@ public partial class ParserSettingsWindow : Window
                 SkipNonJapaneseEntries = SkipNonJapaneseEntriesCheckBox.IsChecked == true,
                 AutoOpenFolder = AutoOpenFolderCheckBox.IsChecked == true,
                 EnableDisplayNameTranslationInjection = EnableDisplayNameTranslationInjectionCheckBox.IsChecked == true,
-                EnableVariableAutoCorrection = EnableVariableAutoCorrectionCheckBox.IsChecked == true,
-                HideEnglishText = HideEnglishTextCheckBox.IsChecked == true,
-                MergeDuplicateEntries = MergeDuplicateEntriesCheckBox.IsChecked == true,
-                HideVariableEntries = HideVariableEntriesCheckBox.IsChecked == true,
-                MergeConcatenatedStrings = MergeConcatenatedStringsCheckBox.IsChecked == true,
                 WriteContext = WriteContextCheckBox.IsChecked == true,
                 EnableErbSemanticGroupingTranslation = EnableErbSemanticGroupingTranslationCheckBox.IsChecked == true,
                 WindowMaxCharacters = ReadLimit(
@@ -176,9 +164,7 @@ public partial class ParserSettingsWindow : Window
                 LastOutputRootDirectory = _settingsToPreserve.LastOutputRootDirectory,
                 LastDictionaryFileRelativePath = _settingsToPreserve.LastDictionaryFileRelativePath,
                 TargetFileExtensions = targetExtensions,
-                AutoReplaceReferenceFiles = ReadLines(AutoReplaceReferenceFilesTextBox),
-                VariableNameCharacters = ReadLines(VariableNameCharactersTextBox),
-                Operators = ReadLines(OperatorsTextBox)
+                Legacy = LegacySettingsControl.BuildSettings()
             };
 
             _store.Save(settings);

@@ -78,6 +78,12 @@ public sealed class AiTranslationService
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     };
 
+    private static readonly JsonSerializerOptions LogRequestJsonOptions = new()
+    {
+        WriteIndented = true,
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+    };
+
     private readonly IAiChatCompletionClient _client;
     private readonly IAiTranslationLogStore? _logStore;
 
@@ -288,11 +294,7 @@ public sealed class AiTranslationService
             using JsonDocument requestDocument = JsonDocument.Parse(requestDetails.JsonBody);
             string requestJson = JsonSerializer.Serialize(
                 requestDocument.RootElement,
-                new JsonSerializerOptions
-                {
-                    WriteIndented = true,
-                    Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-                });
+                LogRequestJsonOptions);
 
             log = new AiTranslationLogEntry
             {

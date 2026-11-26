@@ -45,6 +45,11 @@ public sealed class TranslationApplier
 {
     public const string ApplyStateFileName = "apply-state.json";
 
+    private static readonly JsonSerializerOptions ApplyStateJsonOptions = new()
+    {
+        WriteIndented = true
+    };
+
     public TranslationApplyResult Apply(
         string gameDirectory,
         string dictionaryDirectory,
@@ -1133,10 +1138,9 @@ public sealed class TranslationApplier
             return;
         }
 
-        Directory.CreateDirectory(auxiliaryDataDirectory);
         string statePath = Path.Combine(auxiliaryDataDirectory, ApplyStateFileName);
-        string json = JsonSerializer.Serialize(state, new JsonSerializerOptions { WriteIndented = true });
-        File.WriteAllText(statePath, json, Encoding.UTF8);
+        string json = JsonSerializer.Serialize(state, ApplyStateJsonOptions);
+        AtomicFileWriter.WriteAllText(statePath, json, Encoding.UTF8);
     }
 
     private sealed record FileApplyOperation(

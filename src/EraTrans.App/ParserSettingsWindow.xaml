@@ -1,6 +1,7 @@
 <Window x:Class="EraTrans.App.ParserSettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:EraTrans.App"
         Title="提取与写回"
         Width="840"
         Height="760"
@@ -162,127 +163,7 @@
                     </StackPanel>
                 </Border>
 
-                <Border x:Name="LegacySettingsPanel"
-                        Padding="16"
-                        Margin="0,0,0,12"
-                        Background="White"
-                        BorderBrush="#E3E6EA"
-                        BorderThickness="1"
-                        CornerRadius="8">
-                    <StackPanel>
-                        <TextBlock Text="旧版提取设置"
-                                   FontSize="16"
-                                   FontWeight="SemiBold"
-                                   Foreground="#20242A" />
-
-                        <TextBlock Text="仅旧版模式生效，一般保持默认即可。"
-                                   Margin="0,4,0,10"
-                                   TextWrapping="Wrap"
-                                   FontSize="11"
-                                   Foreground="#68717D" />
-
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                            </Grid.RowDefinitions>
-
-                            <CheckBox x:Name="HideEnglishTextCheckBox"
-                                      Content="隐藏英文词条"
-                                      ToolTip="隐藏纯英文词条，不参与翻译"
-                                      Margin="0,0,10,10"
-                                      Foreground="#39414A" />
-                            <CheckBox x:Name="MergeDuplicateEntriesCheckBox"
-                                      Grid.Column="1"
-                                      Content="合并同一文件中的相同词条"
-                                      ToolTip="同一文件里完全相同的句子只保留一条"
-                                      Margin="0,0,0,10"
-                                      Foreground="#39414A" />
-                            <CheckBox x:Name="HideVariableEntriesCheckBox"
-                                      Grid.Row="1"
-                                      Content="屏蔽变量词条输出"
-                                      ToolTip="过滤疑似变量名的条目，避免误翻代码"
-                                      Margin="0,0,10,0"
-                                      Foreground="#39414A" />
-                            <CheckBox x:Name="MergeConcatenatedStringsCheckBox"
-                                      Grid.Row="1"
-                                      Grid.Column="1"
-                                      Content="合并联立字符串"
-                                      ToolTip="合并拼接字符串，建议保持默认"
-                                      Foreground="#39414A" />
-                        </Grid>
-
-                        <Expander Header="高级解析规则（仅旧版）"
-                                  Margin="0,14,0,0"
-                                  Foreground="#39414A">
-                            <StackPanel Margin="0,8,0,0">
-                                <TextBlock Text="直接影响旧版脚本拆分规则，不熟悉 ERA 语法请保持默认。"
-                                           TextWrapping="Wrap"
-                                           FontSize="11"
-                                           Foreground="#68717D"
-                                           Margin="0,0,0,10" />
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="12" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <StackPanel>
-                                        <TextBlock Text="允许构成变量名的字符（每行一个）"
-                                                   Margin="0,0,0,5"
-                                                   FontWeight="SemiBold"
-                                                   Foreground="#39414A" />
-                                        <TextBox x:Name="VariableNameCharactersTextBox"
-                                                 Height="150"
-                                                 AcceptsReturn="True"
-                                                 TextWrapping="NoWrap"
-                                                 VerticalScrollBarVisibility="Auto"
-                                                 HorizontalScrollBarVisibility="Auto"
-                                                 Padding="8"
-                                                 FontFamily="Consolas" />
-                                    </StackPanel>
-                                    <StackPanel Grid.Column="2">
-                                        <TextBlock Text="需要处理的操作符（每行一个）"
-                                                   Margin="0,0,0,5"
-                                                   FontWeight="SemiBold"
-                                                   Foreground="#39414A" />
-                                        <TextBox x:Name="OperatorsTextBox"
-                                                 Height="150"
-                                                 AcceptsReturn="True"
-                                                 TextWrapping="NoWrap"
-                                                 VerticalScrollBarVisibility="Auto"
-                                                 HorizontalScrollBarVisibility="Auto"
-                                                 Padding="8"
-                                                 FontFamily="Consolas" />
-                                    </StackPanel>
-                                </Grid>
-
-                                <CheckBox x:Name="EnableVariableAutoCorrectionCheckBox"
-                                          Content="旧版变量自动修正（高风险，默认关闭）"
-                                          ToolTip="旧版遗留功能：写回后用下方 CSV 词典对脚本做全文替换，可能误伤同名台词；新版已改用显示层变量名封装，无需开启"
-                                          Foreground="#39414A"
-                                          Margin="0,12,0,8" />
-
-                                <TextBlock Text="变量自动修正参考文件（每行一个，不含 .json）"
-                                           Margin="0,0,0,5"
-                                           FontWeight="SemiBold"
-                                           Foreground="#39414A" />
-                                <TextBox x:Name="AutoReplaceReferenceFilesTextBox"
-                                         Height="88"
-                                         AcceptsReturn="True"
-                                         TextWrapping="NoWrap"
-                                         VerticalScrollBarVisibility="Auto"
-                                         HorizontalScrollBarVisibility="Auto"
-                                         Padding="8"
-                                         FontFamily="Consolas" />
-                            </StackPanel>
-                        </Expander>
-                    </StackPanel>
-                </Border>
+                <local:LegacyParserSettingsControl x:Name="LegacySettingsControl" />
 
                 <Border Padding="16"
                         Margin="0,0,0,12"

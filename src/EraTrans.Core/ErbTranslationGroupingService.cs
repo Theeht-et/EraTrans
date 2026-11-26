@@ -221,7 +221,7 @@ public sealed class ErbTranslationGroupingService
 
         try
         {
-            WriteAtomically(sidecarPath, JsonSerializer.Serialize(index, JsonOptions));
+            AtomicFileWriter.WriteAllText(sidecarPath, JsonSerializer.Serialize(index, JsonOptions));
             return true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -805,45 +805,4 @@ public sealed class ErbTranslationGroupingService
     private static string NormalizeRelativePath(string path) =>
         path.Replace(Path.DirectorySeparatorChar, '/')
             .Replace(Path.AltDirectorySeparatorChar, '/');
-
-    private static void WriteAtomically(string path, string content)
-    {
-        string directory = Path.GetDirectoryName(path)!;
-        Directory.CreateDirectory(directory);
-        string temporaryPath = Path.Combine(
-            directory,
-            $".{Path.GetFileName(path)}.{Guid.NewGuid():N}.tmp");
-        byte[] bytes = new UTF8Encoding(false).GetBytes(content);
-
-        try
-        {
-            using (var stream = new FileStream(
-                       temporaryPath,
-                       FileMode.CreateNew,
-                       FileAccess.Write,
-                       FileShare.None,
-                       bufferSize: 4096,
-                       options: FileOptions.WriteThrough))
-            {
-                stream.Write(bytes);
-                stream.Flush(flushToDisk: true);
-            }
-
-            if (File.Exists(path))
-            {
-                File.Replace(temporaryPath, path, destinationBackupFileName: null);
-            }
-            else
-            {
-                File.Move(temporaryPath, path);
-            }
-        }
-        finally
-        {
-            if (File.Exists(temporaryPath))
-            {
-                File.Delete(temporaryPath);
-            }
-        }
-    }
 }

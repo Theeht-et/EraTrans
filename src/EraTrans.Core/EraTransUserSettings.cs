@@ -1,11 +1,12 @@
 using System.Text;
+using System.Text.Json.Serialization;
 using EraTrans.Core.VisibleText;
 
 namespace EraTrans.Core;
 
 /// <summary>
 /// User-configurable application and parser settings.
-/// Variable dictionary entries are suppressed by default; this can be changed in settings.
+/// Legacy ERB extraction settings are isolated under <see cref="Legacy"/>.
 /// </summary>
 public sealed class EraTransUserSettings
 {
@@ -22,11 +23,6 @@ public sealed class EraTransUserSettings
 
     public string FileEncodingId { get; set; } = "932";
     public bool AutoOpenFolder { get; set; } = true;
-    public bool EnableVariableAutoCorrection { get; set; } = false;
-    public bool HideEnglishText { get; set; } = true;
-    public bool MergeDuplicateEntries { get; set; } = false;
-    public bool HideVariableEntries { get; set; } = true;
-    public bool MergeConcatenatedStrings { get; set; } = true;
     public bool WriteContext { get; set; } = true;
     public bool EnableErbSemanticGroupingTranslation { get; set; } = true;
 
@@ -73,11 +69,68 @@ public sealed class EraTransUserSettings
 
     public List<string> TargetFileExtensions { get; set; } = [.. EraParserOptions.DefaultTargetFileExtensions];
 
-    public List<string> AutoReplaceReferenceFiles { get; set; } = [.. EraParserOptions.DefaultAutoReplaceReferenceFiles];
+    /// <summary>
+    /// Isolated settings for the legacy ERB extractor and legacy variable auto-correction.
+    /// Persisted under the nested <c>Legacy</c> section in <c>settings.json</c>.
+    /// </summary>
+    public LegacyExtractionSettings Legacy { get; set; } = LegacyExtractionSettings.CreateDefault();
 
-    public List<string> VariableNameCharacters { get; set; } = [.. EraParserOptions.DefaultVariableNameCharacters];
+    // Compatibility forwarders for existing callers/tests; omitted from top-level JSON serialization.
+    [JsonIgnore]
+    public bool EnableVariableAutoCorrection
+    {
+        get => Legacy.EnableVariableAutoCorrection;
+        set => Legacy.EnableVariableAutoCorrection = value;
+    }
 
-    public List<string> Operators { get; set; } = [.. EraParserOptions.DefaultOperators];
+    [JsonIgnore]
+    public bool HideEnglishText
+    {
+        get => Legacy.HideEnglishText;
+        set => Legacy.HideEnglishText = value;
+    }
+
+    [JsonIgnore]
+    public bool MergeDuplicateEntries
+    {
+        get => Legacy.MergeDuplicateEntries;
+        set => Legacy.MergeDuplicateEntries = value;
+    }
+
+    [JsonIgnore]
+    public bool HideVariableEntries
+    {
+        get => Legacy.HideVariableEntries;
+        set => Legacy.HideVariableEntries = value;
+    }
+
+    [JsonIgnore]
+    public bool MergeConcatenatedStrings
+    {
+        get => Legacy.MergeConcatenatedStrings;
+        set => Legacy.MergeConcatenatedStrings = value;
+    }
+
+    [JsonIgnore]
+    public List<string> AutoReplaceReferenceFiles
+    {
+        get => Legacy.AutoReplaceReferenceFiles;
+        set => Legacy.AutoReplaceReferenceFiles = value;
+    }
+
+    [JsonIgnore]
+    public List<string> VariableNameCharacters
+    {
+        get => Legacy.VariableNameCharacters;
+        set => Legacy.VariableNameCharacters = value;
+    }
+
+    [JsonIgnore]
+    public List<string> Operators
+    {
+        get => Legacy.Operators;
+        set => Legacy.Operators = value;
+    }
 
     public static EraTransUserSettings CreateDefault() => new();
 
@@ -112,16 +165,9 @@ public sealed class EraTransUserSettings
             ExtractHtmlTitle = ExtractHtmlTitle,
             ExtractPrintDataEntries = ExtractPrintDataEntries,
             SkipNonJapaneseEntries = SkipNonJapaneseEntries,
-            HideEnglishText = HideEnglishText,
-            MergeDuplicateEntries = MergeDuplicateEntries,
-            HideVariableEntries = HideVariableEntries,
-            MergeConcatenatedStrings = MergeConcatenatedStrings,
             WriteContext = WriteContext,
-            EnableVariableAutoCorrection = EnableVariableAutoCorrection,
-            AutoReplaceReferenceFiles = AutoReplaceReferenceFiles.ToArray(),
             TargetFileExtensions = TargetFileExtensions.ToArray(),
-            VariableNameCharacters = VariableNameCharacters.ToArray(),
-            Operators = Operators.ToArray()
+            Legacy = Legacy.Clone()
         };
     }
 
@@ -150,52 +196,12 @@ public sealed class EraTransUserSettings
         TranslationConcurrency = Math.Clamp(
             TranslationConcurrency, MinimumTranslationConcurrency, MaximumTranslationConcurrency);
 
-        ValidateList(TargetFileExtensions, "游戏文件扩展名", value =>
+        LegacyExtractionSettings.ValidateList(TargetFileExtensions, "游戏文件扩展名", value =>
             value.StartsWith(".", StringComparison.Ordinal) &&
             value.Length > 1 &&
             value.IndexOfAny(['/', '\\', '*', '?', ':']) < 0);
 
-        ValidateList(AutoReplaceReferenceFiles, "变量自动修正参考文件", value =>
-            !Path.IsPathRooted(value) &&
-            Path.GetFileName(value).Equals(value, StringComparison.Ordinal) &&
-            !value.Contains('/') &&
-            !value.Contains('\\') &&
-            !value.EndsWith(".json", StringComparison.OrdinalIgnoreCase));
-
-        ValidateList(VariableNameCharacters, "变量名字符", value => value.Length == 1);
-        ValidateList(Operators, "操作符", value => !value.Any(char.IsWhiteSpace));
-    }
-
-    private static void ValidateList(
-        List<string>? values,
-        string displayName,
-        Func<string, bool> predicate)
-    {
-        if (values is null || values.Count == 0)
-        {
-            throw new InvalidDataException($"{displayName}列表不能为空，且不能包含无效项目。");
-        }
-
-        for (int index = 0; index < values.Count; index++)
-        {
-            string? value = values[index];
-            if (string.IsNullOrWhiteSpace(value))
-            {
-                throw new InvalidDataException($"{displayName}列表不能为空，且不能包含无效项目。");
-            }
-
-            string normalizedValue = value.Trim();
-            if (!predicate(normalizedValue))
-            {
-                throw new InvalidDataException($"{displayName}列表不能为空，且不能包含无效项目。");
-            }
-
-            values[index] = normalizedValue;
-        }
-
-        if (values.Distinct(StringComparer.OrdinalIgnoreCase).Count() != values.Count)
-        {
-            throw new InvalidDataException($"{displayName}列表包含重复项目。");
-        }
+        Legacy ??= LegacyExtractionSettings.CreateDefault();
+        Legacy.Validate();
     }
 }

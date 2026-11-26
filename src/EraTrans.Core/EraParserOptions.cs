@@ -8,6 +8,14 @@ namespace EraTrans.Core;
 /// </summary>
 public sealed class EraParserOptions
 {
+    internal static readonly string[] DefaultTargetFileExtensions =
+    [
+        ".csv",
+        ".erb",
+        ".erh",
+        ".erd"
+    ];
+
     /// <summary>
     /// Which extractor produces the ERB dictionaries. The CSV/RES/XML/ERD branches always
     /// use the legacy parsers; only the ERB branch switches.
@@ -39,51 +47,7 @@ public sealed class EraParserOptions
     /// <summary>Fallback for BOM-less legacy files; CP932 is the default for Japanese ERA games.</summary>
     public Encoding FileEncoding { get; init; } = CreateDefaultFileEncoding();
 
-    public bool HideEnglishText { get; init; } = true;
-    public bool MergeDuplicateEntries { get; init; } = false;
-    public bool HideVariableEntries { get; init; } = true;
-    public bool MergeConcatenatedStrings { get; init; } = true;
     public bool WriteContext { get; init; } = true;
-
-    /// <summary>
-    /// Controls automatic variable correction when applying translations.
-    /// </summary>
-    public bool EnableVariableAutoCorrection { get; init; } = false;
-
-    internal static readonly string[] DefaultAutoReplaceReferenceFiles =
-    [
-        "Abl", "Base", "CFlag", "CSTR", "Equip", "Ex",
-        "Exp", "Flag", "Global", "Item", "Juel",
-        "Mark", "Nowex", "Palam", "Source", "Stain",
-        "Talent", "TCVAR", "TEquip", "Tflag", "Train",
-        "TSTR", "修正字典"
-    ];
-
-    internal static readonly string[] DefaultTargetFileExtensions =
-    [
-        ".csv",
-        ".erb",
-        ".erh",
-        ".erd"
-    ];
-
-    internal static readonly string[] DefaultVariableNameCharacters =
-    [
-        "☆", "♡", "∀", "←", "→"
-    ];
-
-    internal static readonly string[] DefaultOperators =
-    [
-        "(", ")", "{", "}", "?", "#", "=", "+=", "-=", "*=", "/=",
-        ">", "<", "==", "!=", ">=", "<=", "&&", "||", "&", "|", "!",
-        "+", "-", "*", "/", "%", "++", "--", ",", ":", "TO"
-    ];
-
-    /// <summary>
-    /// Top-level CSV dictionary names used for variable auto-correction,
-    /// without the .json extension.
-    /// </summary>
-    public IReadOnlyList<string> AutoReplaceReferenceFiles { get; init; } = DefaultAutoReplaceReferenceFiles;
 
     /// <summary>
     /// Game-file extensions checked when applying a dictionary at the same relative path.
@@ -91,12 +55,56 @@ public sealed class EraParserOptions
     public IReadOnlyList<string> TargetFileExtensions { get; init; } = DefaultTargetFileExtensions;
 
     /// <summary>
-    /// Additional characters allowed in ERA variable names.
+    /// Isolated settings used exclusively by the legacy ERB parser and legacy variable auto-correction.
     /// </summary>
-    public IReadOnlyList<string> VariableNameCharacters { get; init; } = DefaultVariableNameCharacters;
+    public LegacyExtractionSettings Legacy { get; init; } = LegacyExtractionSettings.CreateDefault();
 
-    /// <summary>
-    /// Operators recognized by the ERA expression parser.
-    /// </summary>
-    public IReadOnlyList<string> Operators { get; init; } = DefaultOperators;
+    // Compatibility forwarders for LegacyParser/Configs.cs and existing callers.
+    public bool HideEnglishText
+    {
+        get => Legacy.HideEnglishText;
+        init => Legacy.HideEnglishText = value;
+    }
+
+    public bool MergeDuplicateEntries
+    {
+        get => Legacy.MergeDuplicateEntries;
+        init => Legacy.MergeDuplicateEntries = value;
+    }
+
+    public bool HideVariableEntries
+    {
+        get => Legacy.HideVariableEntries;
+        init => Legacy.HideVariableEntries = value;
+    }
+
+    public bool MergeConcatenatedStrings
+    {
+        get => Legacy.MergeConcatenatedStrings;
+        init => Legacy.MergeConcatenatedStrings = value;
+    }
+
+    public bool EnableVariableAutoCorrection
+    {
+        get => Legacy.EnableVariableAutoCorrection;
+        init => Legacy.EnableVariableAutoCorrection = value;
+    }
+
+    public IReadOnlyList<string> AutoReplaceReferenceFiles
+    {
+        get => Legacy.AutoReplaceReferenceFiles;
+        init => Legacy.AutoReplaceReferenceFiles = value is null ? null! : [.. value];
+    }
+
+    public IReadOnlyList<string> VariableNameCharacters
+    {
+        get => Legacy.VariableNameCharacters;
+        init => Legacy.VariableNameCharacters = value is null ? null! : [.. value];
+    }
+
+    public IReadOnlyList<string> Operators
+    {
+        get => Legacy.Operators;
+        init => Legacy.Operators = value is null ? null! : [.. value];
+    }
 }

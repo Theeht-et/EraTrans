@@ -51,7 +51,6 @@ public partial class ParserSettingsWindow : Window
         WindowMaxLinesTextBox.Text = settings.WindowMaxLines.ToString(System.Globalization.CultureInfo.InvariantCulture);
         TranslationConcurrencyTextBox.Text = settings.TranslationConcurrency.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
-        TargetFileExtensionsTextBox.Text = string.Join(Environment.NewLine, settings.TargetFileExtensions);
         LegacySettingsControl.Populate(settings.Legacy);
 
         UpdateModeAvailability();
@@ -82,13 +81,6 @@ public partial class ParserSettingsWindow : Window
         LegacySettingsControl.IsEnabled = !isLexer;
         LegacySettingsControl.Opacity = isLexer ? 0.55 : 1.0;
     }
-
-    private static List<string> ReadLines(TextBox textBox) =>
-        textBox.Text
-            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
-            .Select(value => value.Trim())
-            .Where(value => value.Length > 0)
-            .ToList();
 
     private static int ReadLimit(
         TextBox textBox,
@@ -123,13 +115,9 @@ public partial class ParserSettingsWindow : Window
                 throw new InvalidDataException("请选择有效的文本抽取方式。");
             }
 
-            List<string> targetExtensions = ReadLines(TargetFileExtensionsTextBox);
-            if (!targetExtensions.Any(value =>
-                    string.Equals(value, ".erb", StringComparison.OrdinalIgnoreCase)))
-            {
-                throw new InvalidDataException(
-                    "游戏文件扩展名必须包含 .erb，否则 ERB 译文在写回时会被静默跳过。");
-            }
+            List<string> targetExtensions = _settingsToPreserve.TargetFileExtensions is { Count: > 0 }
+                ? [.. _settingsToPreserve.TargetFileExtensions]
+                : [.. EraParserOptions.DefaultTargetFileExtensions];
 
             var settings = new EraTransUserSettings
             {
@@ -147,19 +135,19 @@ public partial class ParserSettingsWindow : Window
                     EraTransUserSettings.MinimumWindowCharacters,
                     EraTransUserSettings.MaximumWindowCharacters,
                     EraTransUserSettings.DefaultWindowCharacters,
-                    "每个窗口的字符上限"),
+                    "单次发给 AI 的字数上限"),
                 WindowMaxLines = ReadLimit(
                     WindowMaxLinesTextBox,
                     EraTransUserSettings.MinimumWindowLines,
                     EraTransUserSettings.MaximumWindowLines,
                     EraTransUserSettings.DefaultWindowLines,
-                    "每个窗口的行数上限"),
+                    "单次发给 AI 的句数上限"),
                 TranslationConcurrency = ReadLimit(
                     TranslationConcurrencyTextBox,
                     EraTransUserSettings.MinimumTranslationConcurrency,
                     EraTransUserSettings.MaximumTranslationConcurrency,
                     EraTransUserSettings.DefaultTranslationConcurrency,
-                    "同时发送的请求数"),
+                    "同时翻译的并发数"),
                 LastGameDirectory = _settingsToPreserve.LastGameDirectory,
                 LastOutputRootDirectory = _settingsToPreserve.LastOutputRootDirectory,
                 LastDictionaryFileRelativePath = _settingsToPreserve.LastDictionaryFileRelativePath,

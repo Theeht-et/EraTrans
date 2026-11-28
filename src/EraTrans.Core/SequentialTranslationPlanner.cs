@@ -17,7 +17,8 @@ public sealed record WindowLine(
     string? Command = null,
     string? Kind = null,
     string? SceneId = null,
-    bool Menu = false);
+    bool Menu = false,
+    string? PrecedingCall = null);
 
 /// <summary>A consecutive run of source lines translated in one request.</summary>
 public sealed record TranslationWindow(
@@ -437,7 +438,8 @@ public sealed class SequentialTranslationPlanner
             item.Link.Command,
             item.Link.Kind,
             string.IsNullOrWhiteSpace(item.Link.ControlScopeId) ? null : item.Link.ControlScopeId,
-            menuKeys.Contains(item.Line.Key));
+            menuKeys.Contains(item.Line.Key),
+            string.IsNullOrWhiteSpace(item.Link.PrecedingCall) ? null : item.Link.PrecedingCall);
 
     private static bool HasUnclosedQuote(string text)
     {

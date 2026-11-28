@@ -315,6 +315,54 @@ public sealed class WindowTranslationTests
         Assert.Contains("缺少 [[P1]]", client.LastMessages[3].Content);
     }
 
+    [Fact]
+    public void ScanPrecedingCallsByLine_DetectsInterleavedAndLeadingCallStatements()
+    {
+        const string erb = """
+            @TRAIN_MESSAGE_A
+            IF A < 300
+                PRINTFORM %GET_TARGET_CHARA_DESC_TEXT(NO:TARGET)%は、
+                CALL PARTNER_NAME, TARGET
+                PRINTFORMW の名前を出しながら、%CALLNAME:PLAYER%から逃れようともがいている……
+            ELSEIF A < 6000
+                PRINTFORM %GET_TARGET_CHARA_DESC_TEXT(NO:TARGET)%は、
+                CALL PARTNER_NAME, TARGET
+                SETCOLOR 0xFF0000
+                PRINTFORMW を思い出し耐えようとしている……
+            ELSE
+                CALL PARTNER_NAME, TARGET
+                PRINTFORML への想いが肉欲に負けてしまった
+            ENDIF
+            PRINTFORML 通常の行
+            """;
+
+        Dictionary<int, string> calls = ErbTranslationGroupingService.ScanPrecedingCallsByLine(erb);
+
+        Assert.Equal("PARTNER_NAME", calls[5]);
+        Assert.Equal("PARTNER_NAME", calls[10]);
+        Assert.Equal("PARTNER_NAME", calls[13]);
+        Assert.False(calls.ContainsKey(3));
+        Assert.False(calls.ContainsKey(15));
+    }
+
+    [Fact]
+    public void Payload_EmitsCallBeforeField_WhenPrecedingCallIsPresent()
+    {
+        var window = new TranslationWindow(
+            "TRAIN_MESSAGE_A",
+            1,
+            [
+                new WindowLine(1, "k1", "[[P0]]は、", "TRAIN_MESSAGE_A", true, false, 0, false, null, "PRINTFORM", "form"),
+                new WindowLine(2, "k2", "の名前を出しながら…", "TRAIN_MESSAGE_A", true, false, 1, false, null, "PRINTFORMW", "form", PrecedingCall: "PARTNER_NAME")
+            ]);
+
+        using JsonDocument document = JsonDocument.Parse(AiTranslationService.BuildWindowPayload(window));
+        JsonElement[] lines = document.RootElement.GetProperty("lines").EnumerateArray().ToArray();
+
+        Assert.False(lines[0].TryGetProperty("call_before", out _));
+        Assert.Equal("PARTNER_NAME", lines[1].GetProperty("call_before").GetString());
+    }
+
     private sealed class MultiTurnRecordingClient(string firstReply, string followUpReply) : IAiChatCompletionClient
     {
         public IReadOnlyList<AiChatMessage>? LastMessages { get; private set; }

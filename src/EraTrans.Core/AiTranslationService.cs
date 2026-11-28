@@ -82,6 +82,8 @@ public sealed class AiTranslationService
         5. cmd/kind 说明该行的显示方式：button 是按钮文字（简短、以动作开头、不加句号），data 是数据块选项，html 是界面文本；print/form 是正文对白，按句翻译。menu 为 1 的行是同一菜单的选项，句式与长度要互相一致。
         6. 原文中的 [[P0]]、[[P1]] 等标记是程序保护的代码占位符，必须原样保留且出现次数与原文完全一致（不要翻译、删除、修改编号，也不要在后半句重复补写 [[P0]]，需要主语时请省略或用“他/她”）；保留行内条件（\@ [[P0]] ? A # B \@）、控制码、标点和换行结构；无法翻译时原样返回原文。
         7. 若请求中包含 glossary 字段（原词到固定译名的映射），翻译正文与界面时必须严格遵循其中指定的译名。
+        8. 若某行带有 call_before 字段（例如 "PARTNER_NAME"），表示游戏引擎会在该行开头前先动态打印一段人名或词组（夹在前一行与本行之间，或直接位于本行开头）。请把衔接动词放到前一行末尾、本行直接顺接后半句，严禁自行编造或补写 [[P0]]/[[P1]] 来顶替该动态文本。
+           示例：前一行「[[P0]]は、」+ 本行（call_before:"PARTNER_NAME"）「の名前を出しながら…」→ 分别译为「[[P0]]口中喊着」「的名字，……」。
 
         part 大于 1 表示这是同一函数前一段的延续，人称和译法沿用它。
         同一请求内，同一人名、称呼和术语必须使用同一译法。
@@ -263,8 +265,14 @@ public sealed class AiTranslationService
             builder.Append("- id=\"")
                 .Append(tag)
                 .Append("\"：")
-                .Append(reason)
-                .Append("｜原文：")
+                .Append(reason);
+            if (!string.IsNullOrWhiteSpace(line.PrecedingCall))
+            {
+                builder.Append("（注意：本行前由程序调用 ")
+                    .Append(line.PrecedingCall)
+                    .Append(" 动态输出人名/词组，请直接顺接，不要自行补写 [[P0]]/[[P1]]）");
+            }
+            builder.Append("｜原文：")
                 .AppendLine(line.Text);
         }
 
@@ -584,6 +592,8 @@ public sealed class AiTranslationService
                 item["sid"] = line.SceneId;
             if (line.Menu)
                 item["menu"] = 1;
+            if (!string.IsNullOrWhiteSpace(line.PrecedingCall))
+                item["call_before"] = line.PrecedingCall;
 
             lines.Add(item);
         }

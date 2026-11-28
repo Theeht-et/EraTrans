@@ -45,11 +45,13 @@ public static class VisibleTextGrouping
         }
 
         Dictionary<int, ScreenLayout> layout = VisibleTextScreenMap.Build(sourceText);
+        Dictionary<int, string> precedingCalls = ErbTranslationGroupingService.ScanPrecedingCallsByLine(sourceText);
         var sourceEntries = new List<ErbTranslationSourceEntry>(entries.Count);
         for (int index = 0; index < entries.Count; index++)
         {
             VisibleTextEntry entry = entries[index];
             ScreenLayout position = VisibleTextScreenMap.Resolve(layout, entry.Line);
+            precedingCalls.TryGetValue(entry.Line, out string? precedingCall);
             sourceEntries.Add(new ErbTranslationSourceEntry(
                 Key: BuildKey(relativePath, index),
                 Original: entry.Template,
@@ -62,7 +64,8 @@ public static class VisibleTextGrouping
                 BranchLabel: position.BranchLabel,
                 CallTarget: null,
                 Command: entry.Command,
-                Kind: entry.Kind));
+                Kind: entry.Kind,
+                PrecedingCall: precedingCall));
         }
 
         IReadOnlyList<ErbTranslationControlMarker> markers = BuildControlMarkers(layout, sourceText);

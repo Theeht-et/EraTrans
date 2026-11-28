@@ -128,6 +128,263 @@ public sealed class WindowTranslationTests
             AiTranslationService.ParseWindowResponse("""{"1":""}""", Window(1)));
     }
 
+    [Fact]
+    public void Payload_EmitsChecksummedLineIds_AndParserResolvesThem()
+    {
+        TranslationWindow window = Window(1, 2);
+
+        using JsonDocument document = JsonDocument.Parse(AiTranslationService.BuildWindowPayload(window));
+        JsonElement[] lines = document.RootElement.GetProperty("lines").EnumerateArray().ToArray();
+        string tag1 = lines[1].GetProperty("id").GetString()!;
+        string tag2 = lines[2].GetProperty("id").GetString()!;
+
+        Assert.Equal(AiTranslationService.FormatLineId(window.Lines[1]), tag1);
+        Assert.Equal(AiTranslationService.FormatLineId(window.Lines[2]), tag2);
+        Assert.StartsWith("1_", tag1, StringComparison.Ordinal);
+        Assert.StartsWith("2_", tag2, StringComparison.Ordinal);
+
+        string response = $"{{\"{tag1}\":\"甲\",\"{tag2}\":\"乙\"}}";
+        WindowTranslationOutcome outcome = AiTranslationService.ParseWindowResponse(response, window);
+
+        Assert.True(outcome.IsComplete);
+        Assert.Equal(new[] { (1, "甲"), (2, "乙") }, outcome.Translations.Select(t => (t.Id, t.Translation)));
+    }
+
+    [Fact]
+    public void Parse_RejectsMismatchedChecksumTag()
+    {
+        TranslationWindow window = Window(1, 2);
+        string tag1 = AiTranslationService.FormatLineId(window.Lines[1]);
+        string badTag2 = "2_zz";
+
+        WindowTranslationOutcome outcome = AiTranslationService.ParseWindowResponse(
+            $"{{\"{tag1}\":\"甲\",\"{badTag2}\":\"错位译文\"}}",
+            window);
+
+        Assert.Single(outcome.Translations);
+        Assert.Equal(1, outcome.Translations[0].Id);
+        Assert.Equal(new[] { 2 }, outcome.MissingIds);
+        Assert.Equal(new[] { 2 }, outcome.UnknownIds);
+    }
+
+    [Fact]
+    public void Parse_RescuesIntactEntriesFromTruncatedOrMalformedJson()
+    {
+        TranslationWindow window = Window(1, 2, 3, 4);
+
+        // Truncated before closing brace
+        WindowTranslationOutcome truncated = AiTranslationService.ParseWindowResponse(
+            "{\"1\":\"甲\",\"2\":\"乙\",\"3\":\"被截断的半句",
+            window);
+        Assert.Equal(new[] { 1, 2 }, truncated.Translations.Select(t => t.Id));
+        Assert.Equal(new[] { 3, 4 }, truncated.MissingIds);
+
+        // Malformed unescaped quotes on entry 2, valid entries before and after
+        WindowTranslationOutcome malformed = AiTranslationService.ParseWindowResponse(
+            "{\"1\":\"甲\",\"2\":\"他说\"坏引号\"了\",\"3\":\"丙\",\"4\":\"丁\"}",
+            window);
+        Assert.Equal(new[] { 1, 3, 4 }, malformed.Translations.Select(t => t.Id));
+        Assert.Equal(new[] { 2 }, malformed.MissingIds);
+    }
+
+    [Fact]
+    public void Parse_DetectsPlaceholderMismatchAndCascadingIdShift()
+    {
+        var window = new TranslationWindow(
+            "TRAIN_MESSAGE_A",
+            1,
+            [
+                new WindowLine(0, "k0", "[[P0]]は身体をよじる。", "TRAIN_MESSAGE_A", true, false, 0, false, null),
+                new WindowLine(1, "k1", "[[P0]]は反抗的だ。", "TRAIN_MESSAGE_A", true, false, 0, false, null),
+                new WindowLine(2, "k2", "触手の蠢き", "TRAIN_MESSAGE_A", true, false, 1, false, "alt_002"),
+                new WindowLine(3, "k3", "に反応して震えている。", "TRAIN_MESSAGE_A", true, false, 1, false, "alt_001"),
+                new WindowLine(4, "k4", "[[P0]]は小さく震えた。", "TRAIN_MESSAGE_A", true, false, 0, false, null)
+            ]);
+
+        // Model merged lines and shifted ids starting at 2:
+        // id 2 (no placeholder) got [[P0]], id 3 (no placeholder) got [[P0]], id 4 got no placeholder.
+        string shiftedReply =
+            """{"0":"[[P0]]扭动着身体。","1":"[[P0]]态度反抗。","2":"[[P0]]因触手颤抖。","3":"[[P0]]微微颤抖。","4":"完全错位的尾巴。"}""";
+
+        WindowTranslationOutcome outcome = AiTranslationService.ParseWindowResponse(shiftedReply, window);
+
+        Assert.Equal(new[] { 0, 1 }, outcome.Translations.Select(t => t.Id));
+        Assert.Equal(new[] { 2, 3, 4 }, outcome.MissingIds);
+    }
+
+    [Fact]
+    public void Parse_WithChecksummedKeys_RejectsOnlyInvalidLinesAndReportsExactReasons()
+    {
+        var window = new TranslationWindow(
+            "TRAIN_MESSAGE_A",
+            1,
+            [
+                new WindowLine(62, "k62", "[[P0]]の胸を[[P1]]続けてやると熱い吐息を漏らす。", "TRAIN_MESSAGE_A", true, false, 0, false, null),
+                new WindowLine(63, "k63", "[[P0]]はトロンとした表情になっている。", "TRAIN_MESSAGE_A", true, false, 0, false, null),
+                new WindowLine(67, "k67", "[[P0]]の胸を[[P1]]続けてやると身体を跳ねさせ、", "TRAIN_MESSAGE_A", true, false, 0, false, null),
+                new WindowLine(81, "k81", "[[P0]]の乳首を弄び続けていると、熱い吐息を漏らす。", "TRAIN_MESSAGE_A", true, false, 0, false, null)
+            ]);
+
+        string t62 = AiTranslationService.FormatLineId(window.Lines[0]);
+        string t63 = AiTranslationService.FormatLineId(window.Lines[1]);
+        string t67 = AiTranslationService.FormatLineId(window.Lines[2]);
+        string t81 = AiTranslationService.FormatLineId(window.Lines[3]);
+
+        // 62 & 67 drop [[P1]]; 81 duplicates [[P0]] twice; 63 is clean.
+        string reply =
+            $"{{\"{t62}\":\"持续抚弄[[P0]]的胸部，漏出灼热吐息。\",\"{t63}\":\"[[P0]]露出迷离的表情。\",\"{t67}\":\"持续抚弄[[P0]]的胸部，身体跳动起来，\",\"{t81}\":\"持续玩弄[[P0]]的乳头，[[P0]]漏出灼热吐息。\"}}";
+
+        WindowTranslationOutcome outcome = AiTranslationService.ParseWindowResponse(reply, window);
+
+        AiTranslationResult onlyValid = Assert.Single(outcome.Translations);
+        Assert.Equal(63, onlyValid.Id);
+        Assert.Equal(new[] { 62, 67, 81 }, outcome.MissingIds);
+        Assert.NotNull(outcome.IssuesByLineId);
+        Assert.Contains("缺少 [[P1]]", outcome.IssuesByLineId![62]);
+        Assert.Contains("缺少 [[P1]]", outcome.IssuesByLineId[67]);
+        Assert.Contains("多出 [[P0]]", outcome.IssuesByLineId[81]);
+    }
+
+    [Fact]
+    public void Parse_ThrowsDetailedReasonsWhenAllEntriesFailValidation()
+    {
+        var window = new TranslationWindow(
+            "@TEST",
+            1,
+            [
+                new WindowLine(10, "k10", "[[P0]]の胸を[[P1]]", "@TEST", true, false, 0, false, null)
+            ]);
+        string t10 = AiTranslationService.FormatLineId(window.Lines[0]);
+
+        InvalidDataException ex = Assert.Throws<InvalidDataException>(() =>
+            AiTranslationService.ParseWindowResponse($"{{\"{t10}\":\"[[P0]]的胸部\"}}", window));
+
+        Assert.Contains(t10, ex.Message);
+        Assert.Contains("缺少 [[P1]]", ex.Message);
+    }
+
+    [Fact]
+    public async Task RetryWindowInSessionAsync_SendsMultiTurnFollowUpWithExactFailureReasons()
+    {
+        var window = new TranslationWindow(
+            "@TEST",
+            1,
+            [
+                new WindowLine(1, "k1", "%CALLNAME:TARGET%の%ITEMNAME:1%を使う", "@TEST", true, false, 0, false, null),
+                new WindowLine(2, "k2", "%CALLNAME:TARGET%は笑った", "@TEST", true, false, 0, false, null)
+            ]);
+
+        MaskedTranslationWindow masked = AiPlaceholderMasker.MaskWindow(window);
+        string t1 = AiTranslationService.FormatLineId(masked.MaskedWindow.Lines[0]);
+        string t2 = AiTranslationService.FormatLineId(masked.MaskedWindow.Lines[1]);
+
+        string firstReply = $"{{\"{t1}\":\"使用[[P0]]的道具\",\"{t2}\":\"[[P0]]笑了\"}}";
+        string followUpReply = $"{{\"{t1}\":\"使用[[P0]]的[[P1]]\"}}";
+
+        var client = new MultiTurnRecordingClient(firstReply, followUpReply);
+        var service = new AiTranslationService(client);
+        var profile = new AiProviderProfile
+        {
+            Id = "test",
+            Name = "Test",
+            BaseUrl = "https://example.invalid/v1",
+            ApiKey = "sk-test",
+            Model = "gpt-test"
+        };
+
+        WindowTranslationOutcome first = await service.TranslateWindowAsync(profile, window);
+        Assert.Equal(new[] { 2 }, first.Translations.Select(t => t.Id));
+        Assert.Equal(new[] { 1 }, first.MissingIds);
+        Assert.Contains("缺少 [[P1]]", first.IssuesByLineId![1]);
+
+        WindowTranslationOutcome retry = await service.RetryWindowInSessionAsync(profile, window, first);
+        Assert.True(retry.IsComplete);
+        AiTranslationResult fixedLine = Assert.Single(retry.Translations);
+        Assert.Equal(1, fixedLine.Id);
+        Assert.Equal("使用%CALLNAME:TARGET%的%ITEMNAME:1%", fixedLine.Translation);
+
+        // Verify the follow-up call sent the full 4-message conversation with exact error details.
+        Assert.NotNull(client.LastMessages);
+        Assert.Equal(4, client.LastMessages!.Count);
+        Assert.Equal("system", client.LastMessages[0].Role);
+        Assert.Equal("user", client.LastMessages[1].Role);
+        Assert.Equal("assistant", client.LastMessages[2].Role);
+        Assert.Equal(firstReply, client.LastMessages[2].Content);
+        Assert.Equal("user", client.LastMessages[3].Role);
+        Assert.Contains(t1, client.LastMessages[3].Content);
+        Assert.Contains("缺少 [[P1]]", client.LastMessages[3].Content);
+    }
+
+    [Fact]
+    public void ScanPrecedingCallsByLine_DetectsInterleavedAndLeadingCallStatements()
+    {
+        const string erb = """
+            @TRAIN_MESSAGE_A
+            IF A < 300
+                PRINTFORM %GET_TARGET_CHARA_DESC_TEXT(NO:TARGET)%は、
+                CALL PARTNER_NAME, TARGET
+                PRINTFORMW の名前を出しながら、%CALLNAME:PLAYER%から逃れようともがいている……
+            ELSEIF A < 6000
+                PRINTFORM %GET_TARGET_CHARA_DESC_TEXT(NO:TARGET)%は、
+                CALL PARTNER_NAME, TARGET
+                SETCOLOR 0xFF0000
+                PRINTFORMW を思い出し耐えようとしている……
+            ELSE
+                CALL PARTNER_NAME, TARGET
+                PRINTFORML への想いが肉欲に負けてしまった
+            ENDIF
+            PRINTFORML 通常の行
+            """;
+
+        Dictionary<int, string> calls = ErbTranslationGroupingService.ScanPrecedingCallsByLine(erb);
+
+        Assert.Equal("PARTNER_NAME", calls[5]);
+        Assert.Equal("PARTNER_NAME", calls[10]);
+        Assert.Equal("PARTNER_NAME", calls[13]);
+        Assert.False(calls.ContainsKey(3));
+        Assert.False(calls.ContainsKey(15));
+    }
+
+    [Fact]
+    public void Payload_EmitsCallBeforeField_WhenPrecedingCallIsPresent()
+    {
+        var window = new TranslationWindow(
+            "TRAIN_MESSAGE_A",
+            1,
+            [
+                new WindowLine(1, "k1", "[[P0]]は、", "TRAIN_MESSAGE_A", true, false, 0, false, null, "PRINTFORM", "form"),
+                new WindowLine(2, "k2", "の名前を出しながら…", "TRAIN_MESSAGE_A", true, false, 1, false, null, "PRINTFORMW", "form", PrecedingCall: "PARTNER_NAME")
+            ]);
+
+        using JsonDocument document = JsonDocument.Parse(AiTranslationService.BuildWindowPayload(window));
+        JsonElement[] lines = document.RootElement.GetProperty("lines").EnumerateArray().ToArray();
+
+        Assert.False(lines[0].TryGetProperty("call_before", out _));
+        Assert.Equal("PARTNER_NAME", lines[1].GetProperty("call_before").GetString());
+    }
+
+    private sealed class MultiTurnRecordingClient(string firstReply, string followUpReply) : IAiChatCompletionClient
+    {
+        public IReadOnlyList<AiChatMessage>? LastMessages { get; private set; }
+
+        public Task<string> CompleteAsync(
+            AiProviderProfile profile,
+            string systemPrompt,
+            string userPrompt,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(firstReply);
+
+        public Task<string> CompleteAsync(
+            AiProviderProfile profile,
+            IReadOnlyList<AiChatMessage> messages,
+            AiReasoningOptions? reasoning = null,
+            CancellationToken cancellationToken = default)
+        {
+            LastMessages = messages;
+            return Task.FromResult(followUpReply);
+        }
+    }
+
     private static TranslationWindow Window(params int[] translateIds)
     {
         var lines = new List<WindowLine>();

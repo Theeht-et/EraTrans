@@ -214,6 +214,9 @@ public partial class DictionaryEditorControl
         int applied = 0;
         int skipped = 0;
         int completed = 0;
+        int failedRequests = 0;
+        string? lastErrorMessage = null;
+        var unresolvedDetails = new List<string>();
         int totalRequests = windows.Count;
         int totalLines = windows.Sum(window => window.TargetCount);
 
@@ -229,27 +232,73 @@ public partial class DictionaryEditorControl
             {
                 cancellation.Token.ThrowIfCancellationRequested();
 
-                WindowTranslationOutcome outcome = await _translationService.TranslateWindowAsync(
-                    profile, window, reasoning: null, _activeGlossary, cancellation.Token);
-                applied += ApplyWindowResults(outcome, entriesByIndex, ref skipped);
-
-                if (outcome.MissingIds.Count > 0)
+                WindowTranslationOutcome? outcome = null;
+                try
                 {
-                    // Only the unanswered lines are sent again, so a partially broken
-                    // answer never wastes the whole request.
-                    TranslationWindow retry = RetryWindowForIds(window, outcome.MissingIds);
-                    WindowTranslationOutcome retryOutcome = await _translationService.TranslateWindowAsync(
-                        profile, retry, reasoning: null, _activeGlossary, cancellation.Token);
-                    applied += ApplyWindowResults(retryOutcome, entriesByIndex, ref skipped);
+                    outcome = await _translationService.TranslateWindowAsync(
+                        profile, window, reasoning: null, _activeGlossary, cancellation.Token);
+                    applied += ApplyWindowResults(outcome, entriesByIndex, ref skipped);
+                    EntriesDataGrid.Items.Refresh();
+                    UpdateDocumentStatus();
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    // Isolate per-window failures so other concurrent windows continue
+                    // and the user can clearly see which entries stayed untranslated.
+                    failedRequests++;
+                    lastErrorMessage = ex.Message;
+                }
+
+                if (outcome is not null && outcome.MissingIds.Count > 0)
+                {
+                    WindowTranslationOutcome? retryOutcome = null;
+                    try
+                    {
+                        // Continue the same conversation with exact per-line failure reasons
+                        // so the model fixes only the problematic entries in place.
+                        retryOutcome = await _translationService.RetryWindowInSessionAsync(
+                            profile, window, outcome, reasoning: null, _activeGlossary, cancellation.Token);
+                        applied += ApplyWindowResults(retryOutcome, entriesByIndex, ref skipped);
+                        EntriesDataGrid.Items.Refresh();
+                        UpdateDocumentStatus();
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        throw;
+                    }
+                    catch (Exception ex)
+                    {
+                        // Keep all translations already applied from the first pass.
+                        failedRequests++;
+                        lastErrorMessage = ex.Message;
+                    }
+
+                    IReadOnlyList<int> remainingIds = retryOutcome?.MissingIds ?? outcome.MissingIds;
+                    IReadOnlyDictionary<int, string>? finalIssues = retryOutcome?.IssuesByLineId ?? outcome.IssuesByLineId;
+                    foreach (int missingId in remainingIds)
+                    {
+                        string reason = finalIssues is not null && finalIssues.TryGetValue(missingId, out string? detail)
+                            ? detail
+                            : "补翻后仍未返回可用译文";
+                        string preview = entriesByIndex.TryGetValue(missingId, out DictionaryEditorEntry? entry)
+                            ? FormatEntryPreview(entry.Original)
+                            : string.Empty;
+                        unresolvedDetails.Add(string.IsNullOrEmpty(preview)
+                            ? $"第 {missingId} 行：{reason}"
+                            : $"第 {missingId} 行（{preview}）：{reason}");
+                    }
                 }
 
                 completed++;
-                StatusTextBlock.Text =
-                    $"{statusPrefix}：已完成 {completed}/{totalRequests} 个请求" +
-                    $"（并发 {concurrency}），回填 {applied} 行，跳过 {skipped} 行。";
-
-                EntriesDataGrid.Items.Refresh();
-                UpdateDocumentStatus();
+                StatusTextBlock.Text = failedRequests > 0 || unresolvedDetails.Count > 0
+                    ? $"{statusPrefix}：已处理 {completed}/{totalRequests} 个请求" +
+                      $"（并发 {concurrency}，异常 {failedRequests}，未通过 {unresolvedDetails.Count} 条），回填 {applied} 行，跳过 {skipped} 行。"
+                    : $"{statusPrefix}：已完成 {completed}/{totalRequests} 个请求" +
+                      $"（并发 {concurrency}），回填 {applied} 行，跳过 {skipped} 行。";
             }
         }
 
@@ -270,9 +319,26 @@ public partial class DictionaryEditorControl
                 throw;
             }
 
-            StatusTextBlock.Text =
-                $"{statusPrefix}完成：{totalRequests} 个请求，回填 {applied} 行，跳过 {skipped} 行。" +
-                "请检查译文并手动保存。";
+            if (failedRequests > 0 || unresolvedDetails.Count > 0)
+            {
+                StatusTextBlock.Text =
+                    $"{statusPrefix}结束：共 {totalRequests} 个请求（失败 {failedRequests} 次，未通过 {unresolvedDetails.Count} 条），已回填 {applied} 行，跳过 {skipped} 行。" +
+                    "未回填词条已保留为空，请检查后手动保存。";
+
+                string detailText = FormatUnresolvedSummary(unresolvedDetails, lastErrorMessage, failedRequests, applied);
+                MessageBox.Show(
+                    OwnerWindow,
+                    detailText,
+                    "部分翻译未完成",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+            }
+            else
+            {
+                StatusTextBlock.Text =
+                    $"{statusPrefix}完成：{totalRequests} 个请求，回填 {applied} 行，跳过 {skipped} 行。" +
+                    "请检查译文并手动保存。";
+            }
         }
         catch (OperationCanceledException)
         {
@@ -366,15 +432,50 @@ public partial class DictionaryEditorControl
         return _windowPlanner.Build(sources, _activeGroupingIndex, WindowMaxCharacters, WindowMaxLines);
     }
 
-    private static TranslationWindow RetryWindowForIds(
-        TranslationWindow window,
-        IReadOnlyCollection<int> missingIds)
+    private static string FormatEntryPreview(string original)
     {
-        HashSet<int> wanted = missingIds.ToHashSet();
-        WindowLine[] lines = window.Lines
-            .Where(line => line.Translate && wanted.Contains(line.Id))
-            .ToArray();
+        if (string.IsNullOrWhiteSpace(original))
+            return string.Empty;
 
-        return window with { Lines = lines };
+        string singleLine = original.Replace("\r", " ").Replace("\n", " ").Trim();
+        return singleLine.Length <= 24 ? singleLine : singleLine[..24] + "…";
+    }
+
+    private static string FormatUnresolvedSummary(
+        IReadOnlyList<string> unresolvedDetails,
+        string? lastErrorMessage,
+        int failedRequests,
+        int applied)
+    {
+        var lines = new List<string>
+        {
+            $"已尽可能回填可识别的 {applied} 行译文；仍有 {unresolvedDetails.Count} 条未通过校验或未补翻成功（请求失败 {failedRequests} 次）。",
+            "未回填的词条已保留为空，可在左侧筛选「未翻译」快速定位。"
+        };
+
+        if (unresolvedDetails.Count > 0)
+        {
+            lines.Add(string.Empty);
+            lines.Add("未通过明细：");
+            const int maxDisplay = 12;
+            for (int i = 0; i < Math.Min(unresolvedDetails.Count, maxDisplay); i++)
+            {
+                lines.Add("• " + unresolvedDetails[i]);
+            }
+
+            if (unresolvedDetails.Count > maxDisplay)
+            {
+                lines.Add($"……其余 {unresolvedDetails.Count - maxDisplay} 条请结合「未翻译」筛选与 AI 记录查看。");
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(lastErrorMessage))
+        {
+            lines.Add(string.Empty);
+            lines.Add("最近一次请求错误：");
+            lines.Add(lastErrorMessage);
+        }
+
+        return string.Join("\n", lines);
     }
 }

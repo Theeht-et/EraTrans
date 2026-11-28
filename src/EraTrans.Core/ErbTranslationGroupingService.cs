@@ -31,7 +31,8 @@ public sealed record ErbTranslationSourceEntry(
     string BranchLabel,
     string? CallTarget,
     string? Command = null,
-    string? Kind = null);
+    string? Kind = null,
+    string? PrecedingCall = null);
 
 public sealed record ErbTranslationControlMarker(
     int ParsedLine,
@@ -53,7 +54,8 @@ public sealed record ErbTranslationGroupEntry(
     string GroupType,
     string? ParentGroupId,
     string? Command = null,
-    string? Kind = null);
+    string? Kind = null,
+    string? PrecedingCall = null);
 
 public sealed record ErbTranslationGroup(
     string Id,
@@ -187,7 +189,8 @@ public sealed class ErbTranslationGroupingService
                 group.Type,
                 null,
                 entry.Command,
-                entry.Kind));
+                entry.Kind,
+                entry.PrecedingCall));
         }
 
         string dictionaryRoot = Path.GetFullPath(dictionaryDirectory);
@@ -448,7 +451,7 @@ public sealed class ErbTranslationGroupingService
                 }
             }
 
-            index = loaded;
+            index = EnrichPrecedingCallsFromSource(loaded, sourceFilePath);
             return true;
         }
         catch (Exception ex) when (
@@ -461,6 +464,164 @@ public sealed class ErbTranslationGroupingService
 
                 
         
+    private static readonly HashSet<string> DynamicOutputCallCommands = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "CALL", "TRYCALL", "CALLFORM", "TRYCALLFORM", "TRYCCALL", "TRYCCALLFORM"
+    };
+
+    private static readonly HashSet<string> FormattingPassthroughCommands = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "SETCOLOR", "RESETCOLOR", "SETBGCOLOR", "RESETBGCOLOR",
+        "FONTSTYLE", "FONTBOLD", "FONTITALIC", "FONTREGULAR", "SETFONT", "ALIGNMENT"
+    };
+
+    /// <summary>
+    /// Scans an ERB source file and returns a map of 1-based output line numbers to the
+    /// immediately preceding <c>CALL</c>-family target name (e.g. <c>PARTNER_NAME</c>) that
+    /// may print dynamic text right before that output line.
+    /// </summary>
+    public static Dictionary<int, string> ScanPrecedingCallsByLine(string sourceText)
+    {
+        var result = new Dictionary<int, string>();
+        if (string.IsNullOrEmpty(sourceText))
+            return result;
+
+        string? pendingCall = null;
+        int lineNumber = 0;
+        int start = 0;
+        while (start <= sourceText.Length)
+        {
+            int newline = sourceText.IndexOf('\n', start);
+            string rawLine = newline < 0 ? sourceText[start..] : sourceText[start..newline];
+            lineNumber++;
+
+            string trimmed = rawLine.Trim();
+            if (trimmed.Length > 0 && !trimmed.StartsWith(';'))
+            {
+                string command = ReadLeadingToken(trimmed);
+                if (DynamicOutputCallCommands.Contains(command))
+                {
+                    string? target = ExtractCallTargetName(trimmed, command.Length);
+                    pendingCall = string.IsNullOrWhiteSpace(target) ? null : target;
+                }
+                else if (IsOutputCommand(command))
+                {
+                    if (pendingCall is not null)
+                    {
+                        result[lineNumber] = pendingCall;
+                        pendingCall = null;
+                    }
+                }
+                else if (!FormattingPassthroughCommands.Contains(command))
+                {
+                    pendingCall = null;
+                }
+            }
+
+            if (newline < 0)
+                break;
+
+            start = newline + 1;
+        }
+
+        return result;
+    }
+
+    private static ErbTranslationGroupingIndex EnrichPrecedingCallsFromSource(
+        ErbTranslationGroupingIndex index,
+        string sourceFilePath)
+    {
+        if (index.Entries.Count == 0 ||
+            index.Entries.Any(entry => !string.IsNullOrWhiteSpace(entry.PrecedingCall)) ||
+            !index.Entries.Any(entry => entry.ParsedLine > 0))
+        {
+            return index;
+        }
+
+        string? sourceText = TryReadSourceTextForCallScan(sourceFilePath);
+        if (string.IsNullOrEmpty(sourceText))
+            return index;
+
+        Dictionary<int, string> callsByLine = ScanPrecedingCallsByLine(sourceText);
+        if (callsByLine.Count == 0)
+            return index;
+
+        bool changed = false;
+        var enriched = new List<ErbTranslationGroupEntry>(index.Entries.Count);
+        foreach (ErbTranslationGroupEntry entry in index.Entries)
+        {
+            if (entry.ParsedLine > 0 && callsByLine.TryGetValue(entry.ParsedLine, out string? callName))
+            {
+                enriched.Add(entry with { PrecedingCall = callName });
+                changed = true;
+            }
+            else
+            {
+                enriched.Add(entry);
+            }
+        }
+
+        return changed ? index with { Entries = enriched } : index;
+    }
+
+    private static string? TryReadSourceTextForCallScan(string sourceFilePath)
+    {
+        try
+        {
+            byte[] bytes = File.ReadAllBytes(sourceFilePath);
+            try
+            {
+                return new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true)
+                    .GetString(bytes);
+            }
+            catch (DecoderFallbackException)
+            {
+                Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+                return Encoding.GetEncoding(932).GetString(bytes);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
+        {
+            return null;
+        }
+    }
+
+    private static string ReadLeadingToken(string trimmedLine)
+    {
+        int index = 0;
+        while (index < trimmedLine.Length && !char.IsWhiteSpace(trimmedLine[index]))
+            index++;
+        return trimmedLine[..index];
+    }
+
+    private static string? ExtractCallTargetName(string trimmedLine, int commandLength)
+    {
+        int pos = commandLength;
+        while (pos < trimmedLine.Length && char.IsWhiteSpace(trimmedLine[pos]))
+            pos++;
+        if (pos >= trimmedLine.Length)
+            return null;
+
+        int end = pos;
+        while (end < trimmedLine.Length &&
+               trimmedLine[end] != ',' &&
+               trimmedLine[end] != '(' &&
+               trimmedLine[end] != ';' &&
+               !char.IsWhiteSpace(trimmedLine[end]))
+        {
+            end++;
+        }
+
+        string target = trimmedLine[pos..end].Trim();
+        return target.Length > 0 ? target : null;
+    }
+
+    private static bool IsOutputCommand(string command) =>
+        command.StartsWith("PRINT", StringComparison.OrdinalIgnoreCase) ||
+        command.Equals("HTML_PRINT", StringComparison.OrdinalIgnoreCase) ||
+        command.Equals("REUSELASTLINE", StringComparison.OrdinalIgnoreCase) ||
+        command.Equals("PUTFORM", StringComparison.OrdinalIgnoreCase);
+
     private static (IReadOnlyList<ErbTranslationGroup> Groups, Dictionary<string, ErbTranslationGroup> GroupsByEntryKey)
         BuildGroups(
             IReadOnlyList<ErbTranslationSourceEntry> sourceEntries,

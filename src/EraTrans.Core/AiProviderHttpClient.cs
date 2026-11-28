@@ -6,6 +6,8 @@ using System.Text.Json;
 
 namespace EraTrans.Core;
 
+public sealed record AiChatMessage(string Role, string Content);
+
 public sealed record AiProviderHttpRequestDetails(
     string Method,
     string Endpoint,
@@ -31,20 +33,35 @@ public static class AiProviderHttpRequestFactory
         AiProviderProfile profile,
         string systemPrompt,
         string userPrompt,
+        AiReasoningOptions? reasoning = null) =>
+        Create(
+            profile,
+            [
+                new AiChatMessage("system", systemPrompt),
+                new AiChatMessage("user", userPrompt)
+            ],
+            reasoning);
+
+    /// <summary>
+    /// Builds a multi-turn Chat Completions request from an ordered message list.
+    /// </summary>
+    public static AiProviderHttpRequestDetails Create(
+        AiProviderProfile profile,
+        IReadOnlyList<AiChatMessage> messages,
         AiReasoningOptions? reasoning = null)
     {
         ArgumentNullException.ThrowIfNull(profile);
+        ArgumentNullException.ThrowIfNull(messages);
+        if (messages.Count == 0)
+            throw new ArgumentException("聊天消息列表不能为空。", nameof(messages));
+
         string endpoint = AiProviderProfileValidator.BuildApiEndpoint(
             profile.BaseUrl, profile.ChatCompletionsPath, "/chat/completions");
 
         var payload = new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["model"] = profile.Model,
-            ["messages"] = new[]
-            {
-                new { role = "system", content = systemPrompt },
-                new { role = "user", content = userPrompt }
-            }
+            ["messages"] = messages.Select(message => new { role = message.Role, content = message.Content }).ToArray()
         };
 
         AiReasoning.Apply(
@@ -80,16 +97,30 @@ public sealed class OpenAiCompatibleChatCompletionClient : IAiChatCompletionClie
         CancellationToken cancellationToken = default) =>
         CompleteAsync(profile, systemPrompt, userPrompt, reasoning: null, cancellationToken);
 
-    public async Task<string> CompleteAsync(
+    public Task<string> CompleteAsync(
         AiProviderProfile profile,
         string systemPrompt,
         string userPrompt,
         AiReasoningOptions? reasoning,
+        CancellationToken cancellationToken = default) =>
+        CompleteAsync(
+            profile,
+            [
+                new AiChatMessage("system", systemPrompt),
+                new AiChatMessage("user", userPrompt)
+            ],
+            reasoning,
+            cancellationToken);
+
+    public async Task<string> CompleteAsync(
+        AiProviderProfile profile,
+        IReadOnlyList<AiChatMessage> messages,
+        AiReasoningOptions? reasoning = null,
         CancellationToken cancellationToken = default)
     {
         AiProviderProfileValidator.Validate(profile);
         AiProviderHttpRequestDetails details =
-            AiProviderHttpRequestFactory.Create(profile, systemPrompt, userPrompt, reasoning);
+            AiProviderHttpRequestFactory.Create(profile, messages, reasoning);
 
         using var request = new HttpRequestMessage(HttpMethod.Post, details.Endpoint);
         request.Content = new StringContent(details.JsonBody, Encoding.UTF8, "application/json");
